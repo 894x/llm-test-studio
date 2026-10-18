@@ -24,7 +24,8 @@ func (mixedPlanClock) Now() time.Time { return time.Now().UTC() }
 
 type mixedPlanSLAExecutor struct {
 	runs.Executor
-	e2eMS float64
+	e2eMS  float64
+	legacy bool
 }
 
 func (executor mixedPlanSLAExecutor) Execute(
@@ -37,6 +38,9 @@ func (executor mixedPlanSLAExecutor) Execute(
 		// clock resolution: a fast local HTTP request can measure zero ms.
 		if request.Entry.Performance == nil && draft.Dimensions["phase"] == "measured" {
 			draft.Metrics["e2e_ms"] = executor.e2eMS
+			if executor.legacy {
+				delete(draft.Dimensions, domain.SLAPrecisionDimension)
+			}
 			if draft.Observation != nil {
 				draft.Observation.Metrics["e2e_ms"] = executor.e2eMS
 			}
@@ -53,6 +57,7 @@ func TestMixedPlanExecutesAndPersistsPerformanceItems(t *testing.T) {
 		requests                                 int32
 		stoppedAt                                int
 		slaE2EMS                                 float64
+		slaZero, legacyPrecision                 bool
 	}{
 		{name: "cancel_during_pressure", cancel: true, firstPolicy: "continue", pressurePolicy: "continue", requests: 2, stoppedAt: 2},
 		{name: "mixed_success", firstPolicy: "stop", pressurePolicy: "continue", requests: 5, stoppedAt: -1},
@@ -76,6 +81,16 @@ func TestMixedPlanExecutesAndPersistsPerformanceItems(t *testing.T) {
 			name: "sla_below_limit", slaE2EMS: 25,
 			firstPolicy: "stop", pressurePolicy: "continue", requests: 5, stoppedAt: -1,
 		},
+		{name: "sla_zero", slaZero: true,
+			firstPolicy: "stop", pressurePolicy: "continue", requests: 5, stoppedAt: -1},
+		{name: "sla_round_down", slaE2EMS: 50.004,
+			firstPolicy: "stop", pressurePolicy: "continue", requests: 5, stoppedAt: -1},
+		{name: "sla_round_up_stop", slaE2EMS: 50.005, slaFail: true,
+			firstPolicy: "stop", pressurePolicy: "continue", requests: 1, stoppedAt: 1},
+		{name: "sla_round_up_continue", slaE2EMS: 50.005, slaFail: true,
+			firstPolicy: "continue", pressurePolicy: "continue", requests: 5, stoppedAt: -1},
+		{name: "sla_historical_precision", slaE2EMS: 50.004, slaFail: true, legacyPrecision: true,
+			firstPolicy: "stop", pressurePolicy: "continue", requests: 1, stoppedAt: 1},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			var requests atomic.Int32
@@ -113,7 +128,7 @@ func TestMixedPlanExecutesAndPersistsPerformanceItems(t *testing.T) {
 			snapshot.Channel.BaseURL = server.URL + "/v1"
 			snapshot.Entries[0].OnFailure = scenario.firstPolicy
 			snapshot.PlanDocument.Entries[0].OnFailure = scenario.firstPolicy
-			if scenario.slaE2EMS > 0 {
+			if scenario.slaE2EMS > 0 || scenario.slaZero {
 				snapshot.Entries[0].SLA.Thresholds = map[string]float64{"e2e_p95_ms": 50}
 				snapshot.PlanDocument.Entries[0].SLA = snapshot.Entries[0].SLA
 			}
@@ -133,8 +148,8 @@ func TestMixedPlanExecutesAndPersistsPerformanceItems(t *testing.T) {
 				t.Fatal(err)
 			}
 			var executor runs.Executor = runs.NewProtocolExecutor(server.Client().Transport)
-			if scenario.slaE2EMS > 0 {
-				executor = mixedPlanSLAExecutor{Executor: executor, e2eMS: scenario.slaE2EMS}
+			if scenario.slaE2EMS > 0 || scenario.slaZero {
+				executor = mixedPlanSLAExecutor{Executor: executor, e2eMS: scenario.slaE2EMS, legacy: scenario.legacyPrecision}
 			}
 			host, err := runs.NewHost(runs.HostDependencies{
 				Repository: repository, Executor: executor, Clock: mixedPlanClock{},
@@ -192,7 +207,7 @@ func TestMixedPlanExecutesAndPersistsPerformanceItems(t *testing.T) {
 			if len(report.EntryReports) != 3 {
 				t.Fatalf("items: %d", len(report.EntryReports))
 			}
-			if scenario.slaE2EMS > 0 {
+			if scenario.slaE2EMS > 0 || scenario.slaZero {
 				entry := report.EntryReports[0]
 				wantMetric := domain.MetricValue{Value: scenario.slaE2EMS, Unit: "ms", Samples: 1}
 				if got := entry.SLA["e2e_p95_ms"]; got != wantMetric {
@@ -208,7 +223,14 @@ func TestMixedPlanExecutesAndPersistsPerformanceItems(t *testing.T) {
 					t.Fatalf("plan conclusion = %+v, want SLA failure %t", report.Conclusion, scenario.slaFail)
 				}
 				if scenario.slaFail {
-					wantIssue := "SLA e2e_p95_ms failed: observed 100, threshold 50"
+					wantValue := "100.00"
+					if scenario.slaE2EMS == 50.005 {
+						wantValue = "50.01"
+					}
+					wantIssue := "SLA e2e_p95_ms failed: observed " + wantValue + ", threshold 50.00 (2 decimal places)"
+					if scenario.legacyPrecision {
+						wantIssue = "SLA e2e_p95_ms failed: observed 50, threshold 50"
+					}
 					if len(entry.Conclusion.Issues) != 1 || entry.Conclusion.Issues[0] != wantIssue {
 						t.Fatalf("unexpected failure cause: %+v", entry.Conclusion.Issues)
 					}

@@ -455,6 +455,7 @@ func interpolatedPercentile(sortedValues []float64, percentile float64) float64 
 
 func evaluateSLA(profile domain.SLAProfile, results []domain.Result, aggregates map[string]domain.MetricValue) (map[string]domain.MetricValue, []string) {
 	results = measuredResults(results)
+	roundedLatency := usesRoundedLatencySLA(results)
 	observed := make(map[string]domain.MetricValue, len(profile.Thresholds))
 	issues := make([]string, 0)
 	names := make([]string, 0, len(profile.Thresholds))
@@ -475,9 +476,18 @@ func evaluateSLA(profile domain.SLAProfile, results []domain.Result, aggregates 
 			issues = append(issues, fmt.Sprintf("SLA threshold %s has no samples", name))
 			continue
 		}
-		failed := comparison == "min" && metric.Value < threshold || comparison == "max" && metric.Value > threshold
+		value := metric.Value
+		rounded := roundedLatency && (metric.Unit == "ms" || metric.Unit == "ms/token")
+		if rounded {
+			value, threshold = roundLatencyMS(value), roundLatencyMS(threshold)
+		}
+		failed := comparison == "min" && value < threshold || comparison == "max" && value > threshold
 		if failed {
-			issues = append(issues, fmt.Sprintf("SLA %s failed: observed %.4g, threshold %.4g", name, metric.Value, threshold))
+			issue := fmt.Sprintf("SLA %s failed: observed %.4g, threshold %.4g", name, value, threshold)
+			if rounded {
+				issue = fmt.Sprintf("SLA %s failed: observed %.2f, threshold %.2f (2 decimal places)", name, value, threshold)
+			}
+			issues = append(issues, issue)
 		}
 	}
 	return observed, issues

@@ -122,6 +122,7 @@ func (executor *ProtocolExecutor) executePhase(
 		finishedOffset := time.Since(started)
 		draft.RequestID = fmt.Sprintf("%s-%d", phase, scheduled.Index+1)
 		draft.Dimensions["phase"] = phase
+		draft.Dimensions[domain.SLAPrecisionDimension] = domain.SLALatencyTwoDecimalsV1
 		draft.Metrics["scheduled_offset_ms"] = milliseconds(phaseOffset + scheduled.ScheduledOffset)
 		draft.Metrics["started_offset_ms"] = milliseconds(startedOffset)
 		draft.Metrics["finished_offset_ms"] = milliseconds(finishedOffset)
@@ -139,7 +140,9 @@ func (executor *ProtocolExecutor) executePhase(
 		index := int(observation.Index % uint64(len(specs)))
 		draft := ResultDraft{
 			CaseID: request.Cases[index].ID, RequestID: fmt.Sprintf("%s-%d", phase, observation.Index+1),
-			Dimensions:      map[string]string{"phase": phase},
+			Dimensions: map[string]string{
+				"phase": phase, domain.SLAPrecisionDimension: domain.SLALatencyTwoDecimalsV1,
+			},
 			ExecutionStatus: domain.ExecutionFailed, ErrorCode: observation.ErrorCode,
 			Failure: domain.FailureNetwork, Verification: testspec.Evaluate(specs[index].Assertions, testspec.Observation{}),
 			Metrics: map[string]float64{

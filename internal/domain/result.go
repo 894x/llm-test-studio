@@ -14,6 +14,10 @@ import (
 const (
 	MaxErrorCodeLength      = 64
 	MaxProviderDetailLength = 2048
+	// SLAPrecisionDimension versions comparison semantics without rewriting
+	// historical observations or rounding the stored measurements themselves.
+	SLAPrecisionDimension   = "sla_precision"
+	SLALatencyTwoDecimalsV1 = "latency_2dp_v1"
 )
 
 type ErrorCode string
@@ -191,6 +195,9 @@ func (result Result) Validate() error {
 		if strings.TrimSpace(name) == "" || strings.TrimSpace(name) != name || strings.TrimSpace(value) == "" || strings.TrimSpace(value) != value || len(name) > 64 || len(value) > 256 {
 			return fmt.Errorf("invalid result dimension %q", name)
 		}
+	}
+	if precision, present := result.Dimensions[SLAPrecisionDimension]; present && precision != SLALatencyTwoDecimalsV1 {
+		return fmt.Errorf("unsupported result SLA precision %q", precision)
 	}
 	for name, value := range result.Metrics {
 		if strings.TrimSpace(name) == "" || math.IsNaN(value) || math.IsInf(value, 0) {

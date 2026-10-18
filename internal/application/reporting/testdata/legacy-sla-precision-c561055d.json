@@ -1,0 +1,767 @@
+{
+  "Run": {
+    "id": "40000000-0000-4000-8000-000000000005",
+    "schema_version": 1,
+    "revision": 4,
+    "created_at": "2026-10-18T00:00:00Z",
+    "updated_at": "2026-10-18T00:00:03Z",
+    "plan_id": "40000000-0000-4000-8000-000000000005",
+    "status": "completed",
+    "plan_snapshot": {
+      "schema_version": 1,
+      "plan": {
+        "id": "40000000-0000-4000-8000-000000000005",
+        "revision": 1
+      },
+      "model": {
+        "id": "40000000-0000-4000-8000-000000000002",
+        "revision": 1,
+        "name": "model",
+        "protocol": "openai-chat",
+        "capabilities": null
+      },
+      "channel": {
+        "id": "40000000-0000-4000-8000-000000000003",
+        "revision": 1,
+        "name": "channel",
+        "base_url": "https://example.test/v1",
+        "protocol": "openai-chat",
+        "upstream_model_name": "upstream"
+      },
+      "environment": {
+        "os": "windows",
+        "arch": "amd64",
+        "region": "local",
+        "network_egress": "direct",
+        "app_version": "test",
+        "engine_version": "test"
+      },
+      "plan_document": {
+        "id": "40000000-0000-4000-8000-000000000005",
+        "schema_version": 1,
+        "revision": 1,
+        "created_at": "2026-10-18T00:00:00Z",
+        "updated_at": "2026-10-18T00:00:00Z",
+        "name": "Quick report",
+        "protocol": "openai-chat",
+        "seed": 0,
+        "entries": [
+          {
+            "entry_id": "40000000-0000-4000-8000-000000000005",
+            "target_kind": "suite",
+            "target_id": "40000000-0000-4000-8000-000000000006",
+            "parameters": {},
+            "warmup_count": 0,
+            "settings": {},
+            "load": {
+              "mode": "fixed_concurrency",
+              "concurrency": 1,
+              "request_count": 1,
+              "rate_per_second": 0,
+              "duration_ms": 0,
+              "request_timeout_ms": 1000
+            },
+            "sla": {
+              "thresholds": {
+                "e2e_p95_ms": 1000
+              }
+            }
+          }
+        ]
+      },
+      "mapping": {
+        "id": "40000000-0000-4000-8000-000000000010",
+        "schema_version": 1,
+        "revision": 1,
+        "created_at": "2026-10-18T00:00:00Z",
+        "updated_at": "2026-10-18T00:00:00Z",
+        "protocols": [
+          "openai-chat"
+        ],
+        "channel_id": "40000000-0000-4000-8000-000000000003",
+        "model_id": "40000000-0000-4000-8000-000000000002",
+        "upstream_model_name": "upstream"
+      },
+      "entries": [
+        {
+          "warmup_count": 0,
+          "settings": {},
+          "entry_id": "40000000-0000-4000-8000-000000000005",
+          "target_kind": "suite",
+          "target_id": "40000000-0000-4000-8000-000000000006",
+          "name": "Quick report",
+          "key": "quick-report",
+          "suite": {
+            "id": "40000000-0000-4000-8000-000000000006",
+            "schema_version": 1,
+            "revision": 1,
+            "created_at": "2026-10-18T00:00:00Z",
+            "updated_at": "2026-10-18T00:00:00Z",
+            "key": "quick-report",
+            "name": "Quick report",
+            "protocol": "openai-chat",
+            "description": "",
+            "cases": [
+              {
+                "case_id": "40000000-0000-4000-8000-000000000004"
+              }
+            ],
+            "inputs": []
+          },
+          "cases": [
+            {
+              "case_id": "40000000-0000-4000-8000-000000000004",
+              "revision": 1
+            }
+          ],
+          "case_definitions": [
+            {
+              "id": "40000000-0000-4000-8000-000000000004",
+              "schema_version": 1,
+              "revision": 1,
+              "created_at": "2026-10-18T00:00:00Z",
+              "updated_at": "2026-10-18T00:00:00Z",
+              "key": "basic",
+              "name": "Basic",
+              "dimension": "boundary",
+              "enabled": true,
+              "default": true,
+              "severity": "critical",
+              "execution_mode": "automatic",
+              "definitions": {
+                "openai-chat": {
+                  "inputs": {},
+                  "request": {
+                    "body": {
+                      "messages": [
+                        {
+                          "role": "user",
+                          "content": "hello"
+                        }
+                      ]
+                    }
+                  },
+                  "assertions": [
+                    {
+                      "id": "status",
+                      "source": "http.status",
+                      "operator": "equals",
+                      "value": 200
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "parameters": {},
+          "case_inputs": {
+            "40000000-0000-4000-8000-000000000004": {}
+          },
+          "load": {
+            "mode": "fixed_concurrency",
+            "concurrency": 1,
+            "request_count": 1,
+            "rate_per_second": 0,
+            "duration_ms": 0,
+            "request_timeout_ms": 1000
+          },
+          "sla": {
+            "thresholds": {
+              "e2e_p95_ms": 1000
+            }
+          }
+        }
+      ],
+      "quick_task": {}
+    }
+  },
+  "Results": [
+    {
+      "id": "40000000-0000-4000-8000-000000000017",
+      "schema_version": 1,
+      "revision": 1,
+      "created_at": "2026-10-18T00:00:00Z",
+      "updated_at": "2026-10-18T00:00:00Z",
+      "run_id": "40000000-0000-4000-8000-000000000005",
+      "entry_id": "40000000-0000-4000-8000-000000000005",
+      "case_id": "40000000-0000-4000-8000-000000000004",
+      "request_id": "request-1",
+      "execution_status": "completed",
+      "verification": {
+        "status": "passed",
+        "assertions": []
+      },
+      "metrics": {
+        "e2e_ms": 1000.004
+      }
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000019",
+      "schema_version": 1,
+      "revision": 1,
+      "created_at": "2026-10-18T00:00:00Z",
+      "updated_at": "2026-10-18T00:00:00Z",
+      "run_id": "40000000-0000-4000-8000-000000000005",
+      "entry_id": "40000000-0000-4000-8000-000000000005",
+      "case_id": "40000000-0000-4000-8000-000000000004",
+      "execution_status": "completed",
+      "verification": {
+        "status": "passed",
+        "assertions": []
+      },
+      "metrics": {
+        "e2e_ms": 1000.004
+      }
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000090",
+      "schema_version": 1,
+      "revision": 1,
+      "created_at": "2026-10-18T00:00:00Z",
+      "updated_at": "2026-10-18T00:00:00Z",
+      "run_id": "40000000-0000-4000-8000-000000000005",
+      "entry_id": "40000000-0000-4000-8000-000000000005",
+      "entry_status": "completed",
+      "execution_status": "",
+      "verification": {
+        "status": "",
+        "assertions": null
+      }
+    }
+  ],
+  "Report": {
+    "schema_version": 1,
+    "protocol": "openai-chat",
+    "verification": {
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "observed": 0,
+      "indeterminate": 0
+    },
+    "id": "40000000-0000-4000-8000-000000000018",
+    "run_id": "40000000-0000-4000-8000-000000000005",
+    "run_status": "completed",
+    "generated_at": "2026-10-18T00:01:00Z",
+    "plan_snapshot": {
+      "schema_version": 1,
+      "plan": {
+        "id": "40000000-0000-4000-8000-000000000005",
+        "revision": 1
+      },
+      "model": {
+        "id": "40000000-0000-4000-8000-000000000002",
+        "revision": 1,
+        "name": "model",
+        "protocol": "openai-chat",
+        "capabilities": null
+      },
+      "channel": {
+        "id": "40000000-0000-4000-8000-000000000003",
+        "revision": 1,
+        "name": "channel",
+        "base_url": "https://example.test/v1",
+        "protocol": "openai-chat",
+        "upstream_model_name": "upstream"
+      },
+      "environment": {
+        "os": "windows",
+        "arch": "amd64",
+        "region": "local",
+        "network_egress": "direct",
+        "app_version": "test",
+        "engine_version": "test"
+      },
+      "plan_document": {
+        "id": "40000000-0000-4000-8000-000000000005",
+        "schema_version": 1,
+        "revision": 1,
+        "created_at": "2026-10-18T00:00:00Z",
+        "updated_at": "2026-10-18T00:00:00Z",
+        "name": "Quick report",
+        "protocol": "openai-chat",
+        "seed": 0,
+        "entries": [
+          {
+            "entry_id": "40000000-0000-4000-8000-000000000005",
+            "target_kind": "suite",
+            "target_id": "40000000-0000-4000-8000-000000000006",
+            "parameters": {},
+            "warmup_count": 0,
+            "settings": {},
+            "load": {
+              "mode": "fixed_concurrency",
+              "concurrency": 1,
+              "request_count": 1,
+              "rate_per_second": 0,
+              "duration_ms": 0,
+              "request_timeout_ms": 1000
+            },
+            "sla": {
+              "thresholds": {
+                "e2e_p95_ms": 1000
+              }
+            }
+          }
+        ]
+      },
+      "mapping": {
+        "id": "40000000-0000-4000-8000-000000000010",
+        "schema_version": 1,
+        "revision": 1,
+        "created_at": "2026-10-18T00:00:00Z",
+        "updated_at": "2026-10-18T00:00:00Z",
+        "protocols": [
+          "openai-chat"
+        ],
+        "channel_id": "40000000-0000-4000-8000-000000000003",
+        "model_id": "40000000-0000-4000-8000-000000000002",
+        "upstream_model_name": "upstream"
+      },
+      "entries": [
+        {
+          "warmup_count": 0,
+          "settings": {},
+          "entry_id": "40000000-0000-4000-8000-000000000005",
+          "target_kind": "suite",
+          "target_id": "40000000-0000-4000-8000-000000000006",
+          "name": "Quick report",
+          "key": "quick-report",
+          "suite": {
+            "id": "40000000-0000-4000-8000-000000000006",
+            "schema_version": 1,
+            "revision": 1,
+            "created_at": "2026-10-18T00:00:00Z",
+            "updated_at": "2026-10-18T00:00:00Z",
+            "key": "quick-report",
+            "name": "Quick report",
+            "protocol": "openai-chat",
+            "description": "",
+            "cases": [
+              {
+                "case_id": "40000000-0000-4000-8000-000000000004"
+              }
+            ],
+            "inputs": []
+          },
+          "cases": [
+            {
+              "case_id": "40000000-0000-4000-8000-000000000004",
+              "revision": 1
+            }
+          ],
+          "case_definitions": [
+            {
+              "id": "40000000-0000-4000-8000-000000000004",
+              "schema_version": 1,
+              "revision": 1,
+              "created_at": "2026-10-18T00:00:00Z",
+              "updated_at": "2026-10-18T00:00:00Z",
+              "key": "basic",
+              "name": "Basic",
+              "dimension": "boundary",
+              "enabled": true,
+              "default": true,
+              "severity": "critical",
+              "execution_mode": "automatic",
+              "definitions": {
+                "openai-chat": {
+                  "inputs": {},
+                  "request": {
+                    "body": {
+                      "messages": [
+                        {
+                          "role": "user",
+                          "content": "hello"
+                        }
+                      ]
+                    }
+                  },
+                  "assertions": [
+                    {
+                      "id": "status",
+                      "source": "http.status",
+                      "operator": "equals",
+                      "value": 200
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "parameters": {},
+          "case_inputs": {
+            "40000000-0000-4000-8000-000000000004": {}
+          },
+          "load": {
+            "mode": "fixed_concurrency",
+            "concurrency": 1,
+            "request_count": 1,
+            "rate_per_second": 0,
+            "duration_ms": 0,
+            "request_timeout_ms": 1000
+          },
+          "sla": {
+            "thresholds": {
+              "e2e_p95_ms": 1000
+            }
+          }
+        }
+      ],
+      "quick_task": {}
+    },
+    "model": {
+      "id": "40000000-0000-4000-8000-000000000002",
+      "name": "model"
+    },
+    "channel": {
+      "id": "40000000-0000-4000-8000-000000000003",
+      "name": "channel"
+    },
+    "environment": {
+      "os": "windows",
+      "arch": "amd64",
+      "region": "local",
+      "network_egress": "direct",
+      "app_version": "test",
+      "engine_version": "test"
+    },
+    "execution_origin": null,
+    "conclusion": {
+      "passed": false,
+      "verdict": "fail",
+      "issues": [
+        "Quick report: SLA e2e_p95_ms failed: observed 1000, threshold 1000"
+      ]
+    },
+    "sla": {},
+    "metrics": {
+      "completed_count": {
+        "value": 1,
+        "unit": "count",
+        "samples": 1
+      },
+      "e2e_average_ms": {
+        "value": 1000.004,
+        "unit": "ms",
+        "samples": 1
+      },
+      "e2e_ms": {
+        "value": 1000.004,
+        "unit": "ms",
+        "samples": 1
+      },
+      "e2e_p50_ms": {
+        "value": 1000.004,
+        "unit": "ms",
+        "samples": 1
+      },
+      "e2e_p90_ms": {
+        "value": 1000.004,
+        "unit": "ms",
+        "samples": 1
+      },
+      "e2e_p95_ms": {
+        "value": 1000.004,
+        "unit": "ms",
+        "samples": 1
+      },
+      "e2e_p99_ms": {
+        "value": 1000.004,
+        "unit": "ms",
+        "samples": 1
+      },
+      "elapsed_seconds": {
+        "value": 1.0000040000000001,
+        "unit": "seconds",
+        "samples": 1
+      },
+      "failed_count": {
+        "value": 0,
+        "unit": "count",
+        "samples": 1
+      },
+      "generation_tps": {
+        "value": 0,
+        "unit": "tokens/second",
+        "samples": 1
+      },
+      "indeterminate_count": {
+        "value": 0,
+        "unit": "count",
+        "samples": 1
+      },
+      "input_tpm": {
+        "value": 0,
+        "unit": "tokens/minute",
+        "samples": 1
+      },
+      "observed_count": {
+        "value": 0,
+        "unit": "count",
+        "samples": 1
+      },
+      "output_tpm": {
+        "value": 0,
+        "unit": "tokens/minute",
+        "samples": 1
+      },
+      "request_qps": {
+        "value": 0.9999960000159999,
+        "unit": "requests/second",
+        "samples": 1
+      },
+      "rpm": {
+        "value": 59.99976000095999,
+        "unit": "requests/minute",
+        "samples": 1
+      },
+      "succeeded_count": {
+        "value": 1,
+        "unit": "count",
+        "samples": 1
+      },
+      "success_rate": {
+        "value": 1,
+        "unit": "ratio",
+        "samples": 1
+      },
+      "total_tpm": {
+        "value": 0,
+        "unit": "tokens/minute",
+        "samples": 1
+      }
+    },
+    "timeline": [
+      {
+        "case_id": "40000000-0000-4000-8000-000000000004",
+        "e2e_ms": 1000.004,
+        "request_id": "request-1",
+        "result_id": "40000000-0000-4000-8000-000000000017",
+        "verification": "passed"
+      }
+    ],
+    "distributions": [
+      {
+        "average": 1000.004,
+        "max": 1000.004,
+        "metric": "e2e_ms",
+        "min": 1000.004,
+        "p50": 1000.004,
+        "p90": 1000.004,
+        "p95": 1000.004,
+        "p99": 1000.004,
+        "samples": 1,
+        "unit": "ms"
+      }
+    ],
+    "case_results": [
+      {
+        "id": "40000000-0000-4000-8000-000000000019",
+        "schema_version": 1,
+        "revision": 1,
+        "created_at": "2026-10-18T00:00:00Z",
+        "updated_at": "2026-10-18T00:00:00Z",
+        "run_id": "40000000-0000-4000-8000-000000000005",
+        "entry_id": "40000000-0000-4000-8000-000000000005",
+        "case_id": "40000000-0000-4000-8000-000000000004",
+        "execution_status": "completed",
+        "verification": {
+          "status": "passed",
+          "assertions": []
+        },
+        "metrics": {
+          "e2e_ms": 1000.004
+        }
+      }
+    ],
+    "entry_reports": [
+      {
+        "warmup_count": 0,
+        "settings": {},
+        "entry_id": "40000000-0000-4000-8000-000000000005",
+        "target_kind": "suite",
+        "target_id": "40000000-0000-4000-8000-000000000006",
+        "name": "Quick report",
+        "key": "quick-report",
+        "protocol": "openai-chat",
+        "parameters": {},
+        "load": {
+          "mode": "fixed_concurrency",
+          "concurrency": 1,
+          "request_count": 1,
+          "rate_per_second": 0,
+          "duration_ms": 0,
+          "request_timeout_ms": 1000
+        },
+        "seed": 0,
+        "status": "completed",
+        "conclusion": {
+          "passed": false,
+          "verdict": "fail",
+          "issues": [
+            "SLA e2e_p95_ms failed: observed 1000, threshold 1000"
+          ]
+        },
+        "verification": {
+          "status": "passed",
+          "passed": 1,
+          "failed": 0,
+          "observed": 0,
+          "indeterminate": 0
+        },
+        "sla": {
+          "e2e_p95_ms": {
+            "value": 1000.004,
+            "unit": "ms",
+            "samples": 1
+          }
+        },
+        "metrics": {
+          "completed_count": {
+            "value": 1,
+            "unit": "count",
+            "samples": 1
+          },
+          "e2e_average_ms": {
+            "value": 1000.004,
+            "unit": "ms",
+            "samples": 1
+          },
+          "e2e_ms": {
+            "value": 1000.004,
+            "unit": "ms",
+            "samples": 1
+          },
+          "e2e_p50_ms": {
+            "value": 1000.004,
+            "unit": "ms",
+            "samples": 1
+          },
+          "e2e_p90_ms": {
+            "value": 1000.004,
+            "unit": "ms",
+            "samples": 1
+          },
+          "e2e_p95_ms": {
+            "value": 1000.004,
+            "unit": "ms",
+            "samples": 1
+          },
+          "e2e_p99_ms": {
+            "value": 1000.004,
+            "unit": "ms",
+            "samples": 1
+          },
+          "elapsed_seconds": {
+            "value": 1.0000040000000001,
+            "unit": "seconds",
+            "samples": 1
+          },
+          "failed_count": {
+            "value": 0,
+            "unit": "count",
+            "samples": 1
+          },
+          "generation_tps": {
+            "value": 0,
+            "unit": "tokens/second",
+            "samples": 1
+          },
+          "indeterminate_count": {
+            "value": 0,
+            "unit": "count",
+            "samples": 1
+          },
+          "input_tpm": {
+            "value": 0,
+            "unit": "tokens/minute",
+            "samples": 1
+          },
+          "observed_count": {
+            "value": 0,
+            "unit": "count",
+            "samples": 1
+          },
+          "output_tpm": {
+            "value": 0,
+            "unit": "tokens/minute",
+            "samples": 1
+          },
+          "request_qps": {
+            "value": 0.9999960000159999,
+            "unit": "requests/second",
+            "samples": 1
+          },
+          "rpm": {
+            "value": 59.99976000095999,
+            "unit": "requests/minute",
+            "samples": 1
+          },
+          "succeeded_count": {
+            "value": 1,
+            "unit": "count",
+            "samples": 1
+          },
+          "success_rate": {
+            "value": 1,
+            "unit": "ratio",
+            "samples": 1
+          },
+          "total_tpm": {
+            "value": 0,
+            "unit": "tokens/minute",
+            "samples": 1
+          }
+        },
+        "timeline": [
+          {
+            "case_id": "40000000-0000-4000-8000-000000000004",
+            "e2e_ms": 1000.004,
+            "request_id": "request-1",
+            "result_id": "40000000-0000-4000-8000-000000000017",
+            "verification": "passed"
+          }
+        ],
+        "distributions": [
+          {
+            "average": 1000.004,
+            "max": 1000.004,
+            "metric": "e2e_ms",
+            "min": 1000.004,
+            "p50": 1000.004,
+            "p90": 1000.004,
+            "p95": 1000.004,
+            "p99": 1000.004,
+            "samples": 1,
+            "unit": "ms"
+          }
+        ],
+        "case_results": [
+          {
+            "id": "40000000-0000-4000-8000-000000000019",
+            "schema_version": 1,
+            "revision": 1,
+            "created_at": "2026-10-18T00:00:00Z",
+            "updated_at": "2026-10-18T00:00:00Z",
+            "run_id": "40000000-0000-4000-8000-000000000005",
+            "entry_id": "40000000-0000-4000-8000-000000000005",
+            "case_id": "40000000-0000-4000-8000-000000000004",
+            "execution_status": "completed",
+            "verification": {
+              "status": "passed",
+              "assertions": []
+            },
+            "metrics": {
+              "e2e_ms": 1000.004
+            }
+          }
+        ]
+      }
+    ],
+    "error_clusters": [],
+    "evidence": [],
+    "baseline": {},
+    "attachments": []
+  }
+}
