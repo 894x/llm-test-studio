@@ -1,7 +1,9 @@
 import { formatPerformanceInteger } from "@/features/reports/performance-format"
 import { desktopLocale, translateDesktop as tx, translateExecutionError } from "@/i18n/runtime"
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
+import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right.mjs"
+import { Collapsible } from "radix-ui"
 import { useTranslation } from "react-i18next"
 
 import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
@@ -39,6 +41,12 @@ import { ExecutionOriginDetails } from "./execution-origin-details"
 
 import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportMetric, type ReportSnapshot, type ReportSummary, type ReportEntryDetail, type ReportEntryStatus } from "./data"
 
+const TimeSliceVisibility = createContext<{
+  expanded: ReadonlySet<string>
+  setExpanded: (id: string, open: boolean) => void
+}>({ expanded: new Set(), setExpanded: () => {} })
+const ReportExportMode = createContext(false)
+
 export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, comparisonControl, preferredReportID, reportOpenSequence = 0, getDetail, exportReport, saveReportExport, copyReportPNG, renderRunShortcuts, exportVisualReport = createVisualReportExport }: {
   comparisonControl?: ReactNode
   snapshot: ReportSnapshot
@@ -66,6 +74,16 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   }
   const [detailState, setDetailState] = useState<{ reportID: string; detail?: ReportDetail; error?: boolean }>({ reportID: "" })
   const [exporting, setExporting] = useState<ReportExportFormat | "copy" | "">("")
+  const [expandedTimeSlices, setExpandedTimeSlices] = useState<ReadonlySet<string>>(() => new Set())
+  const setTimeSliceExpanded = useCallback((id: string, open: boolean) => {
+    setExpandedTimeSlices(previous => {
+      const next = new Set(previous)
+      if (open) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }, [])
+  const timeSliceVisibility = useMemo(() => ({ expanded: expandedTimeSlices, setExpanded: setTimeSliceExpanded }), [expandedTimeSlices, setTimeSliceExpanded])
   const [exportError, setExportError] = useState("")
   const [watermark, setWatermark] = useState("rhzs")
   const [exportDocument, setExportDocument] = useState<{
@@ -189,7 +207,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
     }
   }
 
-  return <>
+  return <TimeSliceVisibility value={timeSliceVisibility}>
     <PageFrame
       title={t(isViewingReport ? "detailTitle" : "title")}
       description={isViewingReport ? t("detailDescription", { name: selectedVerdict }) : t("description")}
@@ -262,7 +280,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
         watermark={exportDocument.watermark}
       />
     ) : null}
-  </>
+  </TimeSliceVisibility>
 }
 
 const ReportContent = memo(function ReportContent({ detail, error }: { detail: ReportDetail | null; error: string }) {
@@ -328,6 +346,7 @@ function RunReportBody({ detail, paginate = true }: { detail: Extract<ReportDeta
         <SuiteReportSection
           key={suite.entry_id}
           suite={suite}
+          timeSliceID={`${detail.report.id}:${suite.entry_id}`}
           selectedCaseID={selectedCase?.entryID === suite.entry_id ? selectedCase.caseID : ""}
           caseNavigationRequest={caseNavigationRequest}
           paginate={paginate}
@@ -347,11 +366,13 @@ function RunReportBody({ detail, paginate = true }: { detail: Extract<ReportDeta
 
 function SuiteReportSection({
   suite,
+  timeSliceID,
   selectedCaseID,
   caseNavigationRequest,
   paginate = true,
 }: {
   suite: ReportEntryDetail
+  timeSliceID: string
   selectedCaseID: string
   caseNavigationRequest: number
   paginate?: boolean
@@ -390,7 +411,7 @@ function SuiteReportSection({
         <summary className="cursor-pointer rounded-sm text-[11px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("inspector.coreMetrics")}</summary>
         <div className="grid gap-3 pt-2 md:grid-cols-2"><SuiteMetricSummary title={t("inspector.coreMetrics")} metrics={suite.metrics} /><SuiteMetricSummary title="SLA" metrics={suite.sla} /></div>
       </details> : null}
-      {suite.performance ? <QuickPerformanceBody detail={{schema_version:1,source:"quick_performance",performance:suite.performance}} includeRequestAnalysis /> : <EntryCaseTable entry={suite} selectedCaseID={selectedCaseID} caseNavigationRequest={caseNavigationRequest} paginate={paginate} />}
+      {suite.performance ? <QuickPerformanceBody detail={{schema_version:1,source:"quick_performance",performance:suite.performance}} timeSliceID={timeSliceID} includeRequestAnalysis /> : <EntryCaseTable entry={suite} selectedCaseID={selectedCaseID} caseNavigationRequest={caseNavigationRequest} paginate={paginate} />}
     </section>
   )
 }
@@ -458,10 +479,11 @@ function QuickPerformanceDetail({ detail }: { detail: Extract<ReportDetail, { so
   )
 }
 
-function QuickPerformanceBody({ detail, includeRequestAnalysis = false, showExecutionOrigin = false }: {
+function QuickPerformanceBody({ detail, includeRequestAnalysis = false, showExecutionOrigin = false, timeSliceID = detail.performance.report_id ?? "" }: {
   detail: Extract<ReportDetail, { source: "quick_performance" }>
   includeRequestAnalysis?: boolean
   showExecutionOrigin?: boolean
+  timeSliceID?: string
 }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("reports")
@@ -576,7 +598,7 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false, showExec
     </div>
     <PerformanceLatencyTable metrics={report.metrics} />
     <PerformanceStreamingTimingTable metrics={report.metrics} />
-    {report.time_slices !== undefined ? <PerformanceTimeSliceTable slices={report.time_slices} /> : null}
+    {report.time_slices !== undefined ? <PerformanceTimeSliceTable slices={report.time_slices} visibilityID={timeSliceID} /> : null}
     <PerformanceCharts samples={report.samples} percentiles={report.metrics} />
     {includeRequestAnalysis ? (
       <>
@@ -601,9 +623,11 @@ function ReportExportSurface({ ref, report, detail, watermark }: {
         <h1 className="text-lg font-semibold tracking-tight">{t("detailTitle")}</h1>
         <p className="mt-1 text-[11px] text-muted-foreground">{t("detailDescription", { name: displayReportVerdict(report, t) })}</p>
       </header>
-      <div className="border-t">
-        {detail.source === "quick_performance" ? <QuickPerformanceBody detail={detail} showExecutionOrigin /> : <RunReportBody detail={detail} paginate={false} />}
-      </div>
+      <ReportExportMode value={true}>
+        <div className="border-t">
+          {detail.source === "quick_performance" ? <QuickPerformanceBody detail={detail} showExecutionOrigin /> : <RunReportBody detail={detail} paginate={false} />}
+        </div>
+      </ReportExportMode>
       <div className="absolute inset-0 z-10 grid grid-cols-2 content-around overflow-hidden" data-report-watermark>
         {Array.from({ length: 8 }, (_, index) => <span key={index} className="-rotate-12 text-center text-4xl font-semibold text-muted-foreground/15">{label}</span>)}
       </div>
@@ -737,14 +761,25 @@ function performanceArrivalPattern(report: QuickPerformanceReport): string {
   return tx("desktop:quick-test_constant_interval")
 }
 
-function PerformanceTimeSliceTable({ slices }: { slices: NonNullable<QuickPerformanceReport["time_slices"]> }) {
+function PerformanceTimeSliceTable({ slices, visibilityID }: { slices: NonNullable<QuickPerformanceReport["time_slices"]>; visibilityID: string }) {
   const { t: tx } = useTranslation()
-  return <div>
-    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-      <h4 className="text-xs font-semibold">{tx("desktop:quick-test_time_slices")}</h4>
+  const visibility = useContext(TimeSliceVisibility)
+  const exporting = useContext(ReportExportMode)
+  const open = visibility.expanded.has(visibilityID)
+  if (exporting && !open) return null
+  return <Collapsible.Root open={open} onOpenChange={value => visibility.setExpanded(visibilityID, value)}>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h4 className="text-xs font-semibold">{exporting ? tx("desktop:quick-test_time_slices") : (
+        <Collapsible.Trigger asChild>
+          <Button variant="ghost" size="sm" className="group -ml-2.5 text-xs font-semibold">
+            <ChevronRightIcon aria-hidden="true" className="size-4 group-data-[state=open]:rotate-90" />
+            {tx("desktop:quick-test_time_slices")}
+          </Button>
+        </Collapsible.Trigger>
+      )}</h4>
       <span className="text-[10px] text-muted-foreground">{tx("desktop:reports_only_steady_state_windows_recorded_by_the_backend_are_listed")}</span>
     </div>
-    <div className="min-w-0 overflow-x-auto">
+    <Collapsible.Content className="mt-2 min-w-0 overflow-x-auto">
       <Table aria-label={tx("desktop:quick-test_time_slices")} className="min-w-[1040px]">
         <TableHeader><TableRow className="hover:bg-transparent">
           <TableHead className="h-8 pl-3 text-[11px]">{tx("desktop:reports_slices")}</TableHead>
@@ -775,8 +810,8 @@ function PerformanceTimeSliceTable({ slices }: { slices: NonNullable<QuickPerfor
           </TableRow>
         )) : <TableRow><TableCell colSpan={11} className="h-20 text-center text-xs text-muted-foreground">{tx("desktop:reports_no_valid_time_slices_recorded")}</TableCell></TableRow>}</TableBody>
       </Table>
-    </div>
-  </div>
+    </Collapsible.Content>
+  </Collapsible.Root>
 }
 function performanceWorkloadMode(report: QuickPerformanceReport): string {
   if (report.profile.workload_mode === "normal") return tx("desktop:quick-test_normal_distribution")

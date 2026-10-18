@@ -227,6 +227,9 @@ describe("ReportWorkspace", () => {
       expect(element.querySelector('[aria-label="TTFT（含推理） 分布图"]')).not.toBeNull()
       expect(element.querySelector('[aria-label="流式时序统计"]')).not.toBeNull()
       expect(element.querySelector('[aria-label="E2E 时间曲线"]')).not.toBeNull()
+      const exportedSlices = element.querySelector('[aria-label="时间切片"]')
+      if (format === "png") expect(exportedSlices).not.toBeNull()
+      else expect(exportedSlices).toBeNull()
       const mediaType = format === "html" ? "text/html; charset=utf-8" : format === "png" ? "image/png" : "application/pdf"
       return { filename: `llm-test-studio-report-${quickID}.${format}`, mediaType, blob: new Blob([format], { type: mediaType }) }
     })
@@ -275,6 +278,11 @@ describe("ReportWorkspace", () => {
     expect(archivedReport).toHaveTextContent("3,744 TPM")
     expect(within(archivedReport).getByRole("table", { name: "延迟分布统计" })).toHaveTextContent("客户端排队（本地调度延迟）")
     expect(within(archivedReport).getByRole("table", { name: "流式时序统计" })).toHaveTextContent("语义块间隔，非 Token ITL")
+    const sliceToggle = within(archivedReport).getByRole("button", { name: "时间切片" })
+    expect(sliceToggle).toHaveAttribute("aria-expanded", "false")
+    expect(within(archivedReport).queryByRole("table", { name: "时间切片" })).not.toBeInTheDocument()
+    await user.click(sliceToggle)
+    expect(sliceToggle).toHaveAttribute("aria-expanded", "true")
     const timeSlices = within(archivedReport).getByRole("table", { name: "时间切片" })
     expect(timeSlices.parentElement).toHaveClass("overflow-x-auto")
     expect(within(timeSlices).getByRole("columnheader", { name: "TTFT P95" })).toBeInTheDocument()
@@ -301,11 +309,17 @@ describe("ReportWorkspace", () => {
     await waitFor(() => expect(saveReportExport).toHaveBeenCalledWith(`llm-test-studio-report-${quickID}.json`, "application/json", "e30=", "zh-CN"))
     await user.clear(watermark)
     await user.type(watermark, "team-alpha")
+    sliceToggle.focus()
+    await user.keyboard("{Enter}")
+    expect(sliceToggle).toHaveAttribute("aria-expanded", "false")
+    expect(within(archivedReport).queryByRole("table", { name: "时间切片" })).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "HTML" }))
     await waitFor(() => expect(saveReportExport).toHaveBeenCalledTimes(2))
     expect(exportReport).not.toHaveBeenCalledWith(quickID, "html", "team-alpha")
+    await user.click(sliceToggle)
     await user.click(screen.getByRole("button", { name: "PNG" }))
     await waitFor(() => expect(saveReportExport).toHaveBeenCalledTimes(3))
+    await user.click(sliceToggle)
     await user.click(screen.getByRole("button", { name: "PDF" }))
     await waitFor(() => expect(saveReportExport).toHaveBeenCalledTimes(4))
     await waitFor(() => expect(exportVisualReport).toHaveBeenCalledTimes(3))
@@ -316,6 +330,7 @@ describe("ReportWorkspace", () => {
       `llm-test-studio-report-${quickID}.png`,
       `llm-test-studio-report-${quickID}.pdf`,
     ])
+    await user.click(sliceToggle)
     await user.click(screen.getByRole("button", { name: "复制 PNG" }))
     await waitFor(() => expect(copyReportPNG).toHaveBeenCalledWith("cG5n"))
 
