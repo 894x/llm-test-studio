@@ -223,7 +223,10 @@ describe("ReportWorkspace", () => {
     const exportVisualReport = vi.fn(async (element: HTMLElement, format: "html" | "png" | "pdf", reportID: string) => {
       expect(reportID).toBe(quickID)
       expect(element).toHaveTextContent("team-alpha")
-      expect(element.querySelectorAll("figure")).toHaveLength(8)
+      expect(element.querySelectorAll("figure")).toHaveLength(9)
+      expect(element.querySelector('[aria-label="缓存命中率时间线"]')).not.toBeNull()
+      expect(element.querySelector('[aria-label="按请求缓存命中率"]')).not.toBeNull()
+      expect(element.querySelector('[role="tablist"]')).toBeNull()
       expect(element.querySelector('[aria-label="TTFT（含推理） 分布图"]')).not.toBeNull()
       expect(element.querySelector('[aria-label="流式时序统计"]')).not.toBeNull()
       expect(element.querySelector('[aria-label="E2E 时间曲线"]')).not.toBeNull()

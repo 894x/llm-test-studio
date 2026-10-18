@@ -1,6 +1,7 @@
 import { render as testingRender, screen, within } from "@testing-library/react"
 import type { ReactElement } from "react"
 import { I18nextProvider } from "react-i18next"
+import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 
 import { createAppI18n } from "@/i18n/i18n"
@@ -22,6 +23,61 @@ function render(ui: ReactElement) {
 }
 
 describe("PerformanceCharts", () => {
+  it("shows time and request charts together without collapsing unavailable request positions", () => {
+    const samples = [
+      { ...sample(true, 1_100), request_index: 4, prompt_tokens: 900, cached_tokens: 0 },
+      { ...sample(true, 1_200), request_index: 0, prompt_tokens: 100, cached_tokens: 100 },
+      { ...sample(false, 1_300), request_index: 1, prompt_tokens: 100, cached_tokens: 100 },
+      { ...sample(true, 1_400), request_index: 2 },
+      { ...sample(true, 1_500), request_index: 3, prompt_tokens: 400, cached_tokens: 200 },
+      { ...sample(true, 8_000), request_index: 5, prompt_tokens: 0, cached_tokens: 0 },
+    ]
+    render(<PerformanceCharts samples={samples} percentiles={PERCENTILES} />)
+    const timeline = screen.getByRole("img", { name: "缓存命中率时间线，1 个有效时间窗口" })
+    expect(within(timeline).getByText("1 s–2 s：21.43%（缓存 300 / 输入 1,400 Token）")).toBeInTheDocument()
+
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument()
+    const chart = screen.getByRole("group", { name: "按请求缓存命中率，3 个有效请求" })
+    const points = within(chart).getAllByRole("img")
+    expect(points.map((point) => point.getAttribute("aria-label"))).toEqual([
+      "请求 1：100%（缓存 100 / 输入 100 Token）；开始 1.15 s，完成 1.2 s",
+      "请求 4：50%（缓存 200 / 输入 400 Token）；开始 1.45 s，完成 1.5 s",
+      "请求 5：0%（缓存 0 / 输入 900 Token）；开始 1.05 s，完成 1.1 s",
+    ])
+    expect(points.map((point) => Number(point.getAttribute("cx")))).toEqual([32, 185.6, 236.8])
+    expect(points.map((point) => Number(point.getAttribute("cy")))).toEqual([18, 84, 150])
+    expect(chart.querySelector("path, polyline")).toBeNull()
+    expect(within(chart).getByText("6")).toBeInTheDocument()
+    expect(samples.map((sample) => sample.request_index)).toEqual([4, 0, 1, 2, 3, 5])
+    expect(screen.getByRole("img", { name: "缓存命中率时间线，1 个有效时间窗口" })).toBeInTheDocument()
+  })
+
+  it("supports keyboard request tooltips for a single sample", async () => {
+    const user = userEvent.setup()
+    render(<PerformanceCharts samples={[{ ...sample(true, 60), request_index: 7, prompt_tokens: 80, cached_tokens: 20 }]} percentiles={PERCENTILES} />)
+    const chart = screen.getByRole("group", { name: "按请求缓存命中率，1 个有效请求" })
+    const point = within(chart).getByRole("img")
+    expect(point).toHaveAttribute("cx", "160")
+    await user.tab() // request point
+    expect(point).toHaveFocus()
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("请求 8：25%")
+    await user.keyboard("{Escape}")
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+  })
+
+  it("shows no observations for failed, missing, invalid, or zero-input requests", () => {
+    render(<PerformanceCharts samples={[
+      { ...sample(false, 60), request_index: 0, prompt_tokens: 100, cached_tokens: 100 },
+      { ...sample(true, 60), request_index: 1 },
+      { ...sample(true, 60), request_index: 2, prompt_tokens: 0, cached_tokens: 0 },
+      { ...sample(true, 60), request_index: 3, prompt_tokens: 10, cached_tokens: 11 },
+      { ...sample(true, 60), request_index: 4, prompt_tokens: 10, cached_tokens: Number.NaN },
+    ]} percentiles={PERCENTILES} />)
+    const chart = screen.getByRole("figure", { name: "按请求缓存命中率" })
+    expect(within(chart).getByText("暂无可计算缓存命中率的 Token 数据")).toBeInTheDocument()
+    expect(chart.querySelector("circle")).toBeNull()
+  })
+
   it("weights cache hits by input tokens in the same completion windows as throughput", () => {
     render(<PerformanceCharts samples={[
       { ...sample(true, 1_100), prompt_tokens: 100, cached_tokens: 100 },

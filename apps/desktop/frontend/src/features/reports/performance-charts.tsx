@@ -1,3 +1,6 @@
+import { useTranslation } from "react-i18next"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+
 export interface PerformanceChartSample {
   request_index: number
   started_offset_ms: number
@@ -62,7 +65,7 @@ export function PerformanceCharts({ samples, percentiles, layout = "grid" }: {
           ))}
         </div>
       </div>
-      <div data-testid="throughput-cache-chart-list" className="grid grid-cols-1 gap-3 @min-[720px]:grid-cols-2">
+      <div data-testid="throughput-cache-chart-list" className={stacked ? "grid grid-cols-1 gap-2" : "grid grid-cols-1 gap-2 sm:grid-cols-3"}>
         <div className="flex min-w-0 flex-col">
           <h4 className="text-xs font-semibold">{t("charts.throughput")}</h4>
           <p className="mt-0.5 mb-2 flex-1 text-[10px] text-muted-foreground">{t("charts.throughputHint")}</p>
@@ -72,6 +75,11 @@ export function PerformanceCharts({ samples, percentiles, layout = "grid" }: {
           <h4 className="text-xs font-semibold">{t("charts.cacheTimeline")}</h4>
           <p className="mt-0.5 mb-2 flex-1 text-[10px] text-muted-foreground">{t("charts.cacheTimelineHint")}</p>
           <CacheRateTimelineChart timeline={timeline} />
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <h4 className="text-xs font-semibold">{t("charts.cacheRequests")}</h4>
+          <p className="mt-0.5 mb-2 flex-1 text-[10px] text-muted-foreground">{t("charts.cacheRequestsHint")}</p>
+          <CacheRateRequestChart samples={samples} />
         </div>
       </div>
     </section>
@@ -88,10 +96,10 @@ function ThroughputConcurrencyChart({ samples, timeline }: {
     return <figure aria-label={t("charts.throughput")} className="rounded-md border bg-surface-control p-2"><EmptyChart expanded /></figure>
   }
   const { buckets, durationMS, maxThroughput, maxConcurrency } = timeline
-  const width = 480
+  const width = 320
   const height = 176
-  const left = 42
-  const right = 42
+  const left = 32
+  const right = 32
   const top = 18
   const bottom = 26
   const plotWidth = width - left - right
@@ -157,12 +165,9 @@ function throughputTimeline(samples: readonly PerformanceChartSample[]): {
   for (const sample of valid) {
     const index = Math.min(bucketCount - 1, Math.floor(sample.finished_offset_ms / bucketMS))
     completionCounts[index] += 1
-    const prompt = sample.prompt_tokens
-    const cached = sample.cached_tokens
-    if (sample.success && prompt !== undefined && cached !== undefined &&
-      Number.isSafeInteger(prompt) && prompt > 0 && Number.isSafeInteger(cached) && cached >= 0 && cached <= prompt) {
-      cacheCounts[index].promptTokens += prompt
-      cacheCounts[index].cachedTokens += cached
+    if (hasCacheObservation(sample)) {
+      cacheCounts[index].promptTokens += sample.prompt_tokens
+      cacheCounts[index].cachedTokens += sample.cached_tokens
     }
   }
   const events = valid.filter((sample) => sample.finished_offset_ms > sample.started_offset_ms).flatMap((sample) => [
@@ -193,10 +198,10 @@ function throughputTimeline(samples: readonly PerformanceChartSample[]): {
 function CacheRateTimelineChart({ timeline }: { timeline: ReturnType<typeof throughputTimeline> }) {
   const { t, i18n } = useTranslation("reports")
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const width = 480
+  const width = 320
   const height = 176
-  const left = 42
-  const right = 42
+  const left = 32
+  const right = 32
   const top = 18
   const bottom = 26
   const plotWidth = width - left - right
@@ -233,6 +238,64 @@ function CacheRateTimelineChart({ timeline }: { timeline: ReturnType<typeof thro
           </circle>)}
           <ChartXAxis left={left} top={top} width={plotWidth} height={plotHeight} end={time(timeline.durationMS, locale)} label={t("charts.completionOffset")} />
         </svg>
+      ) : <div className="mt-1 flex h-44 items-center justify-center text-[10px] text-muted-foreground">{t("charts.cacheEmpty")}</div>}
+    </figure>
+  )
+}
+
+function hasCacheObservation(sample: PerformanceChartSample): sample is PerformanceChartSample & { prompt_tokens: number; cached_tokens: number } {
+  const prompt = sample.prompt_tokens
+  const cached = sample.cached_tokens
+  return sample.success && prompt !== undefined && cached !== undefined &&
+    Number.isSafeInteger(prompt) && prompt > 0 && Number.isSafeInteger(cached) && cached >= 0 && cached <= prompt
+}
+
+function CacheRateRequestChart({ samples }: { samples: readonly PerformanceChartSample[] }) {
+  const { t, i18n } = useTranslation("reports")
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const ordered = samples.filter((sample) => Number.isSafeInteger(sample.request_index) && sample.request_index >= 0)
+    .sort((a, b) => a.request_index - b.request_index)
+  const available = ordered.filter(hasCacheObservation)
+  // Keep unavailable requests on the ordinal axis instead of renumbering successful samples.
+  const firstIndex = ordered[0]?.request_index ?? 0
+  const lastIndex = ordered.at(-1)?.request_index ?? firstIndex
+  const left = 32
+  const top = 18
+  const plotWidth = 256
+  const plotHeight = 132
+  const offset = (value: number) => Number.isFinite(value) && value >= 0 ? time(value, locale) : "—"
+  return (
+    <figure aria-label={t("charts.cacheRequests")} className="min-w-0 rounded-md border bg-surface-control p-2">
+      <figcaption className="text-[10px] text-muted-foreground">{t("charts.cacheRatio")}</figcaption>
+      {available.length ? (
+        <TooltipProvider>
+          <svg role="group" aria-label={t("charts.cacheRequestSamples", { count: available.length })} viewBox="0 0 320 176" className="mt-1 h-44 w-full overflow-visible">
+            {[0, 50, 100].map((rate) => {
+              const y = top + plotHeight * (1 - rate / 100)
+              return <g key={rate}>
+                <line x1={left} y1={y} x2={left + plotWidth} y2={y} stroke="var(--border-strong)" strokeDasharray={rate === 0 ? undefined : "3 3"} />
+                <text x={left - 3} y={y + 3} textAnchor="end" fill="var(--muted-foreground)" fontSize="8">{rate}%</text>
+              </g>
+            })}
+            {available.map((sample) => {
+              const rate = sample.cached_tokens / sample.prompt_tokens
+              const x = left + (lastIndex === firstIndex ? 0.5 : (sample.request_index - firstIndex) / (lastIndex - firstIndex)) * plotWidth
+              const y = top + plotHeight * (1 - rate)
+              const label = t("charts.cacheRequest", {
+                request: number(sample.request_index + 1, locale), rate: number(rate * 100, locale, 2),
+                cached: number(sample.cached_tokens, locale), prompt: number(sample.prompt_tokens, locale),
+                start: offset(sample.started_offset_ms), end: offset(sample.finished_offset_ms),
+              })
+              return <Tooltip key={sample.request_index}>
+                <TooltipTrigger asChild>
+                  <circle role="img" tabIndex={0} aria-label={label} cx={x} cy={y} r="3" fill="var(--surface-elevated)" stroke="var(--primary)" strokeWidth="1.5" className="outline-none hover:fill-primary focus:fill-primary focus:stroke-ring focus:stroke-[3]" />
+                </TooltipTrigger>
+                <TooltipContent>{label}</TooltipContent>
+              </Tooltip>
+            })}
+            <ChartXAxis left={left} top={top} width={plotWidth} height={plotHeight} end={number(lastIndex + 1, locale)} label={t("charts.requestOrdinal", { first: number(firstIndex + 1, locale) })} />
+          </svg>
+        </TooltipProvider>
       ) : <div className="mt-1 flex h-44 items-center justify-center text-[10px] text-muted-foreground">{t("charts.cacheEmpty")}</div>}
     </figure>
   )
@@ -376,4 +439,3 @@ function number(value: number, locale: string, maximumFractionDigits = 0): strin
 function time(value: number, locale: string): string {
   return value >= 1_000 ? `${number(value / 1_000, locale, 2)} s` : `${number(value, locale)} ms`
 }
-import { useTranslation } from "react-i18next"
