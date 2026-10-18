@@ -27,6 +27,8 @@ import { createAppI18n } from "@/i18n/i18n"
 import { LanguageProvider } from "@/i18n/language-context"
 import { loadLanguagePreference, resolveLocale } from "@/i18n/locale"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { TransientOverlayProvider } from "@/components/ui/transient-overlays"
+import { useDismissTransientOverlays } from "@/components/ui/use-transient-overlay"
 import type { CatalogSnapshot, SavedQuickTestTarget } from "@/features/catalog/data"
 import { createTaskDraft, decodeTaskDraft, encodeTaskDraft, TASK_DRAFT_KEY, type TaskDraft } from "@/features/quick-test/task-draft"
 import type { QuickTaskJobEntry } from "@/features/quick-test/quick-task-workspace"
@@ -86,6 +88,13 @@ function AppWorkspace({
     desktopPageFromHash(window.location.hash),
   )
   const pageRef = useRef(page)
+  const dismissOverlays = useDismissTransientOverlays()
+  const changePage = useCallback((next: DesktopPage) => {
+    if (pageRef.current === next) return
+    dismissOverlays?.()
+    pageRef.current = next
+    setPage(next)
+  }, [dismissOverlays])
   useEffect(() => { pageRef.current = page }, [page])
   const resources = useMemo(() => {
     const catalog = createLazyResource(() => client.getCatalog("all"))
@@ -199,10 +208,10 @@ function AppWorkspace({
   }, [])
 
   useEffect(() => {
-    const syncPage = () => setPage(desktopPageFromHash(window.location.hash))
+    const syncPage = () => changePage(desktopPageFromHash(window.location.hash))
     window.addEventListener("hashchange", syncPage)
     return () => window.removeEventListener("hashchange", syncPage)
-  }, [])
+  }, [changePage])
 
   useEffect(() => {
     PAGE_READS[page].forEach(key => { void resources[key].load().catch(() => {}) })
@@ -389,11 +398,11 @@ function AppWorkspace({
 
   const navigate = useCallback((next: DesktopPage) => {
     if (desktopPageFromHash(window.location.hash) === next) {
-      setPage(next)
+      changePage(next)
       return
     }
     window.location.hash = next
-  }, [])
+  }, [changePage])
 
   const refreshArchivedPerformanceReport = useCallback(async (reportID: string): Promise<void> => {
     resources.reports.invalidate()
@@ -683,6 +692,7 @@ function App({ client }: { client?: DesktopClient }) {
     <LanguageProvider instance={i18n}>
       <ThemeProvider>
         <TooltipProvider delayDuration={250}>
+        <TransientOverlayProvider>
         <AppWorkspace
           client={desktopClient}
           onRecreateClient={() => {
@@ -691,6 +701,7 @@ function App({ client }: { client?: DesktopClient }) {
             return true
           }}
         />
+        </TransientOverlayProvider>
         </TooltipProvider>
       </ThemeProvider>
     </LanguageProvider>

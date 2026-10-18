@@ -3,17 +3,31 @@ import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { TransientOverlayVisibility } from "./transient-overlays"
+import { useTransientOverlay, useTransientOverlayVisibility } from "./use-transient-overlay"
 
-const AlertDialog = AlertDialogPrimitive.Root
+function AlertDialog({ open, defaultOpen, onOpenChange, ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
+  const overlay = useTransientOverlay({ open, defaultOpen, onDismiss: () => onOpenChange?.(false) })
+  return <TransientOverlayVisibility value={overlay.visibility}>
+    <AlertDialogPrimitive.Root {...props} open={overlay.open}
+      onOpenChange={next => { overlay.setOpen(next); onOpenChange?.(next) }} />
+  </TransientOverlayVisibility>
+}
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger
 
-function AlertDialogContent({ className, ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+function AlertDialogContent({ className, onCloseAutoFocus, ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+  const { dismissed, wasDismissed } = useTransientOverlayVisibility()
+  if (dismissed) return null
   return (
     <AlertDialogPrimitive.Portal>
       <AlertDialogPrimitive.Overlay className="fixed inset-0 z-50 bg-background/80 data-open:animate-in data-closed:animate-out" />
       <AlertDialogPrimitive.Content
         className={cn("fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-popover p-5 text-popover-foreground shadow-lg", className)}
         {...props}
+        onCloseAutoFocus={event => {
+          if (wasDismissed()) event.preventDefault()
+          else onCloseAutoFocus?.(event)
+        }}
       />
     </AlertDialogPrimitive.Portal>
   )

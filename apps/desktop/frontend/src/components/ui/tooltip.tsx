@@ -4,6 +4,8 @@ import * as React from "react"
 import * as TooltipPrimitive from "radix-ui/tooltip"
 
 import { cn } from "@/lib/utils"
+import { TransientOverlayVisibility } from "./transient-overlays"
+import { useTransientOverlay, useTransientOverlayVisibility } from "./use-transient-overlay"
 
 function TooltipProvider({
   delayDuration = 0,
@@ -19,9 +21,14 @@ function TooltipProvider({
 }
 
 function Tooltip({
+  open, defaultOpen, onOpenChange,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+  const overlay = useTransientOverlay({ open, defaultOpen, onDismiss: () => onOpenChange?.(false) })
+  return <TransientOverlayVisibility value={overlay.visibility}>
+    <TooltipPrimitive.Root key={overlay.dismissalKey} data-slot="tooltip" {...props} open={overlay.open}
+      onOpenChange={next => { overlay.setOpen(next); onOpenChange?.(next) }} />
+  </TransientOverlayVisibility>
 }
 
 function TooltipTrigger({
@@ -36,6 +43,8 @@ function TooltipContent({
   children,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content>) {
+  const { dismissed } = useTransientOverlayVisibility()
+  if (dismissed) return null
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Content

@@ -6,8 +6,26 @@ import { useTranslation } from "react-i18next"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { useFloatingPortalContainer } from "./use-floating-portal-container"
+import { TransientOverlayVisibility } from "./transient-overlays"
+import { useTransientOverlay, useTransientOverlayVisibility } from "./use-transient-overlay"
 
-const Autocomplete = AutocompletePrimitive.Root
+function Autocomplete<ItemValue>({ open, defaultOpen, onOpenChange, ...props }: Omit<AutocompletePrimitive.Root.Props<ItemValue>, "items"> & { items?: readonly ItemValue[] }) {
+  const overlay = useTransientOverlay({ open, defaultOpen, onDismiss: () => {
+    const details: AutocompletePrimitive.Root.ChangeEventDetails = {
+      reason: "none", event: new Event("navigation"), trigger: undefined,
+      isCanceled: false, isPropagationAllowed: false,
+      cancel() { this.isCanceled = true },
+      allowPropagation() { this.isPropagationAllowed = true },
+    }
+    onOpenChange?.(false, details)
+  } })
+  return <TransientOverlayVisibility value={overlay.visibility}>
+    <AutocompletePrimitive.Root {...props} open={overlay.open} onOpenChange={(next, details) => {
+      onOpenChange?.(next, details)
+      if (!details.isCanceled) overlay.setOpen(next)
+    }} />
+  </TransientOverlayVisibility>
+}
 
 function AutocompleteInput({
   className,
@@ -62,6 +80,8 @@ function AutocompleteContent({
   Pick<AutocompletePrimitive.Positioner.Props, "side" | "align" | "sideOffset"> &
   Pick<AutocompletePrimitive.Portal.Props, "container">) {
   const portalContainer = useFloatingPortalContainer(container)
+  const { dismissed } = useTransientOverlayVisibility()
+  if (dismissed) return null
   return (
     <AutocompletePrimitive.Portal container={portalContainer}>
       <AutocompletePrimitive.Positioner

@@ -1,10 +1,11 @@
-import { useRef, type AriaAttributes, type ReactNode } from "react"
+import { useCallback, useMemo, useRef, type AriaAttributes, type ReactNode } from "react"
 import { Combobox } from "@base-ui/react/combobox"
 import CheckIcon from "lucide-react/dist/esm/icons/check.mjs"
 import ChevronDownIcon from "lucide-react/dist/esm/icons/chevron-down.mjs"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
 import { useFloatingPortalContainer } from "./use-floating-portal-container"
+import { useTransientOverlay } from "./use-transient-overlay"
 
 export type SelectOption = { value: string; label: string; disabled?: boolean; icon?: ReactNode }
 
@@ -22,9 +23,13 @@ export function SearchableSelect({ value, onValueChange, options, disabled, id, 
   const portalContainer = useFloatingPortalContainer(container)
   const selectedOption = options.find(option => option.value === value)
   const selected = selectedOption ? value : null
+  const overlay = useTransientOverlay()
+  const items = useMemo(() => options.map(option => option.value), [options])
+  const itemToStringLabel = useCallback((id: string) => options.find(option => option.value === id)?.label ?? "", [options])
   return <div ref={container} className={cn("min-w-0 w-full", className)}>
-    <Combobox.Root items={options.map(option => option.value)} value={selected} disabled={disabled} openOnInputClick
-      itemToStringLabel={(id) => options.find(option => option.value === id)?.label ?? ""}
+    <Combobox.Root items={items} value={selected} disabled={disabled} openOnInputClick
+      open={overlay.open} onOpenChange={overlay.setOpen}
+      itemToStringLabel={itemToStringLabel}
       onValueChange={(next) => { if (next !== null && options.some(option => option.value === next && !option.disabled)) onValueChange(next) }}>
       <Combobox.InputGroup className="flex h-8 min-w-0 items-center rounded-md border border-input bg-surface-control transition-colors focus-within:border-ring focus-within:ring-0 focus-within:ring-ring/50 has-[input:disabled]:bg-input/50 has-[input:disabled]:text-text-disabled has-[input[aria-invalid=true]]:border-destructive">
         {selectedOption?.icon && <span aria-hidden="true" className="ml-2.5 flex shrink-0 items-center">{selectedOption.icon}</span>}
@@ -34,7 +39,7 @@ export function SearchableSelect({ value, onValueChange, options, disabled, id, 
           <ChevronDownIcon className="size-4" />
         </Combobox.Trigger>
       </Combobox.InputGroup>
-      <Combobox.Portal container={portalContainer}>
+      {!overlay.visibility.dismissed && <Combobox.Portal container={portalContainer}>
         <Combobox.Positioner positionMethod="fixed" sideOffset={4} align="start" className="z-50 isolate">
           <Combobox.Popup className="w-[var(--anchor-width)] max-w-[var(--available-width)] max-h-[var(--available-height)] overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10">
             <Combobox.Empty className="px-3 py-2 text-xs text-muted-foreground empty:hidden">{t("select.empty")}</Combobox.Empty>
@@ -48,7 +53,7 @@ export function SearchableSelect({ value, onValueChange, options, disabled, id, 
             </Combobox.List>
           </Combobox.Popup>
         </Combobox.Positioner>
-      </Combobox.Portal>
+      </Combobox.Portal>}
     </Combobox.Root>
   </div>
 }

@@ -2,13 +2,20 @@ import * as React from "react"
 import * as DropdownMenuPrimitive from "radix-ui/dropdown-menu"
 
 import { cn } from "@/lib/utils"
+import { TransientOverlayVisibility } from "./transient-overlays"
+import { useTransientOverlay, useTransientOverlayVisibility } from "./use-transient-overlay"
 import CheckIcon from "lucide-react/dist/esm/icons/check.mjs"
 import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right.mjs"
 
 function DropdownMenu({
+  open, defaultOpen, onOpenChange,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
-  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />
+  const overlay = useTransientOverlay({ open, defaultOpen, onDismiss: () => onOpenChange?.(false) })
+  return <TransientOverlayVisibility value={overlay.visibility}>
+    <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} open={overlay.open}
+      onOpenChange={next => { overlay.setOpen(next); onOpenChange?.(next) }} />
+  </TransientOverlayVisibility>
 }
 
 function DropdownMenuPortal({
@@ -34,8 +41,11 @@ function DropdownMenuContent({
   className,
   align = "start",
   sideOffset = 4,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+  const { dismissed, wasDismissed } = useTransientOverlayVisibility()
+  if (dismissed) return null
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
@@ -44,6 +54,10 @@ function DropdownMenuContent({
         align={align}
         className={cn("z-50 max-h-(--radix-dropdown-menu-content-available-height) w-(--radix-dropdown-menu-trigger-width) min-w-32 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:overflow-hidden data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
         {...props}
+        onCloseAutoFocus={event => {
+          if (wasDismissed()) event.preventDefault()
+          else onCloseAutoFocus?.(event)
+        }}
       />
     </DropdownMenuPrimitive.Portal>
   )

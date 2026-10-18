@@ -7,9 +7,15 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import XIcon from "lucide-react/dist/esm/icons/x.mjs"
 import { useTranslation } from "react-i18next"
+import { TransientOverlayVisibility } from "./transient-overlays"
+import { useTransientOverlay, useTransientOverlayVisibility } from "./use-transient-overlay"
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+function Sheet({ open, defaultOpen, onOpenChange, ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  const overlay = useTransientOverlay({ open, defaultOpen, onDismiss: () => onOpenChange?.(false) })
+  return <TransientOverlayVisibility value={overlay.visibility}>
+    <SheetPrimitive.Root data-slot="sheet" {...props} open={overlay.open}
+      onOpenChange={next => { overlay.setOpen(next); onOpenChange?.(next) }} />
+  </TransientOverlayVisibility>
 }
 
 function SheetTrigger({
@@ -51,12 +57,15 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
 }) {
   const { t } = useTranslation("common")
+  const { dismissed, wasDismissed } = useTransientOverlayVisibility()
+  if (dismissed) return null
 
   return (
     <SheetPortal>
@@ -69,6 +78,10 @@ function SheetContent({
           className
         )}
         {...props}
+        onCloseAutoFocus={event => {
+          if (wasDismissed()) event.preventDefault()
+          else onCloseAutoFocus?.(event)
+        }}
       >
         {children}
         {showCloseButton && (
