@@ -40,6 +40,7 @@ func TestDesktopBindingMethodSetSurvivesPackageMove(t *testing.T) {
 		"GetReportDetail",
 		"GetReportGeneration",
 		"GetReports",
+		"GetStartupProgress",
 		"GetWorkspace",
 		"LaunchJob",
 		"OpenDiagnosticsDirectory",

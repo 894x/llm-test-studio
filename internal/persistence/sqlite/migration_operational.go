@@ -18,6 +18,7 @@ func upgradeOperationalDatabase(
 	baseline historicalBaseline,
 	options MigrateOptions,
 ) error {
+	options.progress("checking", 1)
 	if err := validateIntegrity(ctx, conn); err != nil {
 		return runnerBackupError(ctx, "validate upgrade source integrity", err)
 	}
@@ -37,13 +38,16 @@ func upgradeOperationalDatabase(
 			}
 		}
 	}
+	options.progress("backing_up", 1)
 	backup, err := backupMigrationSource(ctx, path, baseline)
 	if err != nil {
 		return err
 	}
+	options.progress("migrating", 1)
 	if err := applyOperationalUpgrade(ctx, conn, baseline); err != nil {
 		return fmt.Errorf("sqlite upgrade stopped; original backup at %s: %w", backup, err)
 	}
+	options.progress("validating", 1)
 	if err := verifyMigrationFacts(ctx, conn, facts); err != nil {
 		return err
 	}

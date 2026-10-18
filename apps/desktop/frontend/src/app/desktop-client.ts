@@ -1,3 +1,4 @@
+import { parseStartupProgress, READY_STARTUP, type StartupProgress } from "./startup-progress"
 import { DesktopDataError } from "@/app/data-error"
 import { EMPTY_REMOTE_NODES, parseRemoteNodes, parseRemoteNodeUpgrade, parseNullableRemoteNodeUpgrade,
   type StartRemoteNodeUpgradeCommand, type RemoteNodeUpgradeAction, type RemoteNodeUpgradeView, type RemoteNodesSnapshot, type RemoteNodeDraft,
@@ -156,6 +157,7 @@ export function isCatalogSavedRefreshFailure(error: unknown): error is DesktopCl
 }
 
 export interface DesktopClient extends CatalogActions {
+  getStartupProgress(): Promise<StartupProgress>
   createLocalFileSelection(command: CreateLocalFileSelectionCommand): Promise<LocalFileSelection>
   releaseLocalFileSelection(selectionID: string): Promise<void>
   getRemoteNodes(): Promise<RemoteNodesSnapshot>
@@ -232,6 +234,7 @@ export type DesktopDiagnosticsSnapshot = {
 }
 
 type WailsDesktopBinding = {
+  GetStartupProgress(): Promise<unknown>
   CreateLocalFileSelection(document: string): Promise<unknown>
   ReleaseLocalFileSelection(selectionID: string): Promise<unknown>
   GetRemoteNodes(): Promise<unknown>
@@ -302,7 +305,7 @@ const REQUIRED_WAILS_BINDING_METHODS = [
   "RetryRemoteInstallation", "RemoveRemoteNode",
   "StartRemoteNodeUpgrade", "GetRemoteNodeUpgrade", "RetryRemoteNodeUpgrade", "RecoverRemoteNodeUpgrade",
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
-  "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
+  "GetStartupProgress", "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
   "SaveReportExport", "CopyReportPNG", "GetComparisons", "LaunchJob", "GetJobs", "GetJob", "GetJobPerformanceResult", "ControlJob", "GetJobControls", "RetryJobControl", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
   "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel", "SaveQuickTestTarget",
   "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
@@ -369,6 +372,7 @@ export function createFixtureClient(
     async openDiagnosticsDirectory() {},
     async getReportGeneration() { return { schema_version: 1, runs: [] } },
     subscribeReportGeneration() { return () => {} },
+    async getStartupProgress() { return { ...READY_STARTUP } },
     async getWorkspace() {
       return cloneSnapshot(workspace)
     },
@@ -567,6 +571,7 @@ function createLazyFixtureClient(): DesktopClient {
     recoverRemoteNodeUpgrade: async command => (await client).recoverRemoteNodeUpgrade(command),
     openDiagnosticsDirectory: async () =>
       (await client).openDiagnosticsDirectory(),
+    getStartupProgress: async () => (await client).getStartupProgress(),
     getWorkspace: async () => (await client).getWorkspace(),
     getCatalog: async (scope) => (await client).getCatalog(scope),
     getReports: async () => (await client).getReports(),
@@ -685,6 +690,7 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       if (view.configuration_id !== command.id || view.operation_id !== command.operation_id) throw new DesktopDataError("Remote upgrade identity mismatch")
       return view
     }),
+    getStartupProgress: async () => callBinding(() => binding.GetStartupProgress(), parseStartupProgress),
     getReportGeneration: async () => callBinding(() => binding.GetReportGeneration(), parseReportGenerationSnapshot),
     subscribeReportGeneration: (onProgress) => {
       const runtime = (window as typeof window & {

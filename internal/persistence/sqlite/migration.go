@@ -34,6 +34,20 @@ var ErrSchemaResetRequired = errors.New("unsupported sqlite schema; preserve thi
 type MigrateOptions struct {
 	AppVersion  string
 	BusyTimeout time.Duration
+	// Progress reports the current stage without exposing paths or user data.
+	Progress func(MigrationProgress)
+}
+
+type MigrationProgress struct {
+	Stage       string
+	FromVersion int
+	ToVersion   int
+}
+
+func (options MigrateOptions) progress(stage string, from int) {
+	if options.Progress != nil {
+		options.Progress(MigrationProgress{Stage: stage, FromVersion: from, ToVersion: CurrentSchemaVersion})
+	}
 }
 
 type schemaObject struct {
@@ -56,6 +70,7 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 	if err != nil {
 		return err
 	}
+	options.progress("checking", 0)
 	catalog, err := loadMigrationCatalog()
 	if err != nil {
 		return err
@@ -94,6 +109,7 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 		return err
 	}
 	if state.version == 0 {
+		options.progress("initializing", 0)
 		if err := validateEmptyDatabase(ctx, conn); err != nil {
 			return err
 		}
@@ -117,6 +133,7 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 			return err
 		}
 	}
+	options.progress("validating", state.version)
 	if err := validateAppliedSchema(ctx, conn); err != nil {
 		return err
 	}
@@ -124,6 +141,7 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 		return fmt.Errorf("commit sqlite migration: %w", err)
 	}
 	committed = true
+	options.progress("completed", state.version)
 	return nil
 }
 

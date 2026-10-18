@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
@@ -55,6 +56,8 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 		return
 	}
 	app.starting = true
+	app.startupStarted = time.Now()
+	app.startupProgress = StartupProgress{SchemaVersion: 1, Status: "running", Stage: "opening"}
 	app.mu.Unlock()
 
 	lifecycleContext, cancel := context.WithCancel(ctx)
@@ -65,10 +68,12 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 		app.ctx = lifecycleContext
 		app.cancel = cancel
 		app.startupErr = ErrWorkspaceUnavailable
+		app.startupProgress.Status = "failed"
 		app.startupDone.Broadcast()
 		app.mu.Unlock()
 		return
 	}
+	lifecycleContext = app.startupContext(lifecycleContext)
 	dependencies, err := app.initialize(lifecycleContext)
 	app.mu.Lock()
 	app.starting = false
@@ -78,6 +83,8 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	if err != nil {
 		startupErr := fmt.Errorf("%w: %w", ErrDesktopStartup, err)
 		app.startupErr = startupErr
+		app.startupProgress.Status = "failed"
+		app.startupProgress.ElapsedMS = time.Since(app.startupStarted).Milliseconds()
 		report := app.reportError
 		app.startupDone.Broadcast()
 		app.mu.Unlock()
@@ -89,6 +96,9 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 		}
 		return
 	}
+	app.startupProgress.Status = "completed"
+	app.startupProgress.Stage = "ready"
+	app.startupProgress.ElapsedMS = time.Since(app.startupStarted).Milliseconds()
 	app.query = dependencies.Query
 	app.catalog = dependencies.Catalog
 	app.catalogCommands = dependencies.CatalogCommands

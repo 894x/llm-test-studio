@@ -1,4 +1,5 @@
 import { RetainedWorkspace } from "@/features/shell/retained-workspace"
+import { useStartupProgress } from "@/app/startup-progress"
 import { RemoteNodesMenu } from "@/features/remote-nodes/remote-nodes-menu"
 import { launchAtDefault } from "@/features/jobs/execution"
 import type { JobView } from "@/features/jobs/data"
@@ -77,6 +78,7 @@ function AppWorkspace({
   client: DesktopClient
   onRecreateClient: () => boolean
 }) {
+  const startup = useStartupProgress(client)
   const { t: tx } = useTranslation()
   const { t, i18n } = useTranslation(["app", "runs"])
   const [page, setPage] = useState<DesktopPage>(() =>
@@ -474,6 +476,7 @@ function AppWorkspace({
           <div role="alert" className="max-w-md border-l-2 border-destructive pl-4">
             <div className="text-sm font-semibold">{tx("desktop:app_unable_to_open_the_local_workspace")}</div>
             <p className="mt-1 text-xs text-muted-foreground">{publicDesktopErrorMessage(loadError, t("app:loadError"))}</p>
+            {startup?.status === "failed" ? <p className="mt-2 text-xs text-muted-foreground">{t("app:startup.failedStage", { stage: t(`app:startup.stages.${startup.stage}`) })}</p> : null}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Button size="sm" variant="outline" onClick={retryInitialLoad}>
                 {tx("desktop:app_retry_opening")}
@@ -492,11 +495,15 @@ function AppWorkspace({
         </div>
     ) : !pageReady ? (
       <div role="status" aria-live="polite" aria-busy="true" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
-        <Spinner /> {t("app:loadingPage")}
+        <Spinner /><div className="space-y-1">
+          <div>{startup && startup.status !== "completed" ? t(`app:startup.stages.${startup.stage}`) : t("app:loadingPage")}</div>
+          {startup?.status === "running" ? <p>{t("app:startup.elapsed", { seconds: Math.floor(startup.elapsed_ms / 1000) })}{startup.from_version > 0 && startup.to_version > startup.from_version ? ` · ${t("app:startup.version", { from: startup.from_version, to: startup.to_version })}` : ""}</p> : null}
+          {startup?.stage === "database_backing_up" || startup?.stage === "database_migrating" || startup?.stage === "database_validating" ? <p>{t("app:startup.keepOpen")}</p> : null}
+        </div>
       </div>
     ) : null
 
-      return (page === "runs" ? null : pageStatus) ?? (page === "overview" ? (
+      return (page === "runs" && startup?.status !== "running" && startup?.status !== "failed" ? null : pageStatus) ?? (page === "overview" ? (
         <OverviewWorkspace workspace={snapshot!} catalog={catalog!} reports={reports!} onOpenReport={openReport} />
       ) : page === "quick-test" ? (
         <QuickTaskWorkspace

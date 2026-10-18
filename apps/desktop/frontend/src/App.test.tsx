@@ -48,6 +48,7 @@ function desktopClient(): DesktopClient & {
     getWorkspace: vi.fn(async () => structuredClone(client.workspace)),
     getCatalog: vi.fn(async (scope: CatalogScope) => structuredClone(selectCatalog(FIXTURE_CATALOG, scope))),
     getReports: vi.fn(async () => structuredClone(FIXTURE_REPORTS)),
+    getStartupProgress: vi.fn(async () => ({ schema_version: 1 as const, status: "completed" as const, stage: "ready" as const, from_version: 0, to_version: 0, elapsed_ms: 0 })),
     getReportGeneration: vi.fn(async () => ({ schema_version: 1 as const, runs: [] })),
     subscribeReportGeneration: vi.fn((_receive: (progress: ReportGenerationProgress) => void) => () => {}),
 		getDiagnostics: vi.fn(async () => ({
@@ -877,6 +878,23 @@ describe("desktop run workspace", () => {
     expect(client.createChannel).not.toHaveBeenCalled()
   })
 
+  it("shows migration progress while workspace reads wait and keeps the failed stage", async () => {
+    window.history.replaceState(null, "", "#runs")
+    const client = desktopClient()
+    let rejectWorkspace!: (reason: unknown) => void
+    client.getWorkspace = vi.fn(() => new Promise<WorkspaceSnapshot>((_, reject) => { rejectWorkspace = reject }))
+    let failed = false
+    client.getStartupProgress = vi.fn(async () => ({ schema_version: 1 as const, status: failed ? "failed" as const : "running" as const, stage: "database_migrating" as const, from_version: 1, to_version: 2, elapsed_ms: 2300 }))
+    render(<App client={client} />)
+    expect(await screen.findByText("正在迁移历史数据")).toBeVisible()
+    expect(screen.getByText(/已用时 2 秒/)).toBeVisible()
+    expect(screen.queryByText("还没有运行记录")).not.toBeInTheDocument()
+    failed = true
+    await act(async () => { rejectWorkspace(new DesktopClientError("desktop_startup_failed")) })
+    expect(await screen.findByText(/停止于：正在迁移历史数据/)).toBeVisible()
+    expect(screen.getAllByText("无法打开本地工作台")).toHaveLength(1)
+  })
+
   it("authors a protocol plan and leaves runtime bindings out of the command", async () => {
     window.history.replaceState(null, "", "#plans")
     const user = userEvent.setup(); const client = desktopClient(); render(<App client={client} />)
@@ -1379,6 +1397,7 @@ describe("desktop run workspace", () => {
       }),
       getCatalog: vi.fn(),
       getReports: vi.fn(),
+      getStartupProgress: vi.fn(async () => ({ schema_version: 1 as const, status: "completed" as const, stage: "ready" as const, from_version: 0, to_version: 0, elapsed_ms: 0 })),
       getReportGeneration: vi.fn(async () => ({ schema_version: 1 as const, runs: [] })),
       subscribeReportGeneration: vi.fn(() => () => {}),
 			getReportDetail: vi.fn(),

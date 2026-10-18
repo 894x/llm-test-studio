@@ -7,5 +7,24 @@
   "openLogs": "打开日志文件夹",
   "openingLogs": "正在打开…",
   "loading": "正在读取本地工作区…",
-  "loadingPage": "正在读取当前页面…"
+  "loadingPage": "正在读取当前页面…",
+  "startup": {
+    "stages": {
+      "opening": "正在打开本地工作区",
+      "database_checking": "正在检查数据版本与完整性",
+      "database_initializing": "正在初始化数据库",
+      "database_backing_up": "正在创建并校验升级备份",
+      "database_migrating": "正在迁移历史数据",
+      "database_validating": "正在校验升级后的数据",
+      "database_completed": "数据库检查完成",
+      "catalogs": "正在读取测试目录",
+      "opening_repository": "正在打开历史记录",
+      "recovering": "正在恢复任务状态",
+      "ready": "工作区已就绪"
+    },
+    "elapsed": "已用时 {{seconds}} 秒",
+    "version": "版本 {{from}} → {{to}}",
+    "keepOpen": "请保持应用打开，完成校验后会自动进入工作区。",
+    "failedStage": "停止于：{{stage}}。详细原因请查看启动日志。"
+  }
 }

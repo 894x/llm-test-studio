@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"sync"
+	"time"
 
 	native "github.com/894x/llm-test-studio/apps/desktop/internal/native"
 	clipboard "github.com/894x/llm-test-studio/apps/desktop/internal/native/clipboard"
@@ -46,6 +47,8 @@ type DesktopApp struct {
 	jobs                     *jobs.Coordinator
 	confirmations            *jobs.ConfirmationWatcher
 	close                    func() error
+	startupProgress          StartupProgress
+	startupStarted           time.Time
 	startupErr               error
 	shutdownErr              error
 	reportError              func(error)

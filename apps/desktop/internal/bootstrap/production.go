@@ -69,9 +69,13 @@ func NewInitializer(options Options) bridge.Initializer {
 		}()
 		if err := sqlite.Migrate(ctx, database, sqlite.MigrateOptions{
 			AppVersion: options.AppVersion,
+			Progress: func(progress sqlite.MigrationProgress) {
+				bridge.ReportStartupProgress(ctx, "database_"+progress.Stage, progress.FromVersion, progress.ToVersion)
+			},
 		}); err != nil {
 			return bridge.Dependencies{}, fmt.Errorf("migrate desktop database: %w", err)
 		}
+		bridge.ReportStartupProgress(ctx, "catalogs", 0, 0)
 		bundle := options.CaseBundle
 		if isNilInterface(bundle) {
 			bundle = casebundle.Bundle
@@ -156,6 +160,7 @@ func NewInitializer(options Options) bridge.Initializer {
 		if err != nil {
 			return bridge.Dependencies{}, fmt.Errorf("create credential cleanup queue: %w", err)
 		}
+		bridge.ReportStartupProgress(ctx, "opening_repository", 0, 0)
 		repository, err := sqlite.OpenRepository(ctx, database, sqlite.RepositoryOptions{})
 		if err != nil {
 			return bridge.Dependencies{}, fmt.Errorf("open desktop repository: %w", err)
@@ -173,6 +178,7 @@ func NewInitializer(options Options) bridge.Initializer {
 				initializeError = errors.Join(initializeError, repository.Close())
 			}
 		}()
+		bridge.ReportStartupProgress(ctx, "recovering", 0, 0)
 		localExecutor, err = newProductionLocalExecutor(ctx, repository, options)
 		if err != nil {
 			return bridge.Dependencies{}, fmt.Errorf("create local job host: %w", err)

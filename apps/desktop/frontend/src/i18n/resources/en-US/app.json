@@ -7,5 +7,24 @@
   "openLogs": "Open log folder",
   "openingLogs": "Opening…",
   "loading": "Reading the local workspace…",
-  "loadingPage": "Loading this page…"
+  "loadingPage": "Loading this page…",
+  "startup": {
+    "stages": {
+      "opening": "Opening local workspace",
+      "database_checking": "Checking data version and integrity",
+      "database_initializing": "Initializing database",
+      "database_backing_up": "Creating and verifying an upgrade backup",
+      "database_migrating": "Migrating historical data",
+      "database_validating": "Validating upgraded data",
+      "database_completed": "Database check completed",
+      "catalogs": "Loading test catalogs",
+      "opening_repository": "Opening history",
+      "recovering": "Recovering task state",
+      "ready": "Workspace ready"
+    },
+    "elapsed": "Elapsed {{seconds}} s",
+    "version": "Version {{from}} → {{to}}",
+    "keepOpen": "Keep the app open. The workspace will open after validation.",
+    "failedStage": "Stopped at: {{stage}}. See the startup log for details."
+  }
 }
