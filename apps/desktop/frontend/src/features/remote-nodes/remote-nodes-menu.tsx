@@ -239,8 +239,11 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
             <div className="space-y-3">
               {snapshot?.nodes.map(node => <section key={node.id} aria-label={node.name} className="min-w-0 space-y-3 rounded-lg bg-surface-subtle p-3">
                 <div className="flex min-w-0 items-start justify-between gap-2">
-                  <div className="min-w-0 space-y-0.5">
-                    <h4 className="text-sm font-medium [overflow-wrap:anywhere]">{node.name}</h4>
+                  <div className="min-w-0 [overflow-wrap:anywhere]">
+                    <h4 className="inline text-sm font-medium">{node.name}</h4>
+                    {selectedNode?.id === node.id && <span className="text-[11px] text-muted-foreground">
+                      <span aria-hidden="true" className="mx-1.5">·</span>{t("isDefault")}
+                    </span>}
                   </div>
                   <Badge variant="outline" className={node.status === "ready" ? "border-transparent bg-success-soft text-success-strong"
                     : node.status === "offline" ? "border-transparent bg-warning-soft text-warning-strong" : undefined}>
@@ -283,7 +286,6 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
                     </Tooltip>
                   </div>
                 </div>
-                {selectedNode?.id === node.id && <p className="text-[11px] text-muted-foreground">{t("isDefault")}</p>}
                 <NodeDetails node={node} runner={observedUpgradeRunner(node, upgrades.get(node).view)} />
                 {node.proposed_host_key && <Alert>
                   <p className="font-medium">{t(node.status === "host_changed" ? "hostChanged" : "hostUnverified")}</p>
