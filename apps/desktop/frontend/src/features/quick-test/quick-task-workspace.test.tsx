@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { I18nextProvider } from "react-i18next"
 import { useState } from "react"
 import userEvent from "@testing-library/user-event"
@@ -136,6 +136,73 @@ function setup(
 }
 
 describe("Suite quick task workspace", () => {
+  it("unlocks on acceptance and keeps consecutive jobs while refresh is still pending", async () => {
+    const user = userEvent.setup()
+    let finishRefresh!: () => void
+    const refreshing = new Promise<void>(resolve => { finishRefresh = resolve })
+    const refresh = vi.fn(() => refreshing)
+    const actions = setup({ ...createTaskDraft(task), base_url: "https://example.test", api_key: "private-key", model: "model" },
+      refresh, { ...FIXTURE_WORKSPACE, runs: [] }, undefined, { schema_version: 1, reports: [] })
+    const jobs = [1, 2, 3].map(index => jobFixture({ kind: "run", job_id: `a1111111-1111-4111-8111-11111111111${index}`, run_ids: [], report_ids: [] }))
+    actions.getJob.mockImplementation(async id => jobs.find(job => job.job_id === id)!)
+    let accept!: (job: typeof jobs[number]) => void
+    actions.launchJob.mockReturnValueOnce(new Promise(resolve => { accept = resolve }))
+    const form = screen.getByRole("button", { name: "开启功能测试" }).closest("form")!
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    await waitFor(() => expect(actions.launchJob).toHaveBeenCalledTimes(1))
+    expect(screen.getByLabelText("模型 ID")).toBeDisabled()
+    await act(async () => accept(jobs[0]))
+    for (const job of jobs.slice(1)) {
+      actions.launchJob.mockResolvedValueOnce(job)
+      await user.click(screen.getByRole("button", { name: "开启功能测试" }))
+    }
+    expect(actions.launchJob).toHaveBeenCalledTimes(3)
+    expect(refresh).toHaveBeenCalledTimes(3)
+    expect(screen.getByRole("button", { name: "开启功能测试" })).toBeEnabled()
+    expect(screen.getByText("3 项运行中")).toBeVisible()
+    const history = screen.getByRole("list", { name: "测试记录" })
+    expect(within(history).getAllByRole("listitem")).toHaveLength(3)
+    for (const job of jobs) expect(actions.getJob).toHaveBeenCalledWith(job.job_id)
+    await act(async () => finishRefresh())
+    expect(actions.launchJob).toHaveBeenCalledTimes(3)
+  })
+
+  it("observes every performance job independently after new submissions and form remounts", async () => {
+    const user = userEvent.setup()
+    const actions = setup({ ...createTaskDraft(FIXTURE_CATALOG.suites[1]), base_url: "https://example.test", api_key: "private-key", model: "model-1" },
+      undefined, { ...FIXTURE_WORKSPACE, runs: [] }, undefined, { schema_version: 1, reports: [] })
+    const jobs = [1, 2, 3].map(index => jobFixture({ job_id: `a1111111-1111-4111-8111-11111111111${index}`, report_ids: [] }))
+    actions.getJob.mockImplementation(async id => jobs.find(job => job.job_id === id)!)
+    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    for (let index = 0; index < jobs.length; index++) {
+      actions.launchJob.mockResolvedValueOnce(jobs[index])
+      await user.clear(screen.getByLabelText("模型 ID"))
+      await user.type(screen.getByLabelText("模型 ID"), `model-${index + 1}`)
+      await user.keyboard("{Escape}")
+      await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+      expect(screen.getByRole("button", { name: "开始性能测试" })).toBeEnabled()
+    }
+    const history = screen.getByRole("list", { name: "测试记录" })
+    expect(within(history).getAllByRole("listitem")).toHaveLength(3)
+    expect(screen.getByText("3 项运行中")).toBeVisible()
+    // Restoring an active record remounts the parameter editor, not its observers.
+    await user.click(within(history).getAllByRole("button", { name: "快速性能测试" })[2])
+    expect(screen.getByLabelText("模型 ID")).toHaveValue("model-1")
+    expect(actions.launchJob).toHaveBeenCalledTimes(3)
+    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    expect(screen.getByRole("button", { name: "开启功能测试" })).toBeEnabled()
+    jobs[0] = { ...jobs[0], execution: { ...jobs[0].execution!, status: "failed", revision: 2,
+      failure: { phase: "execution", error_code: "request_failed" } } }
+    await waitFor(() => expect(screen.getByText("2 项运行中")).toBeVisible(), { timeout: 4000 })
+    const rows = within(history).getAllByRole("listitem")
+    const failed = rows.find(row => row.textContent?.includes("model-1"))!
+    expect(failed).toHaveTextContent("失败")
+    expect(rows.find(row => row.textContent?.includes("model-2"))).toHaveTextContent("运行中")
+    await user.click(within(failed).getByRole("button", { name: "执行详情 快速性能测试" }))
+    await waitFor(() => expect(actions.onOpenExecution).toHaveBeenCalledWith(jobs[0]))
+  }, 10_000)
+
   it("lists a remote functional submission before a local run exists and follows its execution", async () => {
     const user = userEvent.setup()
     const actions = setup({ ...createTaskDraft(task), base_url: "https://example.test", api_key: "private-key", model: "remote-model" },
@@ -667,9 +734,9 @@ describe("Suite quick task workspace", () => {
     await waitFor(() => expect(row).toHaveTextContent("3 / 10"))
     expect(row).toHaveTextContent("发送中")
     expect(row).toHaveTextContent("成功 2 · 失败 1 · 在途 1")
-    expect(screen.getByLabelText("API Key")).toBeDisabled()
+    expect(screen.getByLabelText("API Key")).toBeEnabled()
     await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
-    expect(screen.getByRole("button", { name: "开启功能测试" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "开启功能测试" })).toBeEnabled()
     expect(within(row).getByRole("status")).toBeInTheDocument()
     actions.getJob.mockResolvedValue({ ...running, execution: { ...running.execution!, status: "failed", revision: 2,
       failure: { phase: "execution", error_code: "request_failed" } } })

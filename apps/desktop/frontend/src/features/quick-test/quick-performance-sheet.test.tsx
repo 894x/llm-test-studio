@@ -1,4 +1,4 @@
-import { act, render as testingRender, screen, waitFor, within } from "@testing-library/react"
+import { act, fireEvent, render as testingRender, screen, waitFor, within } from "@testing-library/react"
 import type { ReactElement } from "react"
 import { I18nextProvider } from "react-i18next"
 import userEvent from "@testing-library/user-event"
@@ -30,6 +30,44 @@ const connection = {
 }
 
 describe("QuickPerformanceSheet", () => {
+  it("unlocks after each receipt and keeps independent executions through edits, failure and reopening", async () => {
+    const user = userEvent.setup()
+    const client = executionClient()
+    const jobs = [1, 2, 3].map(index => jobFixture({ job_id: `a1111111-1111-4111-8111-11111111111${index}`, report_ids: [] }))
+    client.getJob.mockImplementation(async id => jobs.find(job => job.job_id === id)!)
+    let accept!: (job: typeof jobs[number]) => void
+    client.launchJob.mockReturnValueOnce(new Promise(resolve => { accept = resolve }))
+    const page = (open: boolean) => <QuickPerformanceSheet plans={[]} open={open} onOpenChange={vi.fn()} connection={connection} client={client} />
+    const view = render(page(true))
+    const form = document.getElementById("quick-performance-form")!
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    await waitFor(() => expect(client.launchJob).toHaveBeenCalledTimes(1))
+    expect(screen.getByLabelText("请求数", { exact: true })).toBeDisabled()
+    await act(async () => accept(jobs[0]))
+    for (let index = 1; index < jobs.length; index++) {
+      client.launchJob.mockResolvedValueOnce(jobs[index])
+      await replaceNumber(user, screen.getByLabelText("请求数", { exact: true }), String(10 + index))
+      await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    }
+    expect(client.launchJob).toHaveBeenCalledTimes(3)
+    expect(screen.getByRole("button", { name: "开始性能测试" })).toBeEnabled()
+    expect(screen.getAllByRole("region", { name: "执行详情" })).toHaveLength(3)
+    const first = screen.getAllByRole("region", { name: "执行详情" }).find(region => region.textContent?.includes(jobs[0].job_id))!
+    await user.click(within(first).getByRole("button", { name: "取消运行" }))
+    expect(client.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: jobs[0].job_id, kind: "cancel", expected_revision: 1 })
+    jobs[0] = { ...jobs[0], execution: { ...jobs[0].execution!, status: "failed", revision: 2,
+      failure: { phase: "execution", error_code: "request_failed" } } }
+    await waitFor(() => expect(first).toHaveTextContent("失败"), { timeout: 4000 })
+    expect(screen.getByRole("button", { name: "开始性能测试" })).toBeEnabled()
+    view.rerender(<I18nextProvider i18n={createAppI18n("zh-CN")}>{page(false)}</I18nextProvider>)
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    view.rerender(<I18nextProvider i18n={createAppI18n("zh-CN")}>{page(true)}</I18nextProvider>)
+    expect(await screen.findAllByRole("region", { name: "执行详情" })).toHaveLength(3)
+    for (const job of jobs) expect(screen.getByText(job.job_id)).toBeVisible()
+    expect(client.launchJob).toHaveBeenCalledTimes(3)
+  })
+
   it.each(["accepted", "rejected"])("settles a pending launch while hidden (%s) without losing the receipt or leaving the form busy", async outcome => {
     const user = userEvent.setup()
     const client = executionClient()
@@ -200,7 +238,7 @@ describe("QuickPerformanceSheet", () => {
     expect(result).toEqual(original)
   })
 
-  it("clears a previous target report and ignores late observations from an earlier target", async () => {
+  it("keeps an earlier target execution and its late report when editing the next target", async () => {
     const user = userEvent.setup()
     let finishOld!: (value: ReturnType<typeof jobFixture>) => void
     const client = executionClient(successfulPerformanceReport())
@@ -214,9 +252,9 @@ describe("QuickPerformanceSheet", () => {
     </I18nextProvider>)
     finishOld(completedPerformanceJob())
     await waitFor(() => expect(screen.getByRole("button", { name: "开始性能测试" })).toBeEnabled())
-    expect(screen.queryByRole("region", { name: "性能报告" })).not.toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     await screen.findByRole("region", { name: "性能报告" })
+    expect(screen.getByText(connection.model_id, { exact: true })).toBeInTheDocument()
+    expect(client.launchJob).toHaveBeenCalledTimes(1)
   })
 
   it("shows cancelled and unavailable start failures instead of asking the user to check logs", async () => {

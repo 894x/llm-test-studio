@@ -143,6 +143,7 @@ export function QuickTaskWorkspace({
   const [error, setError] = useState("")
   const [caseConcurrency, setCaseConcurrency] = useState(DEFAULT_CASE_CONCURRENCY)
   const [refreshError, setRefreshError] = useState(false)
+  const refreshGeneration = useRef(0)
   const [mode, setMode] = useState<"functional" | "performance">("functional")
   const [performancePending, setPerformancePending] = useState(false)
   const [performanceHistory, setPerformanceHistory] = useState<QuickTestHistoryItem[]>([])
@@ -266,16 +267,19 @@ export function QuickTaskWorkspace({
     } }))
     setSelectedHistoryID(id)
     setPerformanceHistory(current => [{
-      id, mode: "performance", title: catalog.plans.find(plan => plan.id === selectedPerformancePlanID)?.name ?? t("performance.title"),
+      id, jobID: id, mode: "performance", title: catalog.plans.find(plan => plan.id === selectedPerformancePlanID)?.name ?? t("performance.title"),
       model: command.model_id, channel: channel?.name ?? command.url,
       timestamp: accepted.execution?.accepted_at ?? accepted.submission!.prepared_at,
       active: !accepted.execution || !isJobTerminal(accepted.execution.status),
       status: accepted.execution?.status ?? accepted.submission?.confirmation?.status ?? "queued",
       phase: accepted.progress?.progress.phase ?? (!accepted.execution ? "not_started" : undefined),
-    }, ...current])
+    }, ...current.filter(item => item.id !== id)])
     onJobLaunched?.(accepted)
   }
   const performanceJobChanged = useCallback((observed: JobView) => {
+    const marker = JSON.stringify(observed)
+    if (observedJobs.current.get(observed.job_id) === marker) return
+    observedJobs.current.set(observed.job_id, marker)
     const progress = observed.progress?.progress
     setPerformanceHistory(current => current.map(item => item.id === observed.job_id ? {
       ...item,
@@ -285,8 +289,10 @@ export function QuickTaskWorkspace({
       completed: progress?.completed, planned: progress?.planned,
       detail: progress ? t("workspace.performanceCounts", { ...progress }) : undefined,
       reportID: observed.performance_result_ready ? observed.report_ids[0] : undefined,
+      error: observed.execution?.failure ? t(`common:errorCode.${observed.execution.failure.error_code}`) : undefined,
     } : item))
-  }, [t])
+    onJobChange?.(observed)
+  }, [t, onJobChange])
 
   const update = (next: TaskDraft) => {
     onDraftChange(next)
@@ -321,11 +327,12 @@ export function QuickTaskWorkspace({
     update({ ...next, base_url: form.base_url, channel_id: form.channel_id, api_key: form.api_key, model: form.model })
   }
   const refreshProgress = async () => {
+    const generation = ++refreshGeneration.current
     try {
       await refresh()
-      setRefreshError(false)
+      if (refreshGeneration.current === generation) setRefreshError(false)
     } catch {
-      setRefreshError(true)
+      if (refreshGeneration.current === generation) setRefreshError(true)
     }
   }
   const validCommand = () => {
@@ -377,7 +384,7 @@ export function QuickTaskWorkspace({
         onRunSelected(id)
         onDraftChange((current) => (current === form ? { ...form, source_run_id: id } : current))
       }
-      await refreshProgress()
+      void refreshProgress()
     } catch (reason) {
       setError(publicDesktopErrorMessage(reason, t("task.failure")))
     } finally {
@@ -404,7 +411,7 @@ export function QuickTaskWorkspace({
   }
   const restoreHistory = async (item: QuickTestHistoryItem) => {
     if (inFlight.current || performancePending) return
-    if (item.jobID) {
+    if (item.jobID && item.mode === "functional") {
       setMode("functional")
       setSelectedHistoryID(item.id)
       if (item.runID) await restore(item.runID)
@@ -416,7 +423,7 @@ export function QuickTaskWorkspace({
       await restore(item.runID)
       return
     }
-    if (item.active) return
+    if (item.active && !performanceSettings[item.id]) return
     inFlight.current = true
     setPending("history")
     setError("")
@@ -548,6 +555,8 @@ export function QuickTaskWorkspace({
     <main className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={t("title")}>
       {functionalJobs.map(entry =>
         <QuickTaskJobObserver key={entry.job.job_id} client={actions} jobID={entry.job.job_id} onChange={receiveFunctionalJob} />)}
+      {performanceHistory.map(item =>
+        <QuickTaskJobObserver key={item.id} client={actions} jobID={item.id} onChange={performanceJobChanged} onArchived={onPerformanceArchived} />)}
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[240px_minmax(0,1fr)] gap-4 p-4 xl:grid-cols-[256px_minmax(0,1fr)] overflow-hidden">
         <aside className="flex min-h-0 min-w-0 flex-col" aria-label={t("workspace.history")}>
           <div className="shrink-0 space-y-4 pb-4 pt-2">
@@ -890,8 +899,8 @@ export function QuickTaskWorkspace({
                       initialProfile={restoredPerformanceProfile} initialPlanID={selectedPerformancePlanID} onPlanChange={setSelectedPerformancePlanID}
                       embedded showPlanSelector={false} blocked={!!pending} connection={performanceConnection} actionsContainer={performanceActionsContainer}
                       resolveConnection={validPerformanceConnection}
-                      client={actions} onJobLaunched={performanceJobLaunched} onJobChange={performanceJobChanged}
-                      onPendingChange={setPerformancePending} onArchived={onPerformanceArchived} onOpenReport={onOpenReport}
+                      client={actions} onJobLaunched={performanceJobLaunched}
+                      onPendingChange={setPerformancePending}
                     /> : <p className="text-xs text-muted-foreground">{t("task.performanceUnavailable")}</p>}
                   </div>
                 </FieldGroup>
@@ -927,11 +936,20 @@ function taskKey(task: CatalogSuite) {
   return `${task.id}:${task.revision}`
 }
 // Keep unselected submissions observable without mounting a second details panel.
-function QuickTaskJobObserver({ client, jobID, onChange }: {
+function QuickTaskJobObserver({ client, jobID, onChange, onArchived }: {
   client: JobClient; jobID: string; onChange: (job: JobView) => void
+  onArchived?: (id: string) => void | Promise<void>
 }) {
-  const { job } = useJobObservation(client, jobID, "", 0)
+  const { job, result } = useJobObservation(client, jobID, "", 0)
+  const archived = result?.observation?.report.archived ? result.observation.report.report_id : undefined
+  const notifiedArchive = useRef("")
   useEffect(() => { if (job) onChange(job) }, [job, onChange])
+  useEffect(() => {
+    if (archived && notifiedArchive.current !== archived) {
+      notifiedArchive.current = archived
+      void onArchived?.(archived)
+    }
+  }, [archived, onArchived])
   return null
 }
 

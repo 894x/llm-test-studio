@@ -749,8 +749,8 @@ describe("desktop run workspace", () => {
 		vi.mocked(client.getReports)
 			.mockResolvedValueOnce(structuredClone(FIXTURE_REPORTS))
 			.mockResolvedValue(structuredClone(updatedReports))
-		vi.mocked(client.launchJob).mockResolvedValue(jobFixture({ execution: null }))
-    vi.mocked(client.getJob).mockResolvedValue(completedJob())
+		vi.mocked(client.launchJob).mockResolvedValue(jobFixture({ execution: null, report_ids: [reportID] }))
+    vi.mocked(client.getJob).mockResolvedValue({ ...completedJob(), report_ids: [reportID] })
     vi.mocked(client.getJobPerformanceResult).mockResolvedValue(performanceResultFixture(performance))
 		vi.mocked(client.getReportDetail).mockResolvedValue({ schema_version: 1, source: "quick_performance", performance })
 
@@ -764,7 +764,8 @@ describe("desktop run workspace", () => {
 		await user.click(within(panel).getByRole("button", { name: "开始性能测试" }))
 
 		await waitFor(() => expect(vi.mocked(client.getReports).mock.calls.length).toBeGreaterThanOrEqual(2))
-		await user.click(await within(panel).findByRole("button", { name: "查看正式报告" }))
+		const history = screen.getByRole("list", { name: "测试记录" })
+		await user.click(await within(history).findByRole("button", { name: "打开报告 快速性能测试" }))
 		expect(window.location.hash).toBe("#reports")
 		expect(await screen.findByRole("region", { name: "归档性能报告" })).toHaveTextContent("1 / 1")
 		expect(client.getReportDetail).toHaveBeenCalledWith(reportID)
