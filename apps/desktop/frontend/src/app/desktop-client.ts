@@ -1114,12 +1114,24 @@ function removeByID<T extends { id: string }>(items: T[], id: string): T[] {
 }
 
 function planFromCommand(id: string, revision: number, command: CreatePlanCommand, catalog: CatalogSnapshot): CatalogSnapshot["plans"][number] {
- const entries=command.entries.map(entry=>{
-  const target=entry.target_kind==="suite"?catalog.suites.find(item=>item.id===entry.target_id):catalog.test_cases.find(item=>item.id===entry.target_id)
-  return {...structuredClone(entry),entry_id:entry.entry_id??crypto.randomUUID(),target_name:target?.name??entry.target_id,target_key:target?.key??entry.target_id,
-   case_count:target?("case_count" in target?target.case_count:1):0}
- })
- return {id,revision,name:command.name,protocol:command.protocol,seed:command.seed,entry_count:entries.length,case_count:entries.reduce((sum,entry)=>sum+entry.case_count,0),entries}
+  const entries = command.entries.map(entry => {
+    const entryID = entry.entry_id ?? crypto.randomUUID()
+    if (entry.performance) {
+      const profile = entry.performance
+      return { ...structuredClone(entry), entry_id: entryID, target_id: entryID,
+        target_name: entry.name ?? command.name, target_key: "performance", case_count: 0,
+        load_mode: profile.load_mode ?? "fixed_concurrency", concurrency: Math.max(1, profile.concurrency),
+        request_count: profile.request_count, duration_ms: profile.duration_ms ?? 0,
+        rate_per_second: profile.rate_per_second ?? 0, request_timeout_ms: profile.timeout_ms }
+    }
+    const target = entry.target_kind === "suite" ? catalog.suites.find(item => item.id === entry.target_id) : catalog.test_cases.find(item => item.id === entry.target_id)
+    return { ...structuredClone(entry), entry_id: entryID, target_name: entry.name || target?.name || entry.target_id,
+      target_key: target?.key ?? entry.target_id, case_count: target ? ("case_count" in target ? target.case_count : 1) : 0 }
+  })
+  return { id, revision, name: command.name, protocol: command.protocol, seed: command.seed, entry_count: entries.length,
+    case_count: entries.reduce((sum, entry) => sum + entry.case_count, 0), entries,
+    ...(entries.length === 1 && entries[0].performance ? { performance: entries[0].performance } : {}) }
+
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

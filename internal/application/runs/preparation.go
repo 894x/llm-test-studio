@@ -3,6 +3,7 @@ package runs
 import (
 	"context"
 	"fmt"
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"sync"
 	"time"
 
@@ -123,9 +124,6 @@ func (service *Preparer) BuildTarget(
 	if err := plan.Validate(); err != nil {
 		return PreparedRun{}, nil, fmt.Errorf("invalid plan: %w", err)
 	}
-	if plan.Performance != nil {
-		return PreparedRun{}, nil, ErrNotRunnable
-	}
 	timings = append(timings, startPhaseTiming{operation: "start_run_load_plan", duration: time.Since(phaseStartedAt)})
 	if !domain.IsUUID(command.ModelID) || !domain.IsUUID(command.ChannelID) {
 		return PreparedRun{}, nil, ErrNotRunnable
@@ -152,6 +150,17 @@ func (service *Preparer) BuildTarget(
 	entries, err := service.resolveEntries(ctx, plan)
 	if err != nil {
 		return PreparedRun{}, nil, err
+	}
+	for _, entry := range entries {
+		if entry.Performance == nil {
+			continue
+		}
+		_, err := quicktest.PreparePlanEntry(entry.EntryID, domain.ChannelSnapshot{
+			Protocol: plan.Protocol, BaseURL: channel.BaseURL, UpstreamModelName: mapping.UpstreamModelName,
+		}, *entry.Performance)
+		if err != nil {
+			return PreparedRun{}, nil, fmt.Errorf("invalid performance item %s: %w", entry.EntryID, err)
+		}
 	}
 	// The frozen plan captures run-time overrides without changing the catalog.
 	plan.Entries = append([]domain.PlanEntry{}, plan.Entries...)

@@ -321,18 +321,18 @@ func (profile SLAProfile) clone() SLAProfile {
 type PlanTargetKind string
 
 const (
-	PlanTargetCase  PlanTargetKind = "case"
-	PlanTargetSuite PlanTargetKind = "suite"
+	PlanTargetCase        PlanTargetKind = "case"
+	PlanTargetSuite       PlanTargetKind = "suite"
+	PlanTargetPerformance PlanTargetKind = "performance"
 )
 
 type Plan struct {
 	EntityMeta
-	Builtin     bool                    `json:"-"`
-	Name        string                  `json:"name"`
-	Protocol    Protocol                `json:"protocol"`
-	Seed        uint64                  `json:"seed"`
-	Entries     []PlanEntry             `json:"entries"`
-	Performance *PerformancePlanProfile `json:"performance,omitempty"`
+	Builtin  bool        `json:"-"`
+	Name     string      `json:"name"`
+	Protocol Protocol    `json:"protocol"`
+	Seed     uint64      `json:"seed"`
+	Entries  []PlanEntry `json:"entries"`
 }
 
 // PerformancePlanProfile is the authored, connection-independent profile for
@@ -393,8 +393,19 @@ func (profile PerformancePlanProfile) Validate() error {
 	return nil
 }
 
-// PlanEntry references one current Case or Suite; repetitions keep their own identity.
+// LoadProfile provides the common scheduling summary for a performance item.
+func (profile PerformancePlanProfile) LoadProfile() LoadProfile {
+	return LoadProfile{Mode: profile.LoadMode, Concurrency: max(1, profile.Concurrency),
+		RequestCount: profile.RequestCount, DurationMS: profile.DurationMS,
+		RatePerSecond: profile.RatePerSecond, RequestTimeoutMS: profile.TimeoutMS}
+}
+
+// PlanEntry contains one functional target or one performance profile.
+// Repetitions keep their own identity.
 type PlanEntry struct {
+	Name        string                     `json:"name,omitempty"`
+	OnFailure   string                     `json:"on_failure,omitempty"`
+	Performance *PerformancePlanProfile    `json:"performance,omitempty"`
 	EntryID     string                     `json:"entry_id"`
 	TargetKind  PlanTargetKind             `json:"target_kind"`
 	TargetID    string                     `json:"target_id"`
@@ -406,6 +417,27 @@ type PlanEntry struct {
 }
 
 func (entry PlanEntry) Validate() error {
+	if entry.OnFailure != "" && entry.OnFailure != "continue" && entry.OnFailure != "stop" {
+		return errors.New("unsupported plan entry failure policy")
+	}
+	if entry.TargetKind == PlanTargetPerformance {
+		if !IsUUID(entry.EntryID) || entry.TargetID != entry.EntryID || strings.TrimSpace(entry.Name) == "" || entry.Performance == nil {
+			return errors.New("performance entry requires identity, name and profile")
+		}
+		if len(entry.Parameters) != 0 || len(entry.SLA.Thresholds) != 0 || entry.WarmupCount != 0 || entry.Settings != (testspec.RunSettings{}) {
+			return errors.New("performance entry cannot contain functional configuration")
+		}
+		if entry.Load != entry.Performance.LoadProfile() {
+			return errors.New("performance item load differs from profile")
+		}
+		if err := entry.Load.Validate(); err != nil {
+			return err
+		}
+		return entry.Performance.Validate()
+	}
+	if entry.Performance != nil {
+		return errors.New("functional entry cannot contain a performance profile")
+	}
 	if entry.WarmupCount > 1_000_000 {
 		return errors.New("plan warmup count exceeds 1000000")
 	}
@@ -439,6 +471,10 @@ func (entry PlanEntry) Validate() error {
 }
 
 func (entry PlanEntry) clone() PlanEntry {
+	if entry.Performance != nil {
+		profile := *entry.Performance
+		entry.Performance = &profile
+	}
 	entry.Parameters = cloneRawMessageMap(entry.Parameters)
 	entry.SLA = entry.SLA.clone()
 	return entry
@@ -457,20 +493,14 @@ func (plan Plan) Validate() error {
 	if plan.Seed > (1<<53)-1 {
 		return errors.New("plan seed exceeds the JSON safe integer range")
 	}
-	if plan.Performance != nil {
-		if plan.Protocol != ProtocolOpenAIChat && plan.Protocol != ProtocolOpenAIResponses && plan.Protocol != ProtocolAnthropicMessages {
-			return errors.New("performance plan requires a supported text protocol")
-		}
-		if len(plan.Entries) != 0 {
-			return errors.New("performance plan cannot contain protocol entries")
-		}
-		return plan.Performance.Validate()
-	}
 	if len(plan.Entries) == 0 {
 		return errors.New("plan requires at least one entry")
 	}
 	seen := make(map[string]struct{}, len(plan.Entries))
 	for index, entry := range plan.Entries {
+		if entry.Performance != nil && plan.Protocol != ProtocolOpenAIChat && plan.Protocol != ProtocolOpenAIResponses && plan.Protocol != ProtocolAnthropicMessages {
+			return errors.New("performance entry requires a supported text protocol")
+		}
 		if err := entry.Validate(); err != nil {
 			return fmt.Errorf("invalid plan entry %d: %w", index, err)
 		}

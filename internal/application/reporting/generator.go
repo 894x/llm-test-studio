@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -143,7 +144,7 @@ func (generator *Generator) Generate(ctx context.Context, runID string) (generat
 		if (index+1)%64 == 0 || index+1 == len(results) {
 			advance("building", uint64(index+1), uint64(len(results)), "")
 		}
-		if result.EntryStatus != "" {
+		if result.EntryStatus != "" || result.Dimensions["phase"] == "checkpoint" {
 			continue
 		}
 		if result.RequestID == "" {
@@ -172,6 +173,14 @@ func (generator *Generator) Generate(ctx context.Context, runID string) (generat
 		}
 	}
 	conclusion := verificationConclusion(verification, run.Status() == domain.RunCompleted, issues)
+	if conclusion.Passed {
+		for _, entry := range entries {
+			if entry.Conclusion.Verdict == "not_applicable" {
+				conclusion.Passed, conclusion.Verdict = false, "not_applicable"
+				break
+			}
+		}
+	}
 	if run.Status() == domain.RunCancelled {
 		conclusion.Verdict = "cancelled"
 	}
@@ -250,7 +259,20 @@ func buildEntryReports(ctx context.Context, snapshot domain.RunSnapshot, runStat
 		}
 		summaries, requests := []domain.Result{}, []domain.Result{}
 		status := domain.EntryReportNotStarted
+		var performance json.RawMessage
+		var performanceContext map[string]string
 		for _, result := range byEntry[entry.EntryID] {
+			if len(result.Performance) != 0 {
+				report, err := quicktest.DecodePlanResult(result)
+				if err != nil || !quicktest.PlanResultMatches(report, entry, snapshot.Channel) {
+					return nil, errors.New("invalid performance item result")
+				}
+				performance = result.Performance
+				performanceContext = result.Dimensions
+			}
+			if result.Dimensions["phase"] == "checkpoint" {
+				continue
+			}
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
@@ -289,9 +311,12 @@ func buildEntryReports(ctx context.Context, snapshot domain.RunSnapshot, runStat
 		if status == domain.EntryReportFailed {
 			conclusion.Issues = append(conclusion.Issues, "entry execution failed")
 		}
-		reports = append(reports, domain.EntryReport{EntryID: entry.EntryID, WarmupCount: entry.WarmupCount, Settings: entry.Settings, TargetKind: entry.TargetKind, TargetID: entry.TargetID, Name: entry.Name, Key: entry.Key, Protocol: snapshot.Model.Protocol,
+		reports = append(reports, domain.EntryReport{PerformanceContext: performanceContext, Performance: performance, EntryID: entry.EntryID, WarmupCount: entry.WarmupCount, Settings: entry.Settings, TargetKind: entry.TargetKind, TargetID: entry.TargetID, Name: entry.Name, Key: entry.Key, Protocol: snapshot.Model.Protocol,
 			Parameters: entry.Parameters, Load: entry.Load, Seed: snapshot.PlanDocument.Seed, Status: status, Conclusion: conclusion, Verification: verification, SLA: sla, Metrics: metrics,
 			Timeline: resultTimeline(requests), Distributions: resultDistributions(requests), CaseResults: summaries})
+		if entry.OnFailure == "stop" && (status == domain.EntryReportFailed || verification.Status == "failed" || verification.Status == "indeterminate" || len(issues) > 0) {
+			stopped = true
+		}
 	}
 	return reports, nil
 }

@@ -193,6 +193,12 @@ func validateRun(input runs.PreparedRun) error {
 		return err
 	}
 	for _, entry := range input.Snapshot.Entries {
+		if entry.Performance != nil {
+			if _, err := quicktest.PreparePlanEntry(entry.EntryID, input.Snapshot.Channel, *entry.Performance); err != nil {
+				return invalid("run.performance")
+			}
+		}
+
 		if entry.Suite != nil && entry.Suite.HasFileInputs() {
 			return fmt.Errorf("%w: file inputs require admitted asset resolution", ErrUnsupported)
 		}

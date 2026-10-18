@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/testspec"
@@ -476,6 +477,8 @@ func (service *Host) executeEntries(ctx context.Context, control *runControl) {
 		control.mu.Unlock()
 		suiteOffsetMS := milliseconds(time.Since(started))
 		var storageErr error
+		entryFailed := false
+		var policyResults []domain.Result
 		emit := func(draft ResultDraft) error {
 			control.mu.Lock()
 			defer control.mu.Unlock()
@@ -485,7 +488,8 @@ func (service *Host) executeEntries(ctx context.Context, control *runControl) {
 			if control.run.Status() != domain.RunRunning && control.run.Status() != domain.RunDraining {
 				return context.Canceled
 			}
-			if draft.RequestID == "" || !preparedContainsCase(prepared, draft.CaseID) {
+			performanceResult := prepared.snapshot.Performance != nil && draft.CaseID == "" && len(draft.Performance) != 0
+			if draft.RequestID == "" || (!performanceResult && !preparedContainsCase(prepared, draft.CaseID)) {
 				return errors.New("invalid request observation identity")
 			}
 			result, err := service.newRequestObservation(
@@ -505,8 +509,17 @@ func (service *Host) executeEntries(ctx context.Context, control *runControl) {
 				storageErr = err
 				return err
 			}
-			key := suiteCaseKey(prepared.snapshot.EntryID, draft.CaseID)
-			control.summaryInputs[key] = append(control.summaryInputs[key], summaryInput(draft))
+			if !performanceResult {
+				key := suiteCaseKey(prepared.snapshot.EntryID, draft.CaseID)
+				control.summaryInputs[key] = append(control.summaryInputs[key], summaryInput(draft))
+			}
+			if prepared.snapshot.OnFailure == "stop" && len(prepared.snapshot.SLA.Thresholds) > 0 {
+				policyResults = append(policyResults, result)
+			}
+			if draft.Dimensions["phase"] != "warmup" && draft.Dimensions["phase"] != "checkpoint" &&
+				(draft.ExecutionStatus == domain.ExecutionFailed || draft.Verification.Status == testspec.VerdictFailed || draft.Verification.Status == testspec.VerdictIndeterminate) {
+				entryFailed = true
+			}
 			verificationFailed := result.Verification.Status == testspec.VerdictFailed ||
 				result.Verification.Status == testspec.VerdictIndeterminate
 			if verificationFailed {
@@ -583,6 +596,12 @@ func (service *Host) executeEntries(ctx context.Context, control *runControl) {
 			)
 			return
 		}
+		if prepared.snapshot.OnFailure == "stop" && (entryFailed || executionErr != nil || reporting.EntryFailed(prepared.snapshot, policyResults)) {
+			service.finishRun(control, domain.RunFailed, domain.RunFailure{
+				Phase: "execute_suites", ErrorCode: "plan_item_failed",
+			})
+			return
+		}
 	}
 	if anyFailed {
 		service.finishRun(control, domain.RunFailed, domain.RunFailure{
@@ -610,7 +629,8 @@ func (service *Host) newRequestObservation(
 		}
 	}
 	return domain.Result{
-		EntityMeta: meta, RunID: runID, EntryID: entryID,
+		Performance: append([]byte(nil), draft.Performance...),
+		EntityMeta:  meta, RunID: runID, EntryID: entryID,
 		CaseID: draft.CaseID, RequestID: entryID + ":" + draft.RequestID,
 		ExecutionStatus: draft.ExecutionStatus, Verification: draft.Verification,
 		Observation: draft.Observation, Failure: draft.Failure, ErrorCode: draft.ErrorCode, Detail: draft.Detail,

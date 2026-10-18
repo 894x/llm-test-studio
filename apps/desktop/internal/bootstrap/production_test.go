@@ -171,8 +171,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	if err != nil {
 		t.Fatalf("query initialized workspace: %v", err)
 	}
-	if snapshot.SchemaVersion != workspace.CurrentSchemaVersion || len(snapshot.Plans) != 0 || len(snapshot.Runs) != 0 {
-		t.Fatalf("initialized workspace = %+v, want no plans or runs in schema v%d", snapshot, workspace.CurrentSchemaVersion)
+	if snapshot.SchemaVersion != workspace.CurrentSchemaVersion || len(snapshot.Plans) != 18 || len(snapshot.Runs) != 0 {
+		t.Fatalf("initialized workspace = %+v, want 18 built-in plans and no runs in schema v%d", snapshot, workspace.CurrentSchemaVersion)
 	}
 	if _, err := dependencies.Query.Snapshot(context.Background()); err != nil {
 		t.Fatalf("query initialized workspace repeatedly: %v", err)

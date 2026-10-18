@@ -104,7 +104,8 @@ export interface CatalogSuite {
   case_count: number; cases: CatalogCaseReference[]; description: string; inputs: SuiteInput[]
 }
 export interface CatalogPlanEntry {
-  entry_id: string; target_kind: "case" | "suite"; target_id: string
+  name?: string; on_failure?: "continue" | "stop"; performance?: QuickPerformanceProfile
+  entry_id: string; target_kind: "case" | "suite" | "performance"; target_id: string
   target_name: string; target_key: string; case_count: number
   parameters: Record<string, CatalogPlanParameterValue>
   load_mode: CatalogLoadMode; concurrency: number; request_count: number
@@ -132,7 +133,7 @@ export type UpdateTestCaseCommand = CreateTestCaseCommand & { id: string; expect
 export type CreateSuiteCommand = Pick<CatalogSuite, "key" | "name" | "protocol" | "cases" | "description" | "inputs">
 export type UpdateSuiteCommand = CreateSuiteCommand & { id: string; expected_revision: number }
 export type PlanEntryCommand = Pick<CatalogPlanEntry,
-  "target_kind" | "target_id" | "parameters" | "load_mode" | "concurrency" | "request_count" |
+  "name" | "on_failure" | "performance" | "target_kind" | "target_id" | "parameters" | "load_mode" | "concurrency" | "request_count" |
   "rate_per_second" | "duration_ms" | "request_timeout_ms" | "sla_thresholds" | "warmup_count" | "settings"
 > & { entry_id?: string }
 export type CreatePlanCommand = Pick<CatalogPlan, "name" | "protocol" | "seed"> & { entries: PlanEntryCommand[]; performance?: QuickPerformanceProfile }
@@ -473,7 +474,7 @@ function parsePlan(value: unknown): CatalogPlan {
   const entries = value.entries.map(parsePlanEntry)
   if (entries.length !== value.entry_count || new Set(entries.map(entry => entry.entry_id)).size !== entries.length) throw invalidCatalog()
   const performance = value.performance === undefined ? undefined : parseQuickPerformanceProfile(value.performance)
-  if (performance !== undefined && entries.length !== 0) throw invalidCatalog()
+  if (performance !== undefined && entries.length > 1) throw invalidCatalog()
   return { id: value.id, revision: value.revision, name: value.name, protocol: value.protocol,
     seed: value.seed, entry_count: value.entry_count, case_count: value.case_count, entries,
     ...(value.builtin === undefined ? {} : { builtin: value.builtin }),
@@ -481,7 +482,7 @@ function parsePlan(value: unknown): CatalogPlan {
 }
 function parsePlanEntry(value: unknown): CatalogPlanEntry {
   if (!isRecord(value) || !isUUID(value.entry_id) || !isUUID(value.target_id) ||
-    (value.target_kind !== "case" && value.target_kind !== "suite") ||
+    (value.target_kind !== "case" && value.target_kind !== "suite" && value.target_kind !== "performance") ||
     typeof value.target_name !== "string" || typeof value.target_key !== "string" || !isNonNegativeInteger(value.case_count) ||
     !isNonNegativeInteger(value.warmup_count) || !isProtocolRunSettings(value.settings) ||
     !isRecord(value.parameters) || !Object.values(value.parameters).every(isJSONValue) ||
@@ -490,7 +491,11 @@ function parsePlanEntry(value: unknown): CatalogPlanEntry {
     !isNonNegativeInteger(value.duration_ms) || !isPositiveInteger(value.request_timeout_ms) ||
     !isRecord(value.sla_thresholds) || !Object.values(value.sla_thresholds).every(isNonNegativeFinite) ||
     ["suite_revision", "suite_id", "cases"].some(key => key in value)) throw invalidCatalog()
-  return { entry_id: value.entry_id, target_kind: value.target_kind, target_id: value.target_id,
+  if (value.on_failure !== undefined && value.on_failure !== "continue" && value.on_failure !== "stop") throw invalidCatalog()
+  if (value.name !== undefined && typeof value.name !== "string") throw invalidCatalog()
+  const performance = value.performance === undefined ? undefined : parseQuickPerformanceProfile(value.performance)
+  if ((value.target_kind === "performance") !== (performance !== undefined)) throw invalidCatalog()
+  return { ...(value.name === undefined ? {} : {name:value.name as string}), ...(value.on_failure === undefined ? {} : {on_failure:value.on_failure as "continue" | "stop"}), ...(performance ? {performance} : {}), entry_id: value.entry_id, target_kind: value.target_kind, target_id: value.target_id,
     target_name: value.target_name, target_key: value.target_key, case_count: value.case_count,
     warmup_count: value.warmup_count, settings: { ...value.settings },
     parameters: structuredClone(value.parameters) as CatalogPlanEntry["parameters"], load_mode: value.load_mode,

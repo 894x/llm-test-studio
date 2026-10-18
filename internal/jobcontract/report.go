@@ -32,7 +32,7 @@ func EncodePerformanceArchive(report quicktest.PerformanceReport) ([]byte, error
 // EncodeRunReport verifies the current report and returns its canonical bytes.
 // Downloads retain stored bytes; this encoder only verifies their integrity.
 func EncodeRunReport(report domain.Report) ([]byte, error) {
-	if err := report.Validate(); err != nil {
+	if err := quicktest.ValidatePlanReport(report); err != nil {
 		return nil, invalid("report")
 	}
 	raw, err := json.Marshal(report)

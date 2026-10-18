@@ -45,3 +45,16 @@ func TestRequestBudgetCountsCaseExecutionsAndLoadEntries(t *testing.T) {
 		t.Fatalf("duration budget=%d", got)
 	}
 }
+
+func TestFailurePolicyStopLeavesLaterItemsNotStarted(t *testing.T) {
+	projection := RunProjection{
+		Status:       domain.RunFailed,
+		Failure:      &domain.RunFailure{Phase: "execute_suites", ErrorCode: "plan_item_failed"},
+		Entries:      []RunEntryProjection{{EntryID: "basic"}, {EntryID: "pressure"}},
+		EntryResults: []EntryResultProjection{{EntryID: "basic", Status: domain.EntryExecutionCompleted}},
+	}
+	progress := summarizeEntryProgress(projection)
+	if progress[0].Status != "completed" || progress[1].Status != "not_started" {
+		t.Fatalf("failure-policy progress = %#v", progress)
+	}
+}

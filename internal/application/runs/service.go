@@ -4,6 +4,7 @@ package runs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -65,6 +66,7 @@ func (request ExecutionRequest) LoadProfile() domain.LoadProfile {
 }
 
 type ResultDraft struct {
+	Performance     json.RawMessage
 	CaseID          string
 	RequestID       string
 	ExecutionStatus domain.ExecutionStatus

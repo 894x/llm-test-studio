@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
@@ -694,10 +695,15 @@ func (repository *Repository) AppendResults(ctx context.Context, results ...doma
 		if err := result.Validate(); err != nil {
 			return fmt.Errorf("validate result: %w", err)
 		}
+		if len(result.Performance) != 0 {
+			if _, err := quicktest.DecodePlanResult(result); err != nil {
+				return err
+			}
+		}
 		if result.EntryID == "" {
 			return errors.New("stored result requires a suite entry id")
 		}
-		if result.EntryStatus == "" && result.CaseID == "" {
+		if result.EntryStatus == "" && result.CaseID == "" && len(result.Performance) == 0 {
 			return errors.New("stored request or summary result requires a case id")
 		}
 		if result.EntryStatus != "" && result.RequestID != "" {
@@ -1022,6 +1028,10 @@ func resultBelongsToSnapshot(snapshot domain.RunSnapshot, result domain.Result) 
 		if result.EntryStatus != "" {
 			return result.CaseID == "" && result.RequestID == ""
 		}
+		if len(result.Performance) != 0 {
+			report, err := quicktest.DecodePlanResult(result)
+			return err == nil && quicktest.PlanResultMatches(report, entry, snapshot.Channel) && result.CaseID == "" && result.RequestID != ""
+		}
 		return result.CaseID != "" && containsCase(entry.Cases, result.CaseID)
 	}
 	return false
@@ -1036,7 +1046,7 @@ func decodeResultDocument(document []byte) (domain.Result, error) {
 }
 
 func (repository *Repository) CreateReport(ctx context.Context, report domain.Report) error {
-	if err := report.Validate(); err != nil {
+	if err := quicktest.ValidatePlanReport(report); err != nil {
 		return fmt.Errorf("validate report: %w", err)
 	}
 	if err := checkReportProjectionItemBudgets(report); err != nil {
@@ -1316,7 +1326,7 @@ func decodeReportDocument(document []byte) (domain.Report, error) {
 		return domain.Report{}, fmt.Errorf("%w: report document byte budget", ErrCorrupt)
 	}
 	var report domain.Report
-	if err := decodeCanonical(document, &report, func() error { return report.Validate() }); err != nil {
+	if err := decodeCanonical(document, &report, func() error { return quicktest.ValidatePlanReport(report) }); err != nil {
 		return domain.Report{}, fmt.Errorf("%w: report document", ErrCorrupt)
 	}
 	return report, nil

@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 
 	"github.com/894x/llm-test-studio/internal/casetypes"
@@ -315,13 +316,16 @@ func (service *Service) buildSnapshot(
 				}
 			}
 			caseCount += summary.CaseCount
+			if entry.Name != "" {
+				summary.TargetName = entry.Name
+			}
 			entrySummaries = append(entrySummaries, summary)
 		}
 		snapshot.Plans = append(snapshot.Plans, PlanSummary{
 			Builtin: plan.Builtin,
 			ID:      plan.ID, Revision: plan.Revision, Name: plan.Name, Protocol: plan.Protocol, Seed: plan.Seed,
 			EntryCount: len(plan.Entries), CaseCount: caseCount, Entries: entrySummaries,
-			Performance: clonePerformancePlanProfile(plan.Performance),
+			Performance: singlePerformanceProfile(plan),
 		})
 	}
 
@@ -357,11 +361,18 @@ func (service *Service) buildSnapshot(
 }
 
 func planEntrySummary(entry domain.PlanEntry) PlanEntrySummary {
+	parameters := cloneRawMessages(entry.Parameters)
+	// The desktop catalog contract represents empty parameters as an object,
+	// including built-in presets and adapted version 1 performance plans.
+	if parameters == nil {
+		parameters = make(map[string]json.RawMessage)
+	}
 	return PlanEntrySummary{PlanEntryInput: PlanEntryInput{
+		Name: entry.Name, OnFailure: entry.OnFailure, Performance: clonePerformancePlanProfile(entry.Performance),
 		EntryID: entry.EntryID, TargetKind: entry.TargetKind, TargetID: entry.TargetID,
 		LoadMode: entry.Load.Mode, Concurrency: entry.Load.Concurrency, RequestCount: entry.Load.RequestCount,
 		RatePerSecond: entry.Load.RatePerSecond, DurationMS: entry.Load.DurationMS, RequestTimeoutMS: entry.Load.RequestTimeoutMS,
-		SLAThresholds: cloneThresholds(entry.SLA.Thresholds), Parameters: cloneRawMessages(entry.Parameters), WarmupCount: entry.WarmupCount, Settings: entry.Settings,
+		SLAThresholds: cloneThresholds(entry.SLA.Thresholds), Parameters: parameters, WarmupCount: entry.WarmupCount, Settings: entry.Settings,
 	}}
 }
 

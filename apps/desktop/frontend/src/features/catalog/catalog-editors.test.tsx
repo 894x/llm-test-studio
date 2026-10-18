@@ -9,6 +9,31 @@ import { EMPTY_CATALOG, type CatalogActions } from "./data"
 import { performanceFormFromProfile, performanceProfileFromForm } from "@/features/quick-test/performance-profile"
 
 describe("current protocol catalog editors", () => {
+  it("preserves mixed items, failure policies and independent duplicated pressure profiles", async () => {
+    const user = userEvent.setup()
+    const updatePlan = vi.fn(async (_command: Record<string, any>) => FIXTURE_CATALOG)
+    const item = structuredClone(FIXTURE_CATALOG.plans[0])
+    item.entries[0].name = "K3 basic"
+    item.entries[0].on_failure = "stop"
+    const pressure = structuredClone(FIXTURE_CATALOG.plans.find(plan => plan.builtin)!.entries[0])
+    pressure.entry_id = crypto.randomUUID(); pressure.target_id = pressure.entry_id
+    pressure.name = "Pressure A"; pressure.performance!.request_count = 20
+    item.entries.push(pressure); item.entry_count = 2
+    render(<I18nextProvider i18n={createAppI18n("en-US")}><CatalogEditor kind="plan" item={item} catalog={FIXTURE_CATALOG} actions={{ updatePlan } as unknown as CatalogActions} pending={false} mutate={async operation => { await operation() }} /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: "Edit plan" }))
+    await user.click(screen.getByRole("button", { name: /^2\./ }))
+    await user.click(screen.getAllByRole("button", { name: "Duplicate item" })[1])
+    fireEvent.change(screen.getByLabelText("Item name"), { target: { value: "Pressure B" } })
+    fireEvent.change(screen.getByLabelText("Request count"), { target: { value: "73" } })
+    await user.click(screen.getByRole("button", { name: "Save plan" }))
+    await waitFor(() => expect(updatePlan).toHaveBeenCalledOnce())
+    const entries = updatePlan.mock.calls[0][0].entries
+    expect(entries).toHaveLength(3)
+    expect(entries[0]).toMatchObject({ entry_id: item.entries[0].entry_id, on_failure: "stop" })
+    expect(entries[1]).toMatchObject({ entry_id: pressure.entry_id, performance: { request_count: 20 } })
+    expect(entries[2]).toMatchObject({ name: "Pressure B", on_failure: "continue", performance: { request_count: 73 } })
+    expect(entries[2]).not.toHaveProperty("entry_id")
+  })
   it("preserves custom performance parameters when editing a plan", async () => {
     const user = userEvent.setup()
     const performance = { ...performanceProfileFromForm(performanceFormFromProfile()), request_count: 742, concurrency: 17, input_tokens: 2048, random_input: true, warmup_requests: 3, slo_e2e_ms: 500, slo_target_percent: 95 }
@@ -20,7 +45,7 @@ describe("current protocol catalog editors", () => {
     expect(screen.getByLabelText("并发数")).toHaveValue(17)
     expect(screen.queryByLabelText("性能预设")).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "保存计划" }))
-    await waitFor(() => expect(updatePlan).toHaveBeenCalledWith(expect.objectContaining({ performance })))
+    await waitFor(() => expect(updatePlan).toHaveBeenCalledWith(expect.objectContaining({ entries: [expect.objectContaining({ performance })] })))
   })
 
   it("creates a performance plan with the full parameter form and rejects an empty target", async () => {
@@ -29,6 +54,8 @@ describe("current protocol catalog editors", () => {
     render(<I18nextProvider i18n={createAppI18n("zh-CN")}><CatalogEditor kind="plan" catalog={FIXTURE_CATALOG} actions={{ createPlan } as unknown as CatalogActions} pending={false} mutate={async operation => { await operation() }} /></I18nextProvider>)
     await user.click(screen.getByRole("button", { name: "新增计划" }))
     fireEvent.change(screen.getByLabelText("计划"), { target: { value: "Custom performance" } })
+    await user.click(screen.getByRole("button", {name:"添加计划项"}))
+    fireEvent.change(screen.getByLabelText("计划项名称"), {target:{value:"压力一"}})
     await user.click(screen.getByRole("combobox", { name: "类别" }))
     await user.click(screen.getByRole("option", { name: "快速性能测试" }))
     fireEvent.change(screen.getByLabelText("请求数"), { target: { value: "0" } })
@@ -38,7 +65,7 @@ describe("current protocol catalog editors", () => {
     fireEvent.change(screen.getByLabelText("请求数"), { target: { value: "73" } })
     fireEvent.change(screen.getByLabelText("并发数"), { target: { value: "11" } })
     await user.click(screen.getByRole("button", { name: "保存计划" }))
-    await waitFor(() => expect(createPlan).toHaveBeenCalledWith(expect.objectContaining({ entries: [], performance: expect.objectContaining({ request_count: 73, concurrency: 11 }) })))
+    await waitFor(() => expect(createPlan).toHaveBeenCalledWith(expect.objectContaining({ entries: [expect.objectContaining({performance: expect.objectContaining({ request_count: 73, concurrency: 11 })})] })))
   })
 
   it("saves an adjusted built-in plan as a new plan", async () => {
@@ -50,7 +77,7 @@ describe("current protocol catalog editors", () => {
     await user.click(screen.getByRole("button", { name: "另存为计划" }))
     fireEvent.change(screen.getByLabelText("请求数"), { target: { value: "31" } })
     await user.click(screen.getByRole("button", { name: "另存为计划" }))
-    await waitFor(() => expect(createPlan).toHaveBeenCalledWith(expect.objectContaining({ performance: expect.objectContaining({ request_count: 31 }) })))
+    await waitFor(() => expect(createPlan).toHaveBeenCalledWith(expect.objectContaining({ entries: [expect.objectContaining({performance: expect.objectContaining({ request_count: 31 })})] })))
     expect(updatePlan).not.toHaveBeenCalled()
   })
   it("keeps field errors associated and translates them without resubmitting on a language change", async () => {
@@ -110,6 +137,7 @@ describe("current protocol catalog editors", () => {
     render(<I18nextProvider i18n={createAppI18n("en-US")}><CatalogEditor kind="plan" item={item} catalog={FIXTURE_CATALOG} actions={{ updatePlan } as unknown as CatalogActions} pending={false} mutate={async operation => { await operation() }} /></I18nextProvider>)
     await user.click(screen.getByRole("button", { name: "Edit plan" }))
     expect(screen.queryByLabelText(/Model bindings|Channel bindings/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", {name:/^2\./}))
     fireEvent.change(screen.getByLabelText("2. Input values (JSON)"), { target: { value: '{"prompt":"second"}' } })
     await user.click(screen.getAllByRole("button", { name: "Move entry up" })[1])
     await user.click(screen.getByRole("button", { name: "Save plan" }))
@@ -127,18 +155,12 @@ describe("current protocol catalog editors", () => {
 
     await user.click(screen.getByRole("button", { name: "新增计划" }))
     await user.type(screen.getByLabelText("计划"), "缺少执行项的计划")
-    await user.click(screen.getByRole("combobox", { name: "用例或套件" }))
-    await user.click(screen.getByRole("option", { name: "用例 · 基础对话" }))
     await user.click(screen.getByRole("button", { name: "保存计划" }))
-
-    const target = screen.getByRole("combobox", { name: "用例或套件" })
-    expect(target).toHaveAttribute("aria-invalid", "true")
-    expect(target).toHaveAccessibleDescription("请选择一个用例或套件，然后点击“添加执行项”。")
-    expect(target).toHaveFocus()
     expect(mutate).not.toHaveBeenCalled()
     expect(createPlan).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "添加计划项" }))
+    expect(screen.getByRole("combobox", {name:"类别"})).toBeVisible()
+    expect(screen.getByRole("combobox", {name:"失败后"})).toBeVisible()
 
-    await user.click(screen.getByRole("button", { name: "添加执行项" }))
-    expect(target).not.toHaveAttribute("aria-invalid")
   })
 })

@@ -8,6 +8,7 @@ import (
 )
 
 const FeatureExecutionOrigin = "execution_origin"
+const FeatureMixedPlanItems = "mixed_plan_items"
 
 // SupportsJob checks only the current task requirements, independent of client
 // release and build. Report-transfer requirements may be stricter for a caller.
@@ -22,32 +23,21 @@ func (capabilities RunnerCapabilities) SupportsJob(spec JobSpec) bool {
 	if spec.Kind == KindPerformance {
 		performance := spec.Spec.Performance
 		protocols = append(protocols, string(performance.Protocol))
-		profile := performance.Profile
-		if profile.WarmupRequests > 0 {
-			features = append(features, "warmup")
-		}
-		if profile.RampDurationMS > 0 {
-			features = append(features, "ramp")
-		}
-		if profile.CapacityEnabled {
-			features = append(features, "capacity")
-		}
-		if profile.LoadMode == domain.LoadOpenLoop {
-			features = append(features, "open_loop")
-		}
-		if profile.SliceDurationMS > 0 {
-			features = append(features, "time_slices")
-		}
-		if profile.WorkloadMode == quicktest.PerformanceWorkloadNormal {
-			features = append(features, "normal_workload")
-		}
-		if profile.RandomInput {
-			features = append(features, "random_input")
-		}
+		features = append(features, performanceFeatures(performance.Profile)...)
 	} else {
 		for _, run := range spec.PreparedRuns() {
 			protocols = append(protocols, string(run.Snapshot.Channel.Protocol))
-			for _, entry := range run.Snapshot.Entries {
+			for index, entry := range run.Snapshot.Entries {
+				if entry.Performance != nil || entry.OnFailure != "" || run.Snapshot.PlanDocument.Entries[index].Name != "" {
+					features = append(features, FeatureMixedPlanItems)
+				}
+				if entry.Performance != nil {
+					prepared, err := quicktest.PreparePlanEntry(entry.EntryID, run.Snapshot.Channel, *entry.Performance)
+					if err != nil {
+						return false
+					}
+					features = append(features, performanceFeatures(prepared.Profile)...)
+				}
 				if entry.WarmupCount > 0 {
 					features = append(features, "warmup")
 				}
@@ -70,4 +60,30 @@ func containsAll(supported, required []string) bool {
 		}
 	}
 	return true
+}
+
+func performanceFeatures(profile quicktest.PerformanceProfile) []string {
+	features := []string{}
+	if profile.WarmupRequests > 0 {
+		features = append(features, "warmup")
+	}
+	if profile.RampDurationMS > 0 {
+		features = append(features, "ramp")
+	}
+	if profile.CapacityEnabled {
+		features = append(features, "capacity")
+	}
+	if profile.LoadMode == domain.LoadOpenLoop {
+		features = append(features, "open_loop")
+	}
+	if profile.SliceDurationMS > 0 {
+		features = append(features, "time_slices")
+	}
+	if profile.WorkloadMode == quicktest.PerformanceWorkloadNormal {
+		features = append(features, "normal_workload")
+	}
+	if profile.RandomInput {
+		features = append(features, "random_input")
+	}
+	return features
 }

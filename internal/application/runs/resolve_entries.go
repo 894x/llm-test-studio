@@ -35,6 +35,7 @@ func (service *Preparer) resolveEntries(ctx context.Context, plan domain.Plan) (
 	entries := make([]domain.RunEntrySnapshot, 0, len(plan.Entries))
 	for _, item := range plan.Entries {
 		entry := domain.RunEntrySnapshot{
+			OnFailure: item.OnFailure, Performance: item.Performance,
 			EntryID: item.EntryID, WarmupCount: item.WarmupCount, Settings: item.Settings, TargetKind: item.TargetKind, TargetID: item.TargetID,
 			Parameters: map[string]json.RawMessage{}, CaseInputs: map[string]map[string]json.RawMessage{},
 			Cases: []domain.CaseRevisionRef{}, CaseDefinitions: []domain.TestCase{}, Load: item.Load, SLA: item.SLA,
@@ -42,6 +43,13 @@ func (service *Preparer) resolveEntries(ctx context.Context, plan domain.Plan) (
 		definitions := []domain.TestCase{}
 		supplied := map[string]map[string]json.RawMessage{}
 		switch item.TargetKind {
+		case domain.PlanTargetPerformance:
+			entry.Name, entry.Key = item.Name, "performance"
+			if err := entry.Validate(plan.Protocol); err != nil {
+				return nil, fmt.Errorf("invalid performance entry: %w", err)
+			}
+			entries = append(entries, entry)
+			continue
 		case domain.PlanTargetCase:
 			testCase, found := cases[item.TargetID]
 			if !found {
@@ -119,6 +127,9 @@ func (service *Preparer) resolveEntries(ctx context.Context, plan domain.Plan) (
 			}
 			entry.Cases = append(entry.Cases, domain.CaseRevisionRef{CaseID: testCase.ID, Revision: testCase.Revision})
 			entry.CaseDefinitions = append(entry.CaseDefinitions, testCase)
+		}
+		if item.Name != "" {
+			entry.Name = item.Name
 		}
 		if err := entry.Validate(plan.Protocol); err != nil {
 			return nil, fmt.Errorf("%w: entry %s: %v", ErrNotRunnable, item.EntryID, err)

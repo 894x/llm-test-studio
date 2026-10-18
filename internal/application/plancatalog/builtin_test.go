@@ -23,16 +23,16 @@ func TestBuiltinPerformancePlansShareTheCatalogWithoutWritingUserFiles(t *testin
 		t.Fatalf("built-in plans = %d, %v; want 6 per text protocol", len(plans), err)
 	}
 	for _, plan := range plans {
-		if !plan.Builtin || plan.Performance == nil || plan.Validate() != nil {
+		if !plan.Builtin || plan.Entries[0].Performance == nil || plan.Validate() != nil {
 			t.Fatalf("invalid built-in plan: %#v", plan)
 		}
 		got, err := service.Get(ctx, plan.ID)
-		if err != nil || !got.Builtin || got.Performance.RequestCount != plan.Performance.RequestCount {
+		if err != nil || !got.Builtin || got.Entries[0].Performance.RequestCount != plan.Entries[0].Performance.RequestCount {
 			t.Fatalf("Get() = %#v, %v", got, err)
 		}
-		got.Performance.RequestCount++
+		got.Entries[0].Performance.RequestCount++
 		again, _ := service.Get(ctx, plan.ID)
-		if again.Performance.RequestCount != plan.Performance.RequestCount {
+		if again.Entries[0].Performance.RequestCount != plan.Entries[0].Performance.RequestCount {
 			t.Fatal("built-in reads share mutable parameters")
 		}
 		updated := cloneDocument(plan)
@@ -50,7 +50,7 @@ func TestBuiltinPerformancePlansShareTheCatalogWithoutWritingUserFiles(t *testin
 	}
 	custom := validTargetedDocument("60000000-0000-4000-8000-000000000001", time.Now().UTC())
 	custom.Entries = plans[0].Entries
-	custom.Performance = plans[0].Performance
+	custom.Entries[0].Performance = plans[0].Entries[0].Performance
 	if err := service.CreateDocument(ctx, custom); err != nil {
 		t.Fatal(err)
 	}

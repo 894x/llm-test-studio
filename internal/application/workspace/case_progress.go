@@ -49,7 +49,9 @@ func summarizeEntryProgress(projection RunProjection) []EntryProgress {
 	}
 	suites := projection.Entries
 	progress := make([]EntryProgress, 0, len(suites))
-	currentAssigned := false
+	// A failure-policy stop happens after the failed item's completion marker.
+	// Later items were never started and must not inherit the run's failure.
+	currentAssigned := projection.Failure != nil && projection.Failure.ErrorCode == "plan_item_failed"
 	for _, suite := range suites {
 		result := results[suite.EntryID]
 		status := "not_started"

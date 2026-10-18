@@ -92,11 +92,10 @@ func TestPlanCatalogRoundTripsPerformanceProfileWithoutBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	document := validTargetedDocument("60000000-0000-4000-8000-000000000001", time.Now().UTC())
-	document.Entries = []domain.PlanEntry{}
-	document.Performance = &domain.PerformancePlanProfile{
+	document.Entries = []domain.PlanEntry{legacyPerformanceEntry(document.ID, document.Name, domain.PerformancePlanProfile{
 		LoadMode: domain.LoadFixedConcurrency, ArrivalPattern: "constant", WorkloadMode: "fixed",
 		RequestCount: 100, Concurrency: 4, TimeoutMS: 60_000, InputTokens: 256, OutputTokens: 128,
-	}
+	})}
 	if err := service.CreateDocument(context.Background(), document); err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +103,7 @@ func TestPlanCatalogRoundTripsPerformanceProfileWithoutBinding(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got, document) {
 		t.Fatalf("performance document round trip = %#v, %v", got, err)
 	}
-	got.Performance.RequestCount = 1
+	got.Entries[0].Performance.RequestCount = 1
 	plan, err := service.Get(context.Background(), document.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -113,13 +112,13 @@ func TestPlanCatalogRoundTripsPerformanceProfileWithoutBinding(t *testing.T) {
 	if err != nil || len(plans) != 1 {
 		t.Fatalf("List() = %#v, %v", plans, err)
 	}
-	plan.Performance.RequestCount = 2
-	plans[0].Performance.RequestCount = 3
-	if got.Performance.RequestCount != 1 || plan.Performance.RequestCount != 2 {
+	plan.Entries[0].Performance.RequestCount = 2
+	plans[0].Entries[0].Performance.RequestCount = 3
+	if got.Entries[0].Performance.RequestCount != 1 || plan.Entries[0].Performance.RequestCount != 2 {
 		t.Fatal("public reads share a performance profile")
 	}
 	again, err := service.GetDocument(context.Background(), document.ID)
-	if err != nil || again.Performance.RequestCount != 100 {
+	if err != nil || again.Entries[0].Performance.RequestCount != 100 {
 		t.Fatalf("performance profile was not independently copied: %#v, %v", again, err)
 	}
 }
@@ -153,8 +152,8 @@ func TestPlanCatalogStoresSelectedIDsWithoutTargetBindings(t *testing.T) {
 }
 
 func TestPlanCatalogRequiresCurrentSchemaMultiSuiteDocuments(t *testing.T) {
-	if CurrentFileSchemaVersion != 1 {
-		t.Fatalf("CurrentFileSchemaVersion = %d, want 1", CurrentFileSchemaVersion)
+	if CurrentFileSchemaVersion != 2 {
+		t.Fatalf("CurrentFileSchemaVersion = %d, want 2", CurrentFileSchemaVersion)
 	}
 
 	service, err := New(filepath.Join(t.TempDir(), "plans"))

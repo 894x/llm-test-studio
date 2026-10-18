@@ -120,14 +120,15 @@ type htmlReport struct {
 }
 
 type htmlEntryReport struct {
-	Index      int
-	Detail     EntryDetail
-	Status     string
-	Conclusion string
-	Metrics    []namedMetric
-	SLA        []namedMetric
-	Issues     []string
-	Cases      []htmlCaseReport
+	Performance *quicktest.PerformanceReport
+	Index       int
+	Detail      EntryDetail
+	Status      string
+	Conclusion  string
+	Metrics     []namedMetric
+	SLA         []namedMetric
+	Issues      []string
+	Cases       []htmlCaseReport
 }
 
 type htmlCaseReport struct {
@@ -226,7 +227,11 @@ func htmlEntryReports(suites []EntryDetail, locale string) []htmlEntryReport {
 				Results: resultRows(testCase.RequestResults),
 			})
 		}
-		reports = append(reports, htmlEntryReport{
+		var performance *quicktest.PerformanceReport
+		if len(suite.Performance) > 0 {
+			_ = json.Unmarshal(suite.Performance, &performance)
+		}
+		reports = append(reports, htmlEntryReport{Performance: performance,
 			Index: suiteIndex + 1, Detail: suite,
 			Status:     localizedSuiteStatus(suite.Status, locale),
 			Conclusion: localizedVerdict(suite.Conclusion.Verdict, locale),
@@ -457,7 +462,12 @@ var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype h
 {{if .Issues}}<ul class="issues">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>{{end}}
 <h3>{{$.Labels.CoreMetrics}}</h3><section class="grid">{{range .Metrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
 <h3>SLA</h3><section class="grid">{{range .SLA}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
-<h3>{{$.Labels.Cases}} ({{len .Cases}})</h3>
+{{if .Performance}}<h3>{{$.Labels.QuickTitle}}</h3>
+<p>{{.Performance.Profile.LoadMode}} · {{.Performance.Profile.Concurrency}} concurrency · {{.Performance.Profile.InputTokens}} / {{.Performance.Profile.OutputTokens}} tokens</p>
+<p>{{$.Labels.Samples}}: {{.Performance.Progress.Completed}} · {{$.Labels.StatusPassed}}: {{.Performance.Progress.Succeeded}} · {{$.Labels.StatusFailed}}: {{.Performance.Progress.Failed}}</p>
+<p>E2E P95: {{.Performance.Metrics.E2EP95}} ms · {{$.Labels.RequestRate}}: {{.Performance.Metrics.RequestQPS}}</p>
+<div class="scroll"><table><thead><tr><th>{{$.Labels.Request}}</th><th>{{$.Labels.Status}}</th><th>E2E ms</th><th>{{$.Labels.Input}}</th><th>{{$.Labels.Output}}</th><th>{{$.Labels.Error}}</th></tr></thead><tbody>{{range .Performance.Samples}}<tr><td>{{.RequestIndex}}</td><td>{{if .Success}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2EMS}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.ErrorCode}}</td></tr>{{end}}</tbody></table></div>
+{{else}}<h3>{{$.Labels.Cases}} ({{len .Cases}})</h3>{{end}}
 {{range .Cases}}<section class="case" data-case-id="{{.Detail.CaseID}}"><h4>{{$.Labels.Case}} {{.Index}}: {{.Detail.Name}} [{{.Detail.Key}}]</h4>
 <p class="muted">{{$.Labels.Type}} {{.Detail.Protocol}} v{{.Detail.Revision}} · {{$.Labels.Revision}} {{.Detail.Revision}} · {{$.Labels.Status}} {{.Status}}</p>
 <h4>{{$.Labels.RequestDetails}} ({{len .Results}})</h4><div class="scroll"><table><thead><tr><th>{{$.Labels.Request}}</th><th>{{$.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{$.Labels.TTFTAny}} ms</th><th>{{$.Labels.TTFTVisible}} ms</th><th>{{$.Labels.TTST}} ms</th><th>{{$.Labels.ObservedICL}} ms</th><th>{{$.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{$.Labels.Queue}} ms</th><th>{{$.Labels.Input}}</th><th>{{$.Labels.Output}}</th><th>{{$.Labels.Error}}</th></tr></thead><tbody>{{range .Results}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}

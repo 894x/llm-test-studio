@@ -6,6 +6,7 @@ import { parseSuiteInput } from "./data"
 import { createContext, useContext, useRef, useState, type FormEvent, type ReactNode } from "react"
 import ArrowDownIcon from "lucide-react/dist/esm/icons/arrow-down.mjs"
 import ArrowUpIcon from "lucide-react/dist/esm/icons/arrow-up.mjs"
+import CopyIcon from "lucide-react/dist/esm/icons/copy.mjs"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
 import Trash2Icon from "lucide-react/dist/esm/icons/trash-2.mjs"
 import { useTranslation } from "react-i18next"
@@ -27,7 +28,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { TagAutocomplete } from "@/components/ui/tag-autocomplete"
 import { PerformanceProfileFields } from "@/features/quick-test/performance-profile-fields"
-import { usePerformanceProfileEditor } from "@/features/quick-test/use-performance-profile-editor"
+import { performanceFormFromProfile, performanceProfileFromForm, validatePerformanceForm, type PerformanceFieldErrors } from "@/features/quick-test/performance-profile"
 
 import type {
   CatalogActions, CatalogChannel, CatalogChannelModel, CatalogLoadMode, CatalogModel,
@@ -305,112 +306,125 @@ function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved
   </FormShell>
 }
 
-type EntryDraft = PlanEntryCommand & { draftKey: string; parametersJSON: string; slaJSON: string }
+type EntryDraft = PlanEntryCommand & {
+  functionalKind?: "case" | "suite"; draftKey: string; parametersJSON: string; slaJSON: string
+  performanceForm: ReturnType<typeof performanceFormFromProfile>; fieldErrors: PerformanceFieldErrors
+}
+
+function planEntryDraft(entry?: Partial<PlanEntryCommand>): EntryDraft {
+  return { target_kind: "suite", target_id: "", warmup_count: 0, settings: {}, parameters: {},
+    sla_thresholds: {}, load_mode: "single", concurrency: 1, request_count: 1, rate_per_second: 1,
+    duration_ms: 0, request_timeout_ms: 60000, on_failure: "continue", ...entry,
+    draftKey: crypto.randomUUID(), parametersJSON: json(entry?.parameters ?? {}), slaJSON: json(entry?.sla_thresholds ?? {}),
+    performanceForm: performanceFormFromProfile(entry?.performance), fieldErrors: {} }
+}
+
 function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogPlan>) {
   const { t } = useTranslation("catalog")
   const [name, setName] = useState(item?.name ?? "")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
   const [seed, setSeed] = useState(item?.seed ?? 1)
-  const [planMode, setPlanMode] = useState<"protocol" | "performance">(item?.performance ? "performance" : "protocol")
-  const performanceEditor = usePerformanceProfileEditor(item?.performance)
-  const [target, setTarget] = useState("")
-  const [entries, setEntries] = useState<EntryDraft[]>(() => item?.entries.map(entry => ({ ...entry,
-    draftKey: entry.entry_id, parametersJSON: json(entry.parameters), slaJSON: json(entry.sla_thresholds) })) ?? [])
-  const targets = [
+  const [entries, setEntries] = useState<EntryDraft[]>(() => item?.entries.length
+    ? item.entries.map(entry => planEntryDraft({ ...entry, name: entry.name || entry.target_name }))
+    : item?.performance ? [planEntryDraft({ name: item.name, target_kind: "performance", performance: item.performance })] : [])
+  const [expanded, setExpanded] = useState(0)
+  const targets: [string, string][] = [
     ...catalog.test_cases.filter(value => !!value.definitions[protocol]).map(value => [`case:${value.id}`, `${t("editor.noun.case")} · ${value.name}`] as [string, string]),
     ...catalog.suites.filter(value => value.protocol === protocol).map(value => [`suite:${value.id}`, `${t("editor.noun.suite")} · ${value.name}`] as [string, string]),
   ]
   const update = (index: number, patch: Partial<EntryDraft>) => setEntries(current => current.map((entry, i) => i === index ? { ...entry, ...patch } : entry))
-  const move = (index: number, offset: number) => setEntries(current => { const next = [...current]; [next[index], next[index + offset]] = [next[index + offset], next[index]]; return next })
+  const move = (index: number, offset: number) => {
+    setEntries(current => { const next = [...current]; [next[index], next[index + offset]] = [next[index + offset], next[index]]; return next })
+    setExpanded(index + offset)
+  }
   return <FormShell pending={pending} label={item?.builtin ? t("plans.saveAs") : t("editor.save", { noun: t("editor.noun.plan") })} formTitle={formTitle} onSubmit={async () => {
     integerField(seed, t("protocolDesign.seed"), 0, Number.MAX_SAFE_INTEGER)
     const planName = required(name, t("common.plan"))
-    if (planMode === "protocol" && entries.length === 0) {
-      throw new FormValidationError("planEntries", t("protocolDesign.entryRequired"), t("protocolDesign.target"))
+    if (!entries.length) throw new FormValidationError("planEntries", t("protocolDesign.entryRequired"), t("protocolDesign.target"))
+    for (const [index, entry] of entries.entries()) {
+      if (entry.target_kind === "performance") {
+        if (!entry.name?.trim()) { setExpanded(index); throw new FormValidationError(t("plans.itemName"), t("plans.itemNameRequired")) }
+        if (!isQuickPerformanceProtocol(protocol)) { setExpanded(index); throw new FormValidationError(t("common.protocol"), t("plans.performanceProtocolRequired")) }
+        const errors = validatePerformanceForm(entry.performanceForm)
+        if (Object.keys(errors).length) { update(index, { fieldErrors: errors }); setExpanded(index); return }
+      }
     }
-    const performance = planMode === "performance" ? performanceEditor.validate() : undefined
-    if (performance === null) return
-    const command = planMode === "performance"
-      ? { name: planName, protocol, seed, entries: [], performance }
-      : { name: planName, protocol, seed,
-        entries: entries.map(({ draftKey: _key, parametersJSON, slaJSON, ...entry }) => ({ ...entry,
-          parameters: recordJSON<CatalogPlanParameterValue>(parametersJSON, t("protocolDesign.parameters")),
-          sla_thresholds: nonNegativeNumberRecord(slaJSON, t("protocolDesign.thresholds")) })) }
+    const command = { name: planName, protocol, seed, entries: entries.map(entry => {
+      const { performanceForm, parametersJSON, slaJSON } = entry
+      const value: PlanEntryCommand = {
+        entry_id: entry.entry_id, name: entry.name, on_failure: entry.on_failure,
+        target_kind: entry.target_kind, target_id: entry.target_id, parameters: entry.parameters,
+        load_mode: entry.load_mode, concurrency: entry.concurrency, request_count: entry.request_count,
+        rate_per_second: entry.rate_per_second, duration_ms: entry.duration_ms,
+        request_timeout_ms: entry.request_timeout_ms, warmup_count: entry.warmup_count,
+        settings: entry.settings, sla_thresholds: entry.sla_thresholds,
+      }
+      if (!item || item.builtin || !value.entry_id) delete value.entry_id
+      if (value.target_kind === "performance") return { ...value, name: required(value.name ?? "", t("plans.itemName")),
+        target_id: value.entry_id ?? "", parameters: {}, settings: {}, warmup_count: 0, sla_thresholds: {},
+        performance: performanceProfileFromForm(performanceForm) }
+      delete value.performance
+      return { ...value, target_id: required(value.target_id, t("protocolDesign.target")),
+        parameters: recordJSON<CatalogPlanParameterValue>(parametersJSON, t("protocolDesign.parameters")),
+        sla_thresholds: nonNegativeNumberRecord(slaJSON, t("protocolDesign.thresholds")) }
+    }) }
     await mutate(() => item && !item.builtin ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command), formTitle)
     onSaved()
   }}>
     <TextField label={t("common.plan")} value={name} onChange={setName} />
-    <SelectField label={t("plans.category")} value={planMode} options={[["protocol", t("plans.protocolPlan")], ["performance", t("plans.performancePlan")]]} onChange={value => { const next = value as "protocol" | "performance"; setPlanMode(next); if (next === "performance" && !isQuickPerformanceProtocol(protocol)) setProtocol("openai-chat"); setEntries([]); setTarget("") }} />
-    <SelectField label={t("common.protocol")} value={protocol} options={planMode === "performance" ? protocolOptions.filter(([id]) => isQuickPerformanceProtocol(id)) : protocolOptions} onChange={value => { setProtocol(value as CatalogProtocol); setEntries([]); setTarget("") }} />
+    <SelectField label={t("common.protocol")} value={protocol} options={protocolOptions} onChange={value => setProtocol(value as CatalogProtocol)} />
     <NumberField label={t("protocolDesign.seed")} value={seed} maximum={Number.MAX_SAFE_INTEGER} onChange={setSeed} />
-    {planMode === "performance" ? <PerformanceProfileFields editor={performanceEditor} pending={pending} /> : null}
-    {planMode === "protocol" ? <>
-      <FieldDescription>{t("protocolDesign.runBindingHint")}</FieldDescription>
-      <PlanEntryTargetField target={target} targets={targets} onTargetChange={setTarget} onAdd={() => {
-        const [kind, id] = target.split(":")
-        setEntries(current => [...current, { draftKey: crypto.randomUUID(), target_kind: kind as "case" | "suite", target_id: id,
-          warmup_count: 0, settings: {}, parameters: {}, parametersJSON: "{}", sla_thresholds: {}, slaJSON: "{}", load_mode: "single", concurrency: 1,
-          request_count: 1, rate_per_second: 1, duration_ms: 0, request_timeout_ms: 60000 }])
-      }} />
-    </> : null}
-    {planMode === "protocol" ? <div className="divide-y">
-      {entries.map((entry, index) => <section key={entry.draftKey} className="space-y-3 py-3">
-        <header className="flex min-w-0 items-center gap-2"><h3 className="min-w-0 flex-1 truncate text-xs font-semibold">{index + 1}. {targets.find(([id]) => id === `${entry.target_kind}:${entry.target_id}`)?.[1] ?? entry.target_id}</h3>
+    <FieldDescription>{t("protocolDesign.runBindingHint")}</FieldDescription>
+    <Button type="button" variant="outline" onClick={() => { setEntries(current => [...current, planEntryDraft()]); setExpanded(entries.length) }}><PlusIcon />{t("plans.addItem")}</Button>
+    <div className="space-y-3">
+      {entries.map((entry, index) => <section key={entry.draftKey} className="space-y-3 py-2">
+        <header className="flex min-w-0 items-center gap-2">
+          <Button type="button" variant="ghost" className="h-auto min-w-0 flex-1 justify-start whitespace-normal text-left" aria-expanded={expanded === index} onClick={() => setExpanded(expanded === index ? -1 : index)}>
+            {index + 1}. {entry.name || t("plans.unnamedItem")} · {t(entry.target_kind === "performance" ? "plans.performancePlan" : "plans.protocolPlan")}
+          </Button>
           <Button type="button" variant="ghost" size="icon-xs" disabled={index === 0} aria-label={t("protocolDesign.moveUp")} onClick={() => move(index, -1)}><ArrowUpIcon /></Button>
           <Button type="button" variant="ghost" size="icon-xs" disabled={index === entries.length - 1} aria-label={t("protocolDesign.moveDown")} onClick={() => move(index, 1)}><ArrowDownIcon /></Button>
-          <Button type="button" variant="ghost" size="icon-xs" aria-label={t("protocolDesign.remove")} onClick={() => setEntries(current => current.filter((_, i) => i !== index))}><Trash2Icon /></Button>
+          <Button type="button" variant="ghost" size="icon-xs" aria-label={t("plans.copyItem")} onClick={() => { const copied = { ...structuredClone(entry), draftKey: crypto.randomUUID(), fieldErrors: {} }; delete copied.entry_id; setEntries(current => [...current.slice(0,index+1),copied,...current.slice(index+1)]); setExpanded(index+1) }} title={t("plans.copyItem")}><CopyIcon /></Button>
+          <Button type="button" variant="ghost" size="icon-xs" aria-label={t("protocolDesign.remove")} onClick={() => { setEntries(current => current.filter((_, i) => i !== index)); setExpanded(Math.max(0,index-1)) }}><Trash2Icon /></Button>
         </header>
-        <SelectField label={`${index + 1}. ${t("protocolDesign.strategy")}`} value={entry.load_mode} options={[["single",t("plans.loadSingle")],["fixed_concurrency",t("plans.loadFixed")],["open_loop",t("plans.loadOpen")]]} onChange={value => update(index, { load_mode: value as CatalogLoadMode })} />
-        <div className="grid min-w-0 grid-cols-2 gap-3">
+        {expanded === index ? <>
+          <TextField label={t("plans.itemName")} value={entry.name ?? ""} onChange={value => update(index,{name:value})} />
+          <div className="grid min-w-0 grid-cols-2 gap-3">
+            <SelectField label={t("plans.category")} value={entry.target_kind === "performance" ? "performance" : "protocol"} options={[["protocol",t("plans.protocolPlan")], ...(isQuickPerformanceProtocol(protocol) ? [["performance",t("plans.performancePlan")]] as [string,string][] : [])]} onChange={value => update(index, value === "performance" ? { functionalKind: entry.target_kind as "case" | "suite", target_kind: "performance" } : { target_kind: entry.functionalKind ?? "suite" })} />
+            <SelectField label={t("plans.onFailure")} value={entry.on_failure ?? "continue"} options={[["continue",t("plans.continue")],["stop",t("plans.stop")]]} onChange={value => update(index,{on_failure:value as "continue" | "stop"})} />
+          </div>
+          {entry.target_kind === "performance" ? <PerformanceProfileFields pending={pending} editor={{
+            form:entry.performanceForm, fieldErrors:entry.fieldErrors,
+            setForm:action => update(index,{performanceForm: typeof action === "function" ? action(entry.performanceForm) : action}),
+            setFieldErrors:action => update(index,{fieldErrors: typeof action === "function" ? action(entry.fieldErrors) : action}),
+            validate:() => performanceProfileFromForm(entry.performanceForm),
+          }} /> : <>
+            <SelectField label={t("protocolDesign.target")} value={entry.target_id ? `${entry.target_kind}:${entry.target_id}` : ""} options={targets} onChange={value => {
+              const [kind,id] = value.split(":"); update(index,{target_kind:kind as "case" | "suite",target_id:id})
+            }} />
+        <div className="@container min-w-0 space-y-3">
+        <div className="grid min-w-0 grid-cols-2 gap-3 @lg:grid-cols-4">
+          <SelectField label={`${index + 1}. ${t("protocolDesign.strategy")}`} value={entry.load_mode} options={[["single",t("plans.loadSingle")],["fixed_concurrency",t("plans.loadFixed")],["open_loop",t("plans.loadOpen")]]} onChange={value => update(index, { load_mode: value as CatalogLoadMode })} />
           <NumberField label={`${index + 1}. ${t("protocolDesign.count")}`} value={entry.request_count} onChange={value => update(index, { request_count: value })} />
           <NumberField label={`${index + 1}. ${t("protocolDesign.timeout")}`} value={entry.request_timeout_ms} minimum={1} onChange={value => update(index, { request_timeout_ms: value })} />
+          <NumberField label={`${index + 1}. ${t("protocolDesign.warmup")}`} value={entry.warmup_count} onChange={value => update(index, { warmup_count: value })} />
+        </div>
+        {entry.load_mode !== "single" || protocolPresentation(protocol).runSettings.length > 0 ? <div className="grid min-w-0 grid-cols-2 gap-3 @lg:grid-cols-4">
           {entry.load_mode !== "single" ? <><NumberField label={`${index + 1}. ${t("protocolDesign.concurrency")}`} value={entry.concurrency} minimum={1} onChange={value => update(index, { concurrency: value })} /><NumberField label={`${index + 1}. ${t("protocolDesign.duration")}`} value={entry.duration_ms} onChange={value => update(index, { duration_ms: value })} /></> : null}
           {entry.load_mode === "open_loop" ? <NumberField label={`${index + 1}. ${t("protocolDesign.rate")}`} value={entry.rate_per_second} minimum={0} onChange={value => update(index, { rate_per_second: value })} /> : null}
-        </div>
-        <div className="grid min-w-0 grid-cols-2 gap-3">
-          <NumberField label={`${index + 1}. ${t("protocolDesign.warmup")}`} value={entry.warmup_count} onChange={value => update(index, { warmup_count: value })} />
           {protocolPresentation(protocol).runSettings.map(key => <OptionalNumberField key={key} label={`${index + 1}. ${t(`protocolDesign.${key}`)}`} value={entry.settings[key]} onChange={value => { const settings = { ...entry.settings }; if (value === undefined) delete settings[key]; else settings[key] = value; update(index, { settings }) }} />)}
+        </div> : null}
         </div>
         <TextAreaField label={`${index + 1}. ${t("protocolDesign.parameters")}`} value={entry.parametersJSON} onChange={value => update(index, { parametersJSON: value })} description={t("protocolDesign.parametersHint")} />
         <TextAreaField label={`${index + 1}. ${t("protocolDesign.thresholds")}`} value={entry.slaJSON} onChange={value => update(index, { slaJSON: value })} />
+          </>}
+        </> : null}
       </section>)}
-    </div> : null}
+    </div>
   </FormShell>
 }
 
-function PlanEntryTargetField({ target, targets, onTargetChange, onAdd }: {
-  target: string
-  targets: readonly (readonly [string, string])[]
-  onTargetChange: (value: string) => void
-  onAdd: () => void
-}) {
-  const { t } = useTranslation("catalog")
-  const fieldKey = "planEntries"
-  const label = t("protocolDesign.target")
-  const validation = useCatalogValidation(fieldKey, [], label)
-  const id = catalogFieldID(fieldKey)
-  const errorID = `${id}-error`
-  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={fieldKey} data-field-name={label}>
-    <FieldLabel htmlFor={id}>{label}</FieldLabel>
-    <FieldContent>
-      <div className="flex min-w-0 items-center gap-2">
-        <SearchableSelect value={target} onValueChange={onTargetChange} id={id} aria-label={label}
-          aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined}
-          className="min-w-0 flex-1" options={targets.map(([value, optionLabel]) => ({ value, label: optionLabel }))} />
-        <Button type="button" variant="outline" disabled={!target} onClick={() => { validation.clear(); onAdd() }}>
-          <PlusIcon />{t("protocolDesign.add")}
-        </Button>
-      </div>
-      {validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}
-    </FieldContent>
-  </Field>
-}
-
-type CatalogValidationContextValue = {
-  error: FormValidationError | null
-  clear: (...fields: string[]) => void
-}
-
+type CatalogValidationContextValue = { error: FormValidationError | null; clear: (...fields: string[]) => void }
 const CatalogValidationContext = createContext<CatalogValidationContextValue | null>(null)
 
 function FormShell({ children, label, pending, formTitle, onSubmit }: { children: ReactNode; label: string; pending: boolean; formTitle: string; onSubmit: () => Promise<void> }) {

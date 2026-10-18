@@ -100,25 +100,27 @@ func (status EntryReportStatus) Validate() error {
 }
 
 type EntryReport struct {
-	WarmupCount   uint32                     `json:"warmup_count"`
-	Settings      testspec.RunSettings       `json:"settings"`
-	EntryID       string                     `json:"entry_id"`
-	TargetKind    PlanTargetKind             `json:"target_kind"`
-	TargetID      string                     `json:"target_id"`
-	Name          string                     `json:"name"`
-	Key           string                     `json:"key"`
-	Protocol      Protocol                   `json:"protocol"`
-	Parameters    map[string]json.RawMessage `json:"parameters"`
-	Load          LoadProfile                `json:"load"`
-	Seed          uint64                     `json:"seed"`
-	Status        EntryReportStatus          `json:"status"`
-	Conclusion    ReportConclusion           `json:"conclusion"`
-	Verification  VerificationSummary        `json:"verification"`
-	SLA           map[string]MetricValue     `json:"sla"`
-	Metrics       map[string]MetricValue     `json:"metrics"`
-	Timeline      []json.RawMessage          `json:"timeline"`
-	Distributions []json.RawMessage          `json:"distributions"`
-	CaseResults   []Result                   `json:"case_results"`
+	PerformanceContext map[string]string          `json:"performance_context,omitempty"`
+	Performance        json.RawMessage            `json:"performance,omitempty"`
+	WarmupCount        uint32                     `json:"warmup_count"`
+	Settings           testspec.RunSettings       `json:"settings"`
+	EntryID            string                     `json:"entry_id"`
+	TargetKind         PlanTargetKind             `json:"target_kind"`
+	TargetID           string                     `json:"target_id"`
+	Name               string                     `json:"name"`
+	Key                string                     `json:"key"`
+	Protocol           Protocol                   `json:"protocol"`
+	Parameters         map[string]json.RawMessage `json:"parameters"`
+	Load               LoadProfile                `json:"load"`
+	Seed               uint64                     `json:"seed"`
+	Status             EntryReportStatus          `json:"status"`
+	Conclusion         ReportConclusion           `json:"conclusion"`
+	Verification       VerificationSummary        `json:"verification"`
+	SLA                map[string]MetricValue     `json:"sla"`
+	Metrics            map[string]MetricValue     `json:"metrics"`
+	Timeline           []json.RawMessage          `json:"timeline"`
+	Distributions      []json.RawMessage          `json:"distributions"`
+	CaseResults        []Result                   `json:"case_results"`
 }
 
 func (attachment ReportAttachment) Validate(expectedRunID ...string) error {
@@ -326,7 +328,7 @@ func (report Report) validateEntryReports(topLevelResultIDs map[string]struct{})
 		if executionStopped && suiteReport.Status != EntryReportNotStarted {
 			return fmt.Errorf("suite report %d executes after cancellation stopped the run", index)
 		}
-		if suiteReport.Status == EntryReportCancelled || suiteReport.Status == EntryReportNotStarted {
+		if suiteReport.Status == EntryReportCancelled || suiteReport.Status == EntryReportNotStarted || (snapshot.OnFailure == "stop" && !suiteReport.Conclusion.Passed && suiteReport.Conclusion.Verdict != "not_applicable") {
 			executionStopped = true
 		}
 		if report.Conclusion.Passed && !suiteReport.Conclusion.Passed {
@@ -354,6 +356,24 @@ func validateEntryReport(report EntryReport, snapshot RunEntrySnapshot, runID st
 	if !IsUUID(report.EntryID) || !IsUUID(report.TargetID) ||
 		strings.TrimSpace(report.Key) == "" || strings.TrimSpace(report.Name) == "" {
 		return errors.New("suite report requires its pinned suite identity")
+	}
+	if len(report.Performance) > 0 {
+		if snapshot.Performance == nil || report.Status == EntryReportNotStarted || len(report.CaseResults) > 0 || len(report.PerformanceContext) == 0 {
+			return errors.New("unexpected performance item report")
+		}
+		var performance struct {
+			ReportID string                 `json:"report_id"`
+			Protocol Protocol               `json:"protocol"`
+			Profile  PerformancePlanProfile `json:"profile"`
+		}
+		if err := json.Unmarshal(report.Performance, &performance); err != nil {
+			return err
+		}
+		if performance.ReportID != snapshot.EntryID || performance.Protocol != report.Protocol || performance.Profile != *snapshot.Performance {
+			return errors.New("performance report differs from frozen item")
+		}
+	} else if snapshot.Performance != nil && report.Status == EntryReportCompleted {
+		return errors.New("completed performance item requires its report")
 	}
 	if err := report.Status.Validate(); err != nil {
 		return err

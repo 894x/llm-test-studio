@@ -902,9 +902,9 @@ describe("desktop run workspace", () => {
     await user.click(screen.getByRole("button", { name: "新增计划" }))
     const dialog = screen.getByRole("dialog", { name: "新增计划" })
     await user.type(within(dialog).getByLabelText("计划"), "Protocol plan")
+    await user.click(within(dialog).getByRole("button", { name: "添加计划项" }))
     await user.click(within(dialog).getByRole("combobox", { name: "用例或套件" }))
     await user.click(screen.getByRole("option", { name: "用例 · 基础对话" }))
-    await user.click(within(dialog).getByRole("button", { name: "添加执行项" }))
     await user.click(within(dialog).getByRole("button", { name: "保存计划" }))
     await waitFor(() => expect(client.createPlan).toHaveBeenCalled())
     const command = vi.mocked(client.createPlan).mock.calls[0][0]

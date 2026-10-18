@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react"
 import { NewRunSheet } from "@/features/runs/run-workspace"
 import type { StartRunTargetCommand } from "@/features/runs/data"
-import { PlanPerformanceRunSheet } from "@/features/quick-test/quick-performance-sheet"
 import { PerformanceProfileSummary } from "@/features/quick-test/performance-profile-summary"
 import type { DesktopClient } from "@/app/desktop-client"
 import { useTranslation } from "react-i18next"
@@ -774,10 +773,10 @@ export function PlansWorkspace({
                     <div className="mt-0.5 text-[10px] text-muted-foreground">r{plan.revision} · {PROTOCOL_LABELS[plan.protocol]}</div>
                   </TableCell>
                   <TableCell className="py-1 text-[11px] text-muted-foreground">
-                    {plan.performance ? t("plans.performancePlan") : t("protocolDesign.entryCount", { entries: plan.entry_count, cases: plan.case_count })}
+                    {t("protocolDesign.entryCount", { entries: plan.entry_count, cases: plan.case_count })}
                   </TableCell>
                   <TableCell className="py-1 text-xs">{plan.performance ? <PerformanceProfileSummary profile={plan.performance} compact /> : plan.entries.map((suite, index) => `${index + 1}. ${suite.target_name}`).join(" → ")}</TableCell>
-                  <TableCell className="py-1 text-[11px] text-muted-foreground">{t(plan.performance ? plan.performance.load_mode === "open_loop" ? "plans.loadOpen" : "plans.loadFixed" : "plans.sequentialContinue")}</TableCell>
+                  <TableCell className="py-1 text-[11px] text-muted-foreground">{t("plans.sequentialItems")}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -788,57 +787,26 @@ export function PlansWorkspace({
   )
 }
 
-function PlanInspector({
-  plan,
-  catalog,
-  commandPending,
-  onStartPlan,
-  executionClient,
-}: {
-  plan: CatalogPlan
-  catalog: CatalogSnapshot
-  commandPending: boolean
-  onStartPlan: (command: StartRunTargetCommand) => Promise<void>
-  executionClient?: DesktopClient
+function PlanInspector({ plan, catalog, commandPending, onStartPlan }: {
+  plan: CatalogPlan; catalog: CatalogSnapshot; commandPending: boolean
+  onStartPlan: (command: StartRunTargetCommand) => Promise<void>; executionClient?: DesktopClient
 }) {
   const { t } = useTranslation("catalog")
-  return (
-    <>
-      <InspectorHeader title={plan.name} subtitle={plan.id} />
-      <Separator />
-      <dl className="space-y-1 px-4 py-2">
-        <InspectorRow label={t("plans.fixedVersion")} value={`r${plan.revision}`} />
-        <InspectorRow label={t("plans.objects")} value={plan.performance ? t("plans.performancePlan") : t("protocolDesign.entryCount", { entries: plan.entry_count, cases: plan.case_count })} />
-        <InspectorRow label={t("plans.executionPolicy")} value={t(plan.performance ? plan.performance.load_mode === "open_loop" ? "plans.loadOpen" : "plans.loadFixed" : "plans.sequentialContinue")} />
-      </dl>
-      <div className="border-t px-4 py-2">
-        <div className="text-[11px] font-medium text-muted-foreground">{t(plan.performance ? "plans.parameters" : "plans.suiteOrder")}</div>
-        {plan.performance ? (
-          <div className="mt-1 text-xs text-muted-foreground">
-            <PerformanceProfileSummary profile={plan.performance} />
-          </div>
-        ) : (
-          <ol className="mt-1 space-y-2">
-            {plan.entries.map((suite, index) => {
-              const loadLabel = t(`plans.load${suite.load_mode === "single" ? "Single" : suite.load_mode === "fixed_concurrency" ? "Fixed" : "Open"}`)
-              const sendTarget = t(suite.request_count > 0 ? "common.requestCount" : "common.seconds", { count: suite.request_count > 0 ? suite.request_count : Math.round(suite.duration_ms / 1000) })
-              return <li key={suite.entry_id} className="min-w-0">
-                <div className="text-xs font-medium [overflow-wrap:anywhere]">{index + 1}. {suite.target_name}</div>
-                <div className="text-[10px] text-muted-foreground [overflow-wrap:anywhere]">{suite.target_key} · {suite.target_kind} · {loadLabel} · {t("plans.concurrency", { count: suite.concurrency })} · {sendTarget}</div>
-              </li>
-            })}
-          </ol>
-        )}
-      </div>
-      <div className="border-t px-4 py-3">
-        {plan.performance && executionClient ? (
-          <PlanPerformanceRunSheet planID={plan.id} catalog={catalog} client={executionClient} triggerLabel={t("plans.run")} />
-        ) : plan.performance ? null : (
-          <NewRunSheet plans={[{ id: plan.id, name: plan.name, description: plan.protocol, caseCount: plan.case_count, runCount: 0 }]} catalog={catalog} commandPending={commandPending} triggerLabel={t("plans.run")} onStartRun={onStartPlan} />
-        )}
-      </div>
-    </>
-  )
+  return <>
+    <InspectorHeader title={plan.name} subtitle={plan.id} />
+    <dl className="space-y-1 px-4 py-2">
+      <InspectorRow label={t("plans.fixedVersion")} value={`r${plan.revision}`} />
+      <InspectorRow label={t("plans.objects")} value={t("protocolDesign.entryCount", {entries:plan.entry_count,cases:plan.case_count})} />
+    </dl>
+    <ol className="space-y-3 px-4 py-2">
+      {plan.entries.map((entry,index) => <li key={entry.entry_id} className="min-w-0 space-y-1">
+        <div className="text-xs font-medium [overflow-wrap:anywhere]">{index+1}. {entry.name || entry.target_name}</div>
+        <div className="text-[11px] text-muted-foreground">{t(entry.performance ? "plans.performancePlan" : "plans.protocolPlan")} · {t(entry.on_failure === "stop" ? "plans.stop" : "plans.continue")}</div>
+        {entry.performance ? <PerformanceProfileSummary profile={entry.performance} compact /> : <div className="text-[11px] text-muted-foreground">{entry.target_name}</div>}
+      </li>)}
+    </ol>
+    <div className="px-4 py-3"><NewRunSheet plans={[{id:plan.id,name:plan.name,description:plan.protocol,caseCount:plan.case_count,runCount:0}]} catalog={catalog} commandPending={commandPending} triggerLabel={t("plans.run")} onStartRun={onStartPlan} /></div>
+  </>
 }
 
 function StateBadge({ enabled }: { enabled: boolean }) {

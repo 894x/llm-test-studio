@@ -57,7 +57,8 @@ export interface ReportCaseDetail {
   summary_result?: ReportResult; request_results: ReportResult[]
 }
 export interface ReportEntryDetail {
-  entry_id: string; target_kind: "case" | "suite"; target_id: string
+  performance?: QuickPerformanceReport
+  entry_id: string; target_kind: "case" | "suite" | "performance"; target_id: string
   name: string; key: string; protocol: CatalogProtocol; seed: number
   warmup_count: number; settings: ProtocolRunSettings
   parameters: Record<string, CatalogPlanParameterValue>
@@ -168,7 +169,7 @@ export function parseReportDetail(value: unknown): ReportDetail {
 }
 function parseEntry(value: unknown): ReportEntryDetail {
   if (!isRecord(value) || !isUUID(value.entry_id) || !isUUID(value.target_id) ||
-    (value.target_kind !== "case" && value.target_kind !== "suite") || !isNonBlank(value.name) ||
+    (value.target_kind !== "case" && value.target_kind !== "suite" && value.target_kind !== "performance") || !isNonBlank(value.name) ||
     !isNonBlank(value.key) || !isProtocol(value.protocol) || !isNonNegativeInteger(value.seed) ||
     !isNonNegativeInteger(value.warmup_count) || !isProtocolRunSettings(value.settings) ||
     !isRecord(value.parameters) || !Object.values(value.parameters).every(isJSONValue) || !isRecord(value.load) ||
@@ -180,7 +181,7 @@ function parseEntry(value: unknown): ReportEntryDetail {
     !isRecord(value.metrics) || !Array.isArray(value.cases)) throw invalidReport()
   const cases = value.cases.map(parseCase)
   if (new Set(cases.map(item => item.case_id)).size !== cases.length) throw invalidReport()
-  return { entry_id: value.entry_id, target_kind: value.target_kind, target_id: value.target_id,
+  return { ...(value.performance === undefined ? {} : {performance:parseQuickPerformanceReport(value.performance)}), entry_id: value.entry_id, target_kind: value.target_kind, target_id: value.target_id,
     name: value.name, key: value.key, protocol: value.protocol, seed: value.seed,
     warmup_count: value.warmup_count, settings: { ...value.settings },
     parameters: structuredClone(value.parameters) as ReportEntryDetail["parameters"],

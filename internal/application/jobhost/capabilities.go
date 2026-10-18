@@ -16,6 +16,7 @@ func CoreCapabilities() jobcontract.RunnerCapabilities {
 		JobKinds:  []jobcontract.Kind{jobcontract.KindRun, jobcontract.KindPerformance, jobcontract.KindComparison},
 		Protocols: protocolIDs,
 		Features: []string{
+			jobcontract.FeatureMixedPlanItems,
 			jobcontract.FeatureExecutionOrigin, jobcontract.FeaturePerformanceArchives,
 			"warmup", "ramp", "capacity", "open_loop",
 			"time_slices", "normal_workload", "random_input",

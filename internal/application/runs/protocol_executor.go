@@ -25,6 +25,9 @@ func NewProtocolExecutor(transport http.RoundTripper) *ProtocolExecutor {
 }
 
 func (executor *ProtocolExecutor) Execute(ctx context.Context, request ExecutionRequest, emit func(ResultDraft) error) error {
+	if request.Entry.Performance != nil {
+		return executor.executePerformance(ctx, request, emit)
+	}
 	started := time.Now()
 	if request.Entry.WarmupCount > 0 {
 		warmup := request

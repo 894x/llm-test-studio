@@ -20,9 +20,16 @@ import type { CatalogPlan } from "./data"
 import { parseQuickPerformanceProfile } from "@/features/quick-test/data"
 
 export const FIXTURE_PERFORMANCE_PLANS: CatalogPlan[] = [
-plan0, plan1, plan2, plan3, plan4, plan5, plan6, plan7, plan8, plan9, plan10, plan11, plan12, plan13, plan14, plan15, plan16, plan17].map(document => ({
-  id: document.id, revision: document.revision, name: document.name,
-  protocol: document.protocol as CatalogPlan["protocol"], seed: document.seed,
-  builtin: true, entry_count: 0, case_count: 0, entries: [],
-  performance: parseQuickPerformanceProfile(document.performance),
-}))
+plan0, plan1, plan2, plan3, plan4, plan5, plan6, plan7, plan8, plan9, plan10, plan11, plan12, plan13, plan14, plan15, plan16, plan17].map(document => {
+  const performance = parseQuickPerformanceProfile(document.performance)
+  return {
+    id: document.id, revision: document.revision, name: document.name,
+    protocol: document.protocol as CatalogPlan["protocol"], seed: document.seed,
+    builtin: true, entry_count: 1, case_count: 0, performance,
+    entries: [{ entry_id: document.id, target_id: document.id, target_kind: "performance", target_key: "performance",
+      target_name: document.name, name: document.name, on_failure: "continue", case_count: 0, performance,
+      parameters: {}, settings: {}, warmup_count: 0, sla_thresholds: {}, load_mode: performance.load_mode ?? "fixed_concurrency",
+      concurrency: Math.max(1, performance.concurrency), request_count: performance.request_count,
+      duration_ms: performance.duration_ms ?? 0, rate_per_second: performance.rate_per_second ?? 0, request_timeout_ms: performance.timeout_ms }],
+  }
+})

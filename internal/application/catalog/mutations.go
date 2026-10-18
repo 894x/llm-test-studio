@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -332,7 +333,10 @@ func (service *Service) CreatePlan(ctx context.Context, command CreatePlanComman
 		return MutationResult{}, err
 	}
 	entries := []domain.PlanEntry{}
-	if command.Performance == nil {
+	if command.Performance != nil {
+		command.Entries = []PlanEntryInput{{Name: command.Name, TargetKind: domain.PlanTargetPerformance, Performance: command.Performance}}
+	}
+	{
 		entries, err = service.resolvePlanEntries(ctx, meta.ID, meta.Revision, nil, command.Entries)
 		if err != nil {
 			return MutationResult{}, err
@@ -374,7 +378,14 @@ func (service *Service) UpdatePlan(ctx context.Context, command UpdatePlanComman
 		return MutationResult{}, err
 	}
 	entries := []domain.PlanEntry{}
-	if command.Performance == nil {
+	if command.Performance != nil {
+		if len(current.Entries) != 1 || current.Entries[0].Performance == nil {
+			return MutationResult{}, ErrInvalid
+		}
+		command.Entries = []PlanEntryInput{{EntryID: current.Entries[0].EntryID, Name: command.Name,
+			TargetKind: domain.PlanTargetPerformance, Performance: command.Performance}}
+	}
+	{
 		existingEntries := make(map[string]struct{}, len(current.Entries))
 		for _, entry := range current.Entries {
 			existingEntries[entry.EntryID] = struct{}{}
@@ -579,6 +590,7 @@ func (service *Service) resolvePlanEntries(
 			parameters = map[string]json.RawMessage{}
 		}
 		entry := domain.PlanEntry{
+			Name: input.Name, OnFailure: input.OnFailure, Performance: clonePerformancePlanProfile(input.Performance),
 			EntryID: entryID, TargetKind: input.TargetKind, TargetID: input.TargetID,
 			Parameters: parameters, WarmupCount: input.WarmupCount, Settings: input.Settings,
 			Load: domain.LoadProfile{
@@ -586,6 +598,16 @@ func (service *Service) resolvePlanEntries(
 				RatePerSecond: input.RatePerSecond, DurationMS: input.DurationMS, RequestTimeoutMS: input.RequestTimeoutMS,
 			},
 			SLA: domain.SLAProfile{Thresholds: cloneThresholds(input.SLAThresholds)},
+		}
+		if entry.TargetKind == domain.PlanTargetPerformance {
+			entry.TargetID = entryID
+			if entry.Performance != nil {
+				profile := entry.Performance
+				if err := quicktest.ValidatePlanProfile(*profile); err != nil {
+					return nil, ErrInvalid
+				}
+				entry.Load = profile.LoadProfile()
+			}
 		}
 		if entry.Validate() != nil {
 			return nil, ErrInvalid
@@ -689,14 +711,14 @@ func cloneRawMessages(values map[string]json.RawMessage) map[string]json.RawMess
 func planFromCreate(meta domain.EntityMeta, command CreatePlanCommand, entries []domain.PlanEntry) domain.Plan {
 	return domain.Plan{
 		EntityMeta: meta, Name: command.Name, Protocol: command.Protocol, Seed: command.Seed,
-		Entries: entries, Performance: clonePerformancePlanProfile(command.Performance),
+		Entries: entries,
 	}
 }
 
 func planFromUpdate(meta domain.EntityMeta, command UpdatePlanCommand, entries []domain.PlanEntry) domain.Plan {
 	return domain.Plan{
 		EntityMeta: meta, Name: command.Name, Protocol: command.Protocol, Seed: command.Seed,
-		Entries: entries, Performance: clonePerformancePlanProfile(command.Performance),
+		Entries: entries,
 	}
 }
 

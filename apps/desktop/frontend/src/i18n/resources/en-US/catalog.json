@@ -257,7 +257,17 @@
     "builtin": "Built-in",
     "saveAs": "Save as plan",
     "parameters": "Performance parameters",
-    "configuration": "Configuration / entry order"
+    "configuration": "Configuration / entry order",
+    "itemName": "Item name",
+    "addItem": "Add plan item",
+    "unnamedItem": "Unnamed item",
+    "copyItem": "Duplicate item",
+    "onFailure": "On failure",
+    "continue": "Continue",
+    "stop": "Stop remaining items",
+    "itemNameRequired": "Enter a plan item name.",
+    "performanceProtocolRequired": "Performance items require OpenAI Chat, OpenAI Responses, or Anthropic Messages.",
+    "sequentialItems": "Run in item order with each failure policy"
   },
   "protocolDesign": {
     "inputs": "Input definitions (JSON)",

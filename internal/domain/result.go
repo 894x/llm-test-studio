@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -84,6 +85,7 @@ func (kind FailureKind) Validate() error {
 }
 
 type Result struct {
+	Performance json.RawMessage `json:"performance,omitempty"`
 	EntityMeta
 	RunID           string                `json:"run_id"`
 	EntryID         string                `json:"entry_id,omitempty"`
@@ -118,6 +120,14 @@ func (status EntryExecutionStatus) Validate() error {
 }
 
 func (result Result) Validate() error {
+	if len(result.Performance) != 0 {
+		if result.EntryStatus != "" || result.CaseID != "" || result.EntryID == "" || result.RequestID == "" {
+			return errors.New("performance result requires entry and request ownership")
+		}
+		if err := validateJSONObject(result.Performance); err != nil {
+			return err
+		}
+	}
 	if err := result.EntityMeta.Validate(); err != nil {
 		return fmt.Errorf("invalid result metadata: %w", err)
 	}
@@ -230,7 +240,7 @@ type VerificationSummary struct {
 func SummarizeVerification(results []Result) VerificationSummary {
 	summary := VerificationSummary{Status: testspec.VerdictNotApplicable}
 	for _, result := range results {
-		if result.EntryStatus != "" || result.Dimensions["phase"] == "warmup" {
+		if result.EntryStatus != "" || result.Dimensions["phase"] == "warmup" || result.Dimensions["phase"] == "checkpoint" {
 			continue
 		}
 		switch result.Verification.Status {

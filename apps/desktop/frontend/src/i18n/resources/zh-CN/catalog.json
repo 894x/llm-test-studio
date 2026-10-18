@@ -257,7 +257,17 @@
     "builtin": "内置",
     "saveAs": "另存为计划",
     "parameters": "性能参数",
-    "configuration": "配置 / 执行项顺序"
+    "configuration": "配置 / 执行项顺序",
+    "itemName": "计划项名称",
+    "addItem": "添加计划项",
+    "unnamedItem": "未命名计划项",
+    "copyItem": "复制计划项",
+    "onFailure": "失败后",
+    "continue": "继续后续项",
+    "stop": "停止后续项",
+    "itemNameRequired": "请输入计划项名称。",
+    "performanceProtocolRequired": "性能测试仅支持 OpenAI Chat、OpenAI Responses 和 Anthropic Messages 协议。",
+    "sequentialItems": "按计划项顺序与失败策略执行"
   },
   "protocolDesign": {
     "inputs": "输入定义（JSON）",

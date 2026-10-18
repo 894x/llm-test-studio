@@ -98,7 +98,7 @@ func completeTaskCapabilities() RunnerCapabilities {
 	return RunnerCapabilities{
 		JobKinds: []Kind{KindRun, KindPerformance, KindComparison}, Protocols: []string{"openai-chat"},
 		Features: []string{
-			FeatureExecutionOrigin, "warmup", "ramp", "capacity", "open_loop", "time_slices",
+			FeatureExecutionOrigin, FeatureMixedPlanItems, "warmup", "ramp", "capacity", "open_loop", "time_slices",
 			"normal_workload", "random_input", "assets",
 		},
 	}
@@ -137,4 +137,13 @@ func assertTaskCapabilityRejectionUnchanged(t *testing.T, capabilities RunnerCap
 	if !bytes.Equal(before, after) {
 		t.Fatal("checking unsupported task capabilities mutated the input")
 	}
+}
+
+func TestStopPolicyRequiresMixedPlanCapability(t *testing.T) {
+	run := preparedRunFixture(t)
+	run.Snapshot.Entries[0].OnFailure = "stop"
+	run.Snapshot.PlanDocument.Entries[0].OnFailure = "stop"
+	spec := performanceSpec(t)
+	spec.Kind, spec.Spec = KindRun, Payload{Run: &run}
+	assertConfiguredFeatureRequired(t, spec, FeatureMixedPlanItems)
 }

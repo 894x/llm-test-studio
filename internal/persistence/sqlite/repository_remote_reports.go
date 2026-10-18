@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/remoteresults"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
@@ -28,7 +29,7 @@ func (repository *Repository) ImportRemoteRunReport(ctx context.Context, input r
 		return err
 	}
 	var report domain.Report
-	if err := decodeCanonical(input.Document, &report, func() error { return report.Validate() }); err != nil {
+	if err := decodeCanonical(input.Document, &report, func() error { return quicktest.ValidatePlanReport(report) }); err != nil {
 		return fmt.Errorf("%w: invalid current run report", remoteresults.ErrInvalid)
 	}
 	if err := checkReportProjectionItemBudgets(report); err != nil {

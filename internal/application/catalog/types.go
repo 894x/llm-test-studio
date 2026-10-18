@@ -90,19 +90,22 @@ type PlanSummary struct {
 }
 
 type PlanEntryInput struct {
-	WarmupCount      uint32                     `json:"warmup_count"`
-	Settings         testspec.RunSettings       `json:"settings"`
-	EntryID          string                     `json:"entry_id,omitempty"`
-	TargetKind       domain.PlanTargetKind      `json:"target_kind"`
-	TargetID         string                     `json:"target_id"`
-	LoadMode         domain.LoadMode            `json:"load_mode"`
-	Concurrency      uint32                     `json:"concurrency"`
-	RequestCount     uint64                     `json:"request_count"`
-	RatePerSecond    float64                    `json:"rate_per_second"`
-	DurationMS       uint64                     `json:"duration_ms"`
-	RequestTimeoutMS uint64                     `json:"request_timeout_ms"`
-	SLAThresholds    map[string]float64         `json:"sla_thresholds"`
-	Parameters       map[string]json.RawMessage `json:"parameters"`
+	Name             string                         `json:"name,omitempty"`
+	OnFailure        string                         `json:"on_failure,omitempty"`
+	Performance      *domain.PerformancePlanProfile `json:"performance,omitempty"`
+	WarmupCount      uint32                         `json:"warmup_count"`
+	Settings         testspec.RunSettings           `json:"settings"`
+	EntryID          string                         `json:"entry_id,omitempty"`
+	TargetKind       domain.PlanTargetKind          `json:"target_kind"`
+	TargetID         string                         `json:"target_id"`
+	LoadMode         domain.LoadMode                `json:"load_mode"`
+	Concurrency      uint32                         `json:"concurrency"`
+	RequestCount     uint64                         `json:"request_count"`
+	RatePerSecond    float64                        `json:"rate_per_second"`
+	DurationMS       uint64                         `json:"duration_ms"`
+	RequestTimeoutMS uint64                         `json:"request_timeout_ms"`
+	SLAThresholds    map[string]float64             `json:"sla_thresholds"`
+	Parameters       map[string]json.RawMessage     `json:"parameters"`
 }
 
 type PlanEntrySummary struct {

@@ -4,6 +4,7 @@ package plancatalog
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,7 +20,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/fileconfig"
 )
 
-const CurrentFileSchemaVersion = 1
+const CurrentFileSchemaVersion = 2
 
 var (
 	ErrInvalid  = errors.New("plan catalog: invalid input")
@@ -34,8 +35,8 @@ type Document struct {
 	domain.Plan
 }
 
-// authoredDocument enumerates the single current file shape so unknown or misplaced
-// execution fields fail decoding at the catalog boundary.
+// authoredDocument is the explicit v1/v2 boundary envelope. The top-level
+// Performance field is accepted only by the v1 adapter and never written.
 type authoredDocument struct {
 	FileSchemaVersion int `json:"file_schema_version"`
 	domain.EntityMeta
@@ -51,7 +52,7 @@ func (document Document) MarshalJSON() ([]byte, error) {
 		FileSchemaVersion: document.FileSchemaVersion,
 		EntityMeta:        document.EntityMeta,
 		Name:              document.Name,
-		Protocol:          document.Protocol, Seed: document.Seed, Entries: document.Entries, Performance: document.Performance,
+		Protocol:          document.Protocol, Seed: document.Seed, Entries: document.Entries,
 	})
 }
 
@@ -68,11 +69,46 @@ func (document *Document) UnmarshalJSON(raw []byte) error {
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return errors.New("plan document must contain one object")
 	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return err
+	}
+	if decoded.FileSchemaVersion == 1 {
+		var entries []map[string]json.RawMessage
+		if err := json.Unmarshal(fields["entries"], &entries); err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			for _, key := range []string{"name", "on_failure", "performance"} {
+				if _, exists := entry[key]; exists {
+					return fmt.Errorf("version 1 plan entry cannot contain %s", key)
+				}
+			}
+			var kind string
+			if err := json.Unmarshal(entry["target_kind"], &kind); err != nil {
+				return err
+			}
+			if kind != "case" && kind != "suite" {
+				return errors.New("unsupported version 1 plan target")
+			}
+		}
+	} else if _, exists := fields["performance"]; exists {
+		return errors.New("performance belongs to a plan entry")
+	}
+	if decoded.FileSchemaVersion != 1 && decoded.FileSchemaVersion != CurrentFileSchemaVersion {
+		return fmt.Errorf("unsupported plan file schema version %d", decoded.FileSchemaVersion)
+	}
+	if decoded.Performance != nil {
+		if len(decoded.Entries) != 0 {
+			return errors.New("legacy performance plan contains entries")
+		}
+		decoded.Entries = []domain.PlanEntry{legacyPerformanceEntry(decoded.ID, decoded.Name, *decoded.Performance)}
+	}
 	*document = Document{
-		FileSchemaVersion: decoded.FileSchemaVersion,
+		FileSchemaVersion: CurrentFileSchemaVersion,
 		Plan: domain.Plan{
 			EntityMeta: decoded.EntityMeta,
-			Name:       decoded.Name, Protocol: decoded.Protocol, Seed: decoded.Seed, Entries: decoded.Entries, Performance: decoded.Performance,
+			Name:       decoded.Name, Protocol: decoded.Protocol, Seed: decoded.Seed, Entries: decoded.Entries,
 		},
 	}
 	return nil
@@ -380,6 +416,30 @@ func decodeDocument(raw []byte, id string) (Document, error) {
 }
 
 func (service *Service) save(ctx context.Context, document Document) error {
+	// Old files are decoded in memory only. Before an explicit edit replaces a
+	// version 1 document, keep and verify its original bytes outside the catalog.
+	previous, readErr := os.ReadFile(service.path(document.ID))
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return readErr
+	}
+	if readErr == nil {
+		var header struct {
+			Version int `json:"file_schema_version"`
+		}
+		if err := json.Unmarshal(previous, &header); err != nil {
+			return err
+		}
+		if header.Version == 1 {
+			backup := filepath.Join(service.root+".v1-backups", fmt.Sprintf("%s-%x.json", document.ID, sha256.Sum256(previous)))
+			if err := fileconfig.WriteAtomically(ctx, backup, previous); err != nil {
+				return fmt.Errorf("backup legacy plan: %w", err)
+			}
+			verified, err := os.ReadFile(backup)
+			if err != nil || !bytes.Equal(verified, previous) {
+				return errors.New("legacy plan backup verification failed")
+			}
+		}
+	}
 	raw, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode plan: %w", err)
@@ -405,14 +465,14 @@ func clonePlan(plan domain.Plan) domain.Plan {
 		entries := make([]domain.PlanEntry, len(plan.Entries))
 		for index, entry := range plan.Entries {
 			entries[index] = entry
+			if entry.Performance != nil {
+				profile := *entry.Performance
+				entries[index].Performance = &profile
+			}
 			entries[index].Parameters = cloneRawMessages(entry.Parameters)
 			entries[index].SLA.Thresholds = cloneThresholds(entry.SLA.Thresholds)
 		}
 		plan.Entries = entries
-	}
-	if plan.Performance != nil {
-		profile := *plan.Performance
-		plan.Performance = &profile
 	}
 	return plan
 }

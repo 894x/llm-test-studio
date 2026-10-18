@@ -26,6 +26,8 @@ type RunSnapshot struct {
 }
 
 type RunEntrySnapshot struct {
+	OnFailure       string                                `json:"on_failure,omitempty"`
+	Performance     *PerformancePlanProfile               `json:"performance,omitempty"`
 	WarmupCount     uint32                                `json:"warmup_count"`
 	Settings        testspec.RunSettings                  `json:"settings"`
 	EntryID         string                                `json:"entry_id"`
@@ -98,6 +100,9 @@ func (snapshot RunSnapshot) Validate() error {
 			return fmt.Errorf("invalid run entry %d: %w", index, err)
 		}
 		source := plan.Entries[index]
+		if (source.Name != "" && source.Name != entry.Name) || source.OnFailure != entry.OnFailure || !reflect.DeepEqual(source.Performance, entry.Performance) {
+			return errors.New("run entry category or failure policy differs from frozen plan")
+		}
 		identityMatches := source.EntryID == entry.EntryID && source.TargetKind == entry.TargetKind && source.TargetID == entry.TargetID
 		profilesMatch := reflect.DeepEqual(source.Load, entry.Load) && reflect.DeepEqual(source.SLA, entry.SLA) && source.WarmupCount == entry.WarmupCount && source.Settings == entry.Settings
 		if !identityMatches || !profilesMatch {
@@ -119,6 +124,21 @@ func (snapshot RunSnapshot) Validate() error {
 }
 
 func (entry RunEntrySnapshot) Validate(protocol Protocol) error {
+	if entry.OnFailure != "" && entry.OnFailure != "continue" && entry.OnFailure != "stop" {
+		return errors.New("unsupported entry failure policy")
+	}
+	if entry.TargetKind == PlanTargetPerformance {
+		if entry.Performance == nil || entry.Performance.Validate() != nil || entry.TargetID != entry.EntryID || !IsUUID(entry.EntryID) || entry.Name == "" {
+			return errors.New("invalid performance entry")
+		}
+		if entry.Suite != nil || len(entry.Cases) != 0 || len(entry.CaseDefinitions) != 0 || len(entry.CaseInputs) != 0 || len(entry.Parameters) != 0 {
+			return errors.New("performance entry cannot contain cases")
+		}
+		return nil
+	}
+	if entry.Performance != nil {
+		return errors.New("functional entry cannot contain performance configuration")
+	}
 	if !IsUUID(entry.EntryID) || !IsUUID(entry.TargetID) || entry.Name == "" {
 		return errors.New("run entry requires identifiers and name")
 	}
@@ -220,6 +240,10 @@ func (snapshot RunSnapshot) clone() RunSnapshot {
 }
 
 func (entry RunEntrySnapshot) clone() RunEntrySnapshot {
+	if entry.Performance != nil {
+		profile := *entry.Performance
+		entry.Performance = &profile
+	}
 	if entry.Suite != nil {
 		suite := *entry.Suite
 		suite.Cases = append([]CaseRef{}, suite.Cases...)
@@ -241,9 +265,7 @@ func (entry RunEntrySnapshot) clone() RunEntrySnapshot {
 func cloneRunPlan(plan Plan) Plan {
 	entries := make([]PlanEntry, len(plan.Entries))
 	for index, entry := range plan.Entries {
-		entry.Parameters = cloneRawMessageMap(entry.Parameters)
-		entry.SLA = entry.SLA.clone()
-		entries[index] = entry
+		entries[index] = entry.clone()
 	}
 	plan.Entries = entries
 	return plan

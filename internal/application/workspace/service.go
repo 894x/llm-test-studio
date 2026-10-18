@@ -78,10 +78,11 @@ type TargetProjection struct {
 }
 
 type RunEntryProjection struct {
-	EntryID   string             `json:"entry_id"`
-	Name      string             `json:"name"`
-	CaseCount uint64             `json:"case_count"`
-	Load      domain.LoadProfile `json:"load"`
+	Performance bool               `json:"performance,omitempty"`
+	EntryID     string             `json:"entry_id"`
+	Name        string             `json:"name"`
+	CaseCount   uint64             `json:"case_count"`
+	Load        domain.LoadProfile `json:"load"`
 }
 
 // EntryResultProjection counts distinct Cases with persisted results, not requests.
@@ -234,9 +235,6 @@ func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 	}
 	for _, plan := range plans {
-		if plan.Performance != nil {
-			continue
-		}
 		load := summarizeEntryLoads(plan.Entries)
 		caseCount := 0
 		for _, entry := range plan.Entries {
@@ -341,7 +339,7 @@ func (projection RunProjection) Validate() error {
 			return errors.New("invalid run entry identity or label")
 		}
 		entries[entry.EntryID] = true
-		if entry.CaseCount == 0 {
+		if entry.CaseCount == 0 && !entry.Performance {
 			return errors.New("missing run entry cases")
 		}
 		if err := entry.Load.Validate(); err != nil {

@@ -123,6 +123,7 @@ type Detail struct {
 }
 
 type EntryDetail struct {
+	Performance   json.RawMessage               `json:"performance,omitempty"`
 	WarmupCount   uint32                        `json:"warmup_count"`
 	Settings      testspec.RunSettings          `json:"settings"`
 	EntryID       string                        `json:"entry_id"`
@@ -193,7 +194,7 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 	if report.ID != reportID {
 		return Detail{}, classified(ErrInconsistent, errors.New("report catalog returned another report"))
 	}
-	if err := report.Validate(); err != nil {
+	if err := quicktest.ValidatePlanReport(report); err != nil {
 		return Detail{}, classified(ErrInconsistent, errors.New("report catalog returned an invalid report"))
 	}
 	results, err := documents.ListResults(ctx, report.RunID)
@@ -210,7 +211,7 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 			return Detail{}, classified(ErrInconsistent, errors.New("duplicate result id"))
 		}
 		seen[result.ID] = struct{}{}
-		if result.RequestID != "" {
+		if result.RequestID != "" && len(result.Performance) == 0 {
 			requestResults = append(requestResults, result)
 		}
 	}
@@ -242,6 +243,9 @@ func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([
 	groupedRequests := make(map[string][]domain.Result)
 	unassigned := make([]domain.Result, 0)
 	for _, result := range requestResults {
+		if len(result.Performance) != 0 {
+			continue
+		}
 		if result.EntryID == "" || result.CaseID == "" {
 			unassigned = append(unassigned, result)
 			continue
@@ -298,6 +302,7 @@ func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([
 			Timeline:      append([]json.RawMessage{}, suiteReport.Timeline...),
 			Distributions: append([]json.RawMessage{}, suiteReport.Distributions...),
 			Cases:         cases,
+			Performance:   append([]byte(nil), suiteReport.Performance...),
 		})
 	}
 	return suites, unassigned, nil

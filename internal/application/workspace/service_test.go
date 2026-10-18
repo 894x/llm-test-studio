@@ -124,7 +124,7 @@ func TestSnapshotBuildsASecretFreeDesktopProjection(t *testing.T) {
 	}
 }
 
-func TestSnapshotExcludesPerformancePlansFromStandardRunPicker(t *testing.T) {
+func TestSnapshotIncludesPerformancePlansInRunPicker(t *testing.T) {
 	now := time.Date(2026, time.September, 24, 8, 0, 0, 0, time.UTC)
 	standard, _ := validPlanAndRun(t, now, domain.LoadProfile{
 		Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
@@ -132,11 +132,11 @@ func TestSnapshotExcludesPerformancePlansFromStandardRunPicker(t *testing.T) {
 	performance := standard
 	performance.ID = "99999999-9999-4999-8999-999999999999"
 	performance.Name = "Performance baseline"
-	performance.Entries = []domain.PlanEntry{}
-	performance.Performance = &domain.PerformancePlanProfile{
+	performance.Entries = []domain.PlanEntry{{EntryID: performance.ID, TargetID: performance.ID, Name: performance.Name, TargetKind: domain.PlanTargetPerformance, Load: standard.Entries[0].Load, Performance: &domain.PerformancePlanProfile{
 		LoadMode: domain.LoadFixedConcurrency, ArrivalPattern: "constant", WorkloadMode: "fixed",
 		RequestCount: 10, Concurrency: 1, TimeoutMS: 60_000, InputTokens: 100, OutputTokens: 100,
-	}
+	}}}
+	performance.Entries[0].Load = performance.Entries[0].Performance.LoadProfile()
 	if err := performance.Validate(); err != nil {
 		t.Fatalf("performance fixture: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestSnapshotExcludesPerformancePlansFromStandardRunPicker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
-	if len(snapshot.Plans) != 1 || snapshot.Plans[0].ID != standard.ID {
+	if len(snapshot.Plans) != 2 {
 		t.Fatalf("standard run picker plans = %#v", snapshot.Plans)
 	}
 }
