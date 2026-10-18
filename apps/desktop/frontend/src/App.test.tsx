@@ -8,7 +8,7 @@ import { resolve } from "node:path"
 
 import App from "./App"
 import {
-  DesktopClientError,
+  DesktopClientError, createOverviewSnapshot,
   type DesktopClient,
   type DesktopDiagnosticsSnapshot,
 } from "./app/desktop-client"
@@ -46,6 +46,10 @@ function desktopClient(): DesktopClient & {
   const client = {
     workspace: structuredClone(FIXTURE_WORKSPACE),
     getQuickTestHistory: vi.fn(async () => ({ schema_version: 1 as const, runs: structuredClone(client.workspace.runs.filter(run => run.source === "quick_task")), reports: structuredClone(FIXTURE_REPORTS.reports.filter(report => report.source === "quick_performance")), next_cursor: "" })),
+    getAvailableReports: vi.fn(async (ids: string[]) => FIXTURE_REPORTS.reports.filter(report => ids.includes(report.id)).map(report => report.id)),
+    getOverview: vi.fn(async () => createOverviewSnapshot(client.workspace, FIXTURE_CATALOG, FIXTURE_REPORTS)),
+    getRunHistory: vi.fn(async () => ({ schema_version: 1 as const, runs: structuredClone(client.workspace.runs.filter(run => !run.job_id)), next_cursor: "" })),
+    getRunSummaries: vi.fn(async (ids: string[]) => ({ schema_version: 1 as const, runs: structuredClone(client.workspace.runs.filter(run => ids.includes(run.id))), next_cursor: "" })),
     getWorkspace: vi.fn(async () => structuredClone(client.workspace)),
     getCatalog: vi.fn(async (scope: CatalogScope) => structuredClone(selectCatalog(FIXTURE_CATALOG, scope))),
     getReports: vi.fn(async () => structuredClone(FIXTURE_REPORTS)),
@@ -165,7 +169,8 @@ describe("desktop run workspace", () => {
     const client = desktopClient()
     const first = jobFixture({ kind: "run", report_ids: [] })
     const second = jobFixture({ kind: "run", job_id: COMMAND_ID, report_ids: [] })
-    vi.mocked(client.getWorkspace).mockResolvedValue({ schema_version: 1, plans: [], runs: [] })
+    vi.mocked(client.getRunHistory).mockResolvedValue({ schema_version: 1, runs: [], next_cursor: "" })
+    vi.mocked(client.getRunSummaries).mockResolvedValue({ schema_version: 1, runs: [], next_cursor: "" })
     vi.mocked(client.getJobs).mockImplementation(async cursor => ({ schema_version: 1,
       jobs: [cursor ? second : first], next_cursor: cursor ? "" : JOB_ID, has_more: !cursor }))
     vi.mocked(client.getJob).mockImplementation(async id => id === JOB_ID ? first : second)
@@ -174,6 +179,8 @@ describe("desktop run workspace", () => {
     await user.click(screen.getByRole("button", { name: "加载更多" }))
     const table = screen.getByRole("table", { name: "运行记录" })
     await waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(3))
+    const viewport = table.closest('[data-slot="scroll-area-viewport"]') as HTMLElement
+    viewport.scrollTop = 260
     const selected = within(table).getAllByRole("row")[2]
     await user.click(selected)
     const filter = screen.getByRole("textbox", { name: "搜索名称、模型、渠道或编号" })
@@ -185,13 +192,15 @@ describe("desktop run workspace", () => {
     vi.mocked(client.getJobs).mockClear()
     await user.click(screen.getByRole("button", { name: "运行" }))
     expect(screen.getByRole("table", { name: "运行记录" })).toBe(table)
+    expect(viewport.scrollTop).toBe(260)
     expect(within(table).getAllByRole("row")).toHaveLength(3)
     expect(filter).toHaveValue("1111")
     expect(selected).toHaveAttribute("aria-selected", "true")
     expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled()
-    expect(client.getJobs).toHaveBeenCalledWith("", 25)
-    expect(client.getJobs).toHaveBeenCalledWith(JOB_ID, 25)
+    expect(client.getJobs).not.toHaveBeenCalled()
     expect(client.launchJob).not.toHaveBeenCalled()
+    // Returning to a retained list reuses its pages; only explicit refresh rereads them.
+    await user.click(screen.getByRole("button", { name: "刷新" }))
     await act(async () => { read.reject(new DesktopClientError("job_query_unavailable")) })
     expect(within(table).getAllByRole("row")).toHaveLength(3)
     expect(selected).toHaveAttribute("aria-selected", "true")
@@ -209,14 +218,15 @@ describe("desktop run workspace", () => {
     await screen.findByRole("region", { name: "执行详情" })
     await user.click(screen.getByRole("button", { name: "计划" }))
     await screen.findByRole("heading", { name: "测试计划" })
-    const reads = [client.getJobs, client.getJob, client.getJobControls, client.getWorkspace]
+    const reads = [client.getJobs, client.getJob, client.getJobControls, client.getRunHistory, client.getRunSummaries]
     reads.forEach(read => vi.mocked(read).mockClear())
     vi.useFakeTimers()
     await act(async () => { await vi.advanceTimersByTimeAsync(6000) })
     reads.forEach(read => expect(read).not.toHaveBeenCalled())
     vi.useRealTimers()
     await user.click(screen.getByRole("button", { name: "运行" }))
-    await waitFor(() => expect(client.getJobs).toHaveBeenCalled())
+    await waitFor(() => expect(client.getRunHistory).toHaveBeenCalled())
+    expect(client.getJobs).not.toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled()
   })
 
@@ -288,7 +298,7 @@ describe("desktop run workspace", () => {
     const user = userEvent.setup()
     const client = desktopClient()
     const job = jobFixture({ kind: "run", submission: null, location: { kind: "remote", configuration_id: JOB_ID } })
-    vi.mocked(client.getWorkspace).mockRejectedValue(new DesktopClientError("workspace_unavailable"))
+    vi.mocked(client.getRunHistory).mockRejectedValue(new DesktopClientError("workspace_unavailable"))
     vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
     vi.mocked(client.getJob).mockResolvedValue(job)
     render(<App client={client} />)
@@ -304,6 +314,7 @@ describe("desktop run workspace", () => {
     const user = userEvent.setup()
     const client = desktopClient()
     const summary = FIXTURE_REPORTS.reports[0]
+    client.workspace.runs = client.workspace.runs.map(run => run.id === summary.run_id ? { ...run, report_id: summary.id } : run)
     const job = jobFixture({ kind: "run", run_ids: [summary.run_id!], report_ids: [summary.id] })
     const detail = protocolReportFixture()
     detail.report.id = summary.id
@@ -318,8 +329,9 @@ describe("desktop run workspace", () => {
     await user.click(screen.getByRole("button", { name: "运行" }))
     await user.click(await screen.findByRole("tab", { name: "执行" }))
     expect(await screen.findByRole("region", { name: "执行详情" })).toHaveTextContent(JOB_ID)
-    expect(client.getWorkspace).toHaveBeenCalled()
-    expect(client.getReports).toHaveBeenCalled()
+    expect(client.getRunHistory).toHaveBeenCalled()
+    expect(client.getWorkspace).not.toHaveBeenCalled()
+    expect(client.getReports).not.toHaveBeenCalled()
     expect(client.getComparisons).not.toHaveBeenCalled()
     expect(client.getCatalog).toHaveBeenCalledExactlyOnceWith("connections")
     await user.click(await screen.findByRole("button", { name: "打开已同步报告" }))
@@ -520,14 +532,8 @@ describe("desktop run workspace", () => {
     const user = userEvent.setup()
     const client = desktopClient()
     // Navigation reads are independent of the active-run polling interval.
-    vi.mocked(client.getWorkspace).mockResolvedValue({
-      ...FIXTURE_WORKSPACE,
-      active_run_id: undefined,
-      runs: FIXTURE_WORKSPACE.runs.map(run => ({
-        ...run,
-        status: ["starting", "queued", "running", "draining"].includes(run.status) ? "cancelled" : run.status,
-      })),
-    })
+    client.workspace = { ...FIXTURE_WORKSPACE, active_run_id: undefined,
+      runs: FIXTURE_WORKSPACE.runs.map(run => ({ ...run, status: "completed" })) }
     render(<App client={client} />)
 
     await screen.findByRole("heading", { name: "运行工作区" })
@@ -546,8 +552,9 @@ describe("desktop run workspace", () => {
       ).toBeInTheDocument()
       expect(screen.getAllByText(evidence).length).toBeGreaterThan(0)
     }
-    expect(client.getWorkspace).toHaveBeenCalledTimes(1)
-    expect(client.getCatalog).toHaveBeenCalledTimes(1)
+    expect(client.getWorkspace).not.toHaveBeenCalled()
+    expect(client.getOverview).toHaveBeenCalledTimes(1)
+    expect(client.getCatalog).toHaveBeenCalledTimes(4)
     expect(client.getReports).toHaveBeenCalledTimes(1)
   })
 
@@ -928,7 +935,7 @@ describe("desktop run workspace", () => {
     window.history.replaceState(null, "", "#runs")
     const client = desktopClient()
     let rejectWorkspace!: (reason: unknown) => void
-    client.getWorkspace = vi.fn(() => new Promise<WorkspaceSnapshot>((_, reject) => { rejectWorkspace = reject }))
+    client.getRunHistory = vi.fn(() => new Promise<Awaited<ReturnType<DesktopClient["getRunHistory"]>>>((_, reject) => { rejectWorkspace = reject }))
     let failed = false
     client.getStartupProgress = vi.fn(async () => ({ schema_version: 1 as const, status: failed ? "failed" as const : "running" as const, stage: "database_migrating" as const, from_version: 1, to_version: 2, elapsed_ms: 2300 }))
     render(<App client={client} />)
@@ -936,7 +943,7 @@ describe("desktop run workspace", () => {
     expect(screen.getByText(/已用时 2 秒/)).toBeVisible()
     expect(screen.queryByText("还没有运行记录")).not.toBeInTheDocument()
     failed = true
-    await act(async () => { rejectWorkspace(new DesktopClientError("desktop_startup_failed")) })
+    await act(async () => { rejectWorkspace?.(new DesktopClientError("desktop_startup_failed")) })
     expect(await screen.findByText(/停止于：正在迁移历史数据/)).toBeVisible()
     expect(screen.getAllByText("无法打开本地工作台")).toHaveLength(1)
   })
@@ -1436,6 +1443,9 @@ describe("desktop run workspace", () => {
 
   it("surfaces a missing production bridge instead of substituting fixtures", async () => {
     const client: DesktopClient = {
+      getAvailableReports: desktopClient().getAvailableReports,
+      getOverview: desktopClient().getOverview,
+      getRunHistory: vi.fn(async () => { throw new DesktopClientError("workspace_unavailable") }), getRunSummaries: desktopClient().getRunSummaries,
       getDiagnostics: vi.fn(),
       openDiagnosticsDirectory: vi.fn(),
       getQuickTestHistory: vi.fn(),
@@ -1464,7 +1474,7 @@ describe("desktop run workspace", () => {
     render(<App client={client} />)
 
     const alert = await screen.findByRole("alert")
-    expect(alert).toHaveTextContent("无法读取本地工作区")
+    expect(alert).toHaveTextContent("无法读取运行工作区")
     expect(alert).not.toHaveTextContent("sk-secret")
     expect(alert).not.toHaveTextContent("provider.example")
     expect(screen.queryByText("营销文案基准")).not.toBeInTheDocument()
@@ -1473,22 +1483,22 @@ describe("desktop run workspace", () => {
 	it("identifies the failed workspace load and lets the user retry it", async () => {
 		const user = userEvent.setup()
 		const client = desktopClient()
-		vi.mocked(client.getWorkspace)
+		vi.mocked(client.getRunHistory)
 			.mockRejectedValueOnce(new DesktopClientError("workspace_unavailable"))
-			.mockResolvedValue(structuredClone(client.workspace))
+			.mockResolvedValue({ schema_version: 1, runs: structuredClone(client.workspace.runs), next_cursor: "" })
 
 		render(<App client={client} />)
 
 		const alert = await screen.findByRole("alert")
 		expect(alert).toHaveTextContent(
-			"无法读取运行工作区，请重试；若仍失败，请查看日志中的 load_workspace 记录",
+			"无法读取运行工作区",
 		)
-		await user.click(within(alert).getByRole("button", { name: "重试打开" }))
+		await user.click(screen.getByRole("button", { name: "刷新" }))
 
 		expect(
 			await screen.findByRole("heading", { name: "运行工作区" }),
 		).toBeInTheDocument()
-		expect(client.getWorkspace).toHaveBeenCalledTimes(2)
+		expect(client.getRunHistory).toHaveBeenCalledTimes(2)
 	})
 
   it.each([
@@ -1541,37 +1551,41 @@ describe("desktop run workspace", () => {
     const terminal = { ...client.workspace, active_run_id: undefined, runs: client.workspace.runs.map((run) => ({ ...run, status: "completed" as const })) }
     vi.mocked(client.getWorkspace).mockResolvedValueOnce(client.workspace).mockResolvedValue(terminal)
     vi.mocked(client.getReports).mockResolvedValueOnce(FIXTURE_REPORTS).mockRejectedValueOnce(new Error("temporary report error")).mockResolvedValue(FIXTURE_REPORTS)
-    window.history.replaceState(null, "", "#overview")
+    window.history.replaceState(null, "", "#reports")
     render(<App client={client} />)
     await waitFor(() => expect(client.getReports).toHaveBeenCalledTimes(1))
     act(() => receive({ sequence: 1, run_id: client.workspace.runs[0].id, phase: "ready", processed: 0, total: 0, elapsed_ms: 500, report_id: FIXTURE_REPORTS.reports[0].id }))
     await waitFor(() => expect(vi.mocked(client.getReports).mock.calls.length).toBeGreaterThanOrEqual(3), { timeout: 3500 })
   })
 
-  it("polls only workspace progress during a normal active run", async () => {
+  it("polls only loaded active run IDs without rereading history", async () => {
     vi.useFakeTimers()
     const client = desktopClient()
     render(<App client={client} />)
     await act(async () => {})
-    await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
-    expect(client.getWorkspace).toHaveBeenCalledTimes(4)
+    const first = vi.mocked(client.getRunSummaries).mock.calls.length
+    await act(async () => { await vi.advanceTimersByTimeAsync(6000) })
+    expect(client.getRunHistory).toHaveBeenCalledTimes(1)
+    expect(client.getRunSummaries).toHaveBeenCalledTimes(first + 3)
+    expect(client.getWorkspace).not.toHaveBeenCalled()
     expect(client.getCatalog).not.toHaveBeenCalled()
     expect(client.getReports).not.toHaveBeenCalled()
     expect(client.getComparisons).not.toHaveBeenCalled()
   })
 
-  it("waits for a slow progress read before scheduling another poll", async () => {
+  it("waits for a slow bounded progress read before scheduling another poll", async () => {
     vi.useFakeTimers()
     const client = desktopClient()
-    const progress = deferred<WorkspaceSnapshot>()
-    vi.mocked(client.getWorkspace).mockResolvedValueOnce(client.workspace).mockReturnValueOnce(progress.promise)
+    const progress = deferred<Awaited<ReturnType<DesktopClient["getRunSummaries"]>>>()
+    vi.mocked(client.getRunSummaries).mockReturnValueOnce(progress.promise)
     render(<App client={client} />)
     await act(async () => {})
-    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
-    expect(client.getWorkspace).toHaveBeenCalledTimes(2)
-    await act(async () => { progress.resolve(client.workspace) })
-    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
-    expect(client.getWorkspace).toHaveBeenCalledTimes(3)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+    expect(client.getRunSummaries).toHaveBeenCalledTimes(1)
+    await act(async () => { progress.resolve({ schema_version: 1, runs: client.workspace.runs, next_cursor: "" }) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+    expect(client.getRunSummaries).toHaveBeenCalledTimes(2)
+    expect(client.getRunHistory).toHaveBeenCalledTimes(1)
   })
 
   it("stops reading active-run progress when its page is no longer visible", async () => {
@@ -1579,14 +1593,15 @@ describe("desktop run workspace", () => {
     const client = desktopClient()
     render(<App client={client} />)
     await act(async () => {})
-    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
-    expect(client.getWorkspace).toHaveBeenCalledTimes(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+    const calls = vi.mocked(client.getRunSummaries).mock.calls.length
     await act(async () => {
       window.location.hash = "catalog"
       window.dispatchEvent(new HashChangeEvent("hashchange"))
     })
-    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
-    expect(client.getWorkspace).toHaveBeenCalledTimes(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+    expect(client.getRunSummaries).toHaveBeenCalledTimes(calls)
+    expect(client.getRunHistory).toHaveBeenCalledTimes(1)
     expect(client.getCatalog).toHaveBeenCalledExactlyOnceWith("connections")
   })
 
@@ -1639,12 +1654,12 @@ describe("desktop run workspace", () => {
     vi.useFakeTimers()
     const client = desktopClient()
     const oldWorkspace = structuredClone(client.workspace)
-    const progress = deferred<WorkspaceSnapshot>()
+    const progress = deferred<Awaited<ReturnType<DesktopClient["getRunSummaries"]>>>()
     const job = jobFixture({ kind: "run", run_ids: [FIXTURE_WORKSPACE.active_run_id!], report_ids: [] })
     vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
     vi.mocked(client.getJob).mockResolvedValue(job)
     vi.mocked(client.controlJob).mockResolvedValue(controlFixture({ kind: "cancel" }))
-    vi.mocked(client.getWorkspace).mockResolvedValueOnce(oldWorkspace).mockReturnValueOnce(progress.promise)
+    vi.mocked(client.getRunSummaries).mockReturnValueOnce(progress.promise)
     render(<App client={client} />)
     await act(async () => {})
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
@@ -1653,9 +1668,10 @@ describe("desktop run workspace", () => {
     await act(async () => {})
     expect(client.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: JOB_ID, kind: "cancel", expected_revision: 1 })
     expect(client.workspace.active_run_id).toBe(oldWorkspace.active_run_id)
-    await act(async () => { progress.resolve(oldWorkspace) })
+    await act(async () => { progress.resolve({ schema_version: 1, runs: oldWorkspace.runs, next_cursor: "" }) })
     expect(client.workspace.active_run_id).toBe(oldWorkspace.active_run_id)
-    expect(client.getWorkspace).toHaveBeenCalledTimes(2)
+    expect(client.getWorkspace).not.toHaveBeenCalled()
+    expect(client.getRunHistory).toHaveBeenCalledTimes(1)
   })
 
   it("keeps long generation visible and exposes failure without repeatedly reading reports", async () => {
@@ -1683,7 +1699,8 @@ describe("desktop run workspace", () => {
     expect(client.openDiagnosticsDirectory).toHaveBeenCalledOnce()
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
     expect(client.getReports).toHaveBeenCalledTimes(reportReads)
-    expect(client.getWorkspace).toHaveBeenCalledTimes(1)
+    expect(client.getRunHistory).toHaveBeenCalledTimes(1)
+    expect(client.getWorkspace).not.toHaveBeenCalled()
     expect(client.getComparisons).toHaveBeenCalledTimes(0)
   })
 
@@ -1754,20 +1771,12 @@ describe("desktop run workspace", () => {
   })
 
   it("clears the inspector and renders an explicit filtered empty state", async () => {
-    const user = userEvent.setup()
     const client = desktopClient()
-    client.workspace.plans.push({
-      ...client.workspace.plans[0],
-      id: "11111111-1111-4111-8111-111111111199",
-      name: "空计划",
-      run_count: 0,
-    })
     render(<App client={client} />)
 
-    await user.click(await screen.findByRole("combobox", { name: "测试计划" }))
-    await user.click(screen.getByRole("option", { name: "空计划" }))
+    fireEvent.change(await screen.findByRole("textbox", { name: "搜索名称、模型、渠道或编号" }), { target: { value: "no-matching-execution" } })
 
-    expect(screen.getByText("这个计划还没有运行记录")).toBeInTheDocument()
+    expect(screen.getByText("没有匹配的运行记录")).toBeInTheDocument()
     const inspector = screen.getByRole("complementary", { name: "运行详情" })
     expect(inspector).toHaveTextContent("尚未选择运行")
     expect(inspector).not.toHaveTextContent("营销文案基准")
@@ -1864,7 +1873,7 @@ describe("desktop run workspace", () => {
   it("opens the shell while runs are pending and can navigate to a different data scope", async () => {
     const user = userEvent.setup()
     const client = desktopClient()
-    vi.mocked(client.getWorkspace).mockReturnValue(new Promise(() => {}))
+    vi.mocked(client.getRunHistory).mockReturnValue(new Promise(() => {}))
     render(<App client={client} />)
     expect(screen.getByRole("navigation")).toBeInTheDocument()
     expect(client.getReports).not.toHaveBeenCalled()

@@ -1,3 +1,4 @@
+import { createComparisonHistoryResource } from "@/features/comparisons/history-resource"
 import { RetainedWorkspace } from "@/features/shell/retained-workspace"
 import { useStartupProgress } from "@/app/startup-progress"
 import { RemoteNodesMenu } from "@/features/remote-nodes/remote-nodes-menu"
@@ -58,12 +59,12 @@ const CasesWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces"
 const PlansWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces").then(module => ({ default: module.PlansWorkspace })))
 
 const PAGE_READS = {
-  overview: ["workspace", "catalog", "reports"],
+  overview: ["overview"],
   "quick-test": ["quickCatalog"],
   catalog: ["connections"], cases: ["definitions"], plans: ["catalog"],
-  runs: ["workspace"], reports: ["reports"],
+  runs: [], reports: ["reports"],
 } as const
-type ResourceKey = "workspace" | "catalog" | "reports" | "comparisons" | "connections" | "definitions" | "quickCatalog"
+type ResourceKey = "overview" | "workspace" | "catalog" | "reports" | "comparisons" | "connections" | "definitions" | "quickCatalog"
 
 function persistDraft(draft: TaskDraft): void {
   if (!draft.task && !draft.base_url && !draft.model) return
@@ -92,13 +93,17 @@ function AppWorkspace({
       const full = catalog.getSnapshot()
       return full.data && !full.stale ? Promise.resolve(selectCatalog(full.data, scope)) : client.getCatalog(scope)
     })
+    const comparisonHistory = createComparisonHistoryResource((after, ids) => client.getComparisons(after, ids))
     return {
+      overview: createLazyResource(() => client.getOverview()),
       workspace: createLazyResource(() => client.getWorkspace()),
       catalog, connections: scopedCatalog("connections"), definitions: scopedCatalog("definitions"), quickCatalog: scopedCatalog("quick_test"),
       reports: createLazyResource(() => client.getReports()),
-      comparisons: createLazyResource(() => client.getComparisons()),
+      comparisons: comparisonHistory.resource,
+      queueComparisonRun: comparisonHistory.queueRun,
     }
   }, [client])
+  const overviewState = useResource(resources.overview)
   const workspaceState = useResource(resources.workspace)
   const catalogState = useResource(resources.catalog)
   const connectionState = useResource(resources.connections)
@@ -111,6 +116,7 @@ function AppWorkspace({
   const comparisons = comparisonState.data
   const setSnapshot = resources.workspace.set
   const setCatalog = useCallback((next: CatalogSnapshot) => {
+    resources.overview.invalidate()
     resources.catalog.set(next)
     resources.connections.set(selectCatalog(next, "connections"))
     resources.definitions.set(selectCatalog(next, "definitions"))
@@ -118,8 +124,26 @@ function AppWorkspace({
   }, [resources])
   const setReports = resources.reports.set
   const setComparisons = resources.comparisons.set
+  const comparisonAppend = useRef(false)
+  const [comparisonAppending, setComparisonAppending] = useState(false)
+  const [comparisonAppendError, setComparisonAppendError] = useState(false)
+  const loadMoreComparisons = async () => {
+    if (!comparisons?.next_cursor || comparisonState.pending || comparisonAppend.current) return
+    comparisonAppend.current = true
+    setComparisonAppending(true)
+    setComparisonAppendError(false)
+    try {
+      const next = await client.getComparisons(comparisons.next_cursor)
+      const merged = new Map((resources.comparisons.getSnapshot().data ?? EMPTY_COMPARISONS).comparisons.map(item => [item.id, item]))
+      next.comparisons.forEach(item => merged.set(item.id, item))
+      const combined = { ...next, comparisons: [...merged.values()] }
+      setComparisons(combined)
+    } catch { setComparisonAppendError(true) }
+    finally { comparisonAppend.current = false; setComparisonAppending(false) }
+  }
+
   const [showComparisons, setShowComparisons] = useState(false)
-  const states = { workspace: workspaceState, catalog: catalogState, connections: connectionState, definitions: definitionState, quickCatalog: quickCatalogState, reports: reportState, comparisons: comparisonState }
+  const states = { overview: overviewState, workspace: workspaceState, catalog: catalogState, connections: connectionState, definitions: definitionState, quickCatalog: quickCatalogState, reports: reportState, comparisons: comparisonState }
   const [reportGeneration, setReportGeneration] = useState<Record<string, ReportGenerationProgress>>({})
   const reportReadGeneration = useRef(0)
   const [preferredReportID, setPreferredReportID] = useState("")
@@ -151,6 +175,7 @@ function AppWorkspace({
   const invalidateWorkspace = useCallback(() => {
     workspaceGeneration.current += 1
     resources.workspace.invalidate()
+    resources.overview.invalidate()
   }, [resources])
   const refreshWorkspace = useCallback(async () => {
     const generation = workspaceGeneration.current
@@ -205,7 +230,7 @@ function AppWorkspace({
   const [retryComparisonPoll, setRetryComparisonPoll] = useState(false)
   const comparisonRunning = !!comparisons?.comparisons.some((comparison) => comparison.status === "running")
   const startingRunPending = !!startingRunID && !snapshot?.runs.some(run => run.id === startingRunID)
-  const workspaceVisible = PAGE_READS[page].some(key => key === "workspace")
+  const workspaceVisible = (PAGE_READS[page] as readonly string[]).includes("workspace")
   const shouldPollWorkspace = workspaceVisible && !!(retryWorkspacePoll || startingRunPending || snapshot?.runs.some((run) => isRunActive(run.status)) || comparisonRunning || (quickRunID && !snapshot?.runs.some((run) => run.id === quickRunID)))
   useEffect(() => {
 		if (!shouldPollWorkspace) return
@@ -229,6 +254,27 @@ function AppWorkspace({
 		return () => { active = false; window.clearTimeout(timer); invalidateWorkspace() }
 	}, [resources, shouldPollWorkspace, setSnapshot, invalidateWorkspace])
 
+  const overviewActive = overviewState.data?.workspace.runs.some(run => isRunActive(run.status))
+  useEffect(() => {
+    if (page !== "overview" || !overviewActive) return
+    let active = true
+    let timer: number | undefined
+    const refresh = async () => {
+      try {
+        const current = resources.overview.getSnapshot().data
+        if (!current) return
+        const next = await client.getRunSummaries(current.workspace.runs.map(run => run.id))
+        if (!active) return
+        if (next.runs.some(run => isRunActive(run.status))) {
+          resources.overview.set({ ...current, workspace: { ...current.workspace, runs: next.runs } })
+        } else { await resources.overview.refresh() }
+      } catch { /* Keep the retained overview and retry while visible. */ }
+      finally { if (active) timer = window.setTimeout(() => void refresh(), 2000) }
+    }
+    timer = window.setTimeout(() => void refresh(), 2000)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [page, overviewActive, client, resources])
+
   const shouldPollComparisons = (page === "runs" || page === "reports") && showComparisons && (comparisonRunning || pendingComparisonIDs.length > 0 || retryComparisonPoll)
   useEffect(() => {
     if (!shouldPollComparisons) return
@@ -241,7 +287,7 @@ function AppWorkspace({
         if (active && generation === comparisonGeneration.current) {
           setRetryComparisonPoll(false)
           receiveComparisons(nextComparisons)
-          void refreshWorkspace().catch(() => setRetryWorkspacePoll(true))
+          if (workspaceVisible) void refreshWorkspace().catch(() => setRetryWorkspacePoll(true))
         }
       } catch {
         if (active && generation === comparisonGeneration.current) setRetryComparisonPoll(true)
@@ -251,7 +297,7 @@ function AppWorkspace({
     }
     timer = window.setTimeout(() => void refresh(), 1_000)
     return () => { active = false; window.clearTimeout(timer) }
-  }, [resources, shouldPollComparisons, receiveComparisons, refreshWorkspace])
+  }, [resources, shouldPollComparisons, receiveComparisons, refreshWorkspace, workspaceVisible])
 
   const [reportRetryUntil, setReportRetryUntil] = useState(0)
   const updateReports = useCallback((nextReports: ReportSnapshot) => {
@@ -281,12 +327,15 @@ function AppWorkspace({
       latest.set(progress.run_id, progress.sequence)
       setReportGeneration((previous) => ({ ...previous, [progress.run_id]: progress }))
       if (progress.phase === "ready") {
+        const affected = resources.queueComparisonRun(progress.run_id)
+        if (affected.length) setPendingComparisonIDs(ids => [...new Set([...ids, ...affected])])
         reportReadGeneration.current += 1
         const visibleReads: readonly string[] = PAGE_READS[pageRef.current]
         resources.reports.invalidate()
         invalidateWorkspace()
         void Promise.all([
           ...(visibleReads.includes("reports") ? [refreshReports()] : []),
+          ...(visibleReads.includes("overview") ? [resources.overview.refresh()] : []),
           ...(visibleReads.includes("workspace") ? [refreshWorkspace()] : []),
         ]).catch(() => {
           // A transient read failure is retried without restarting generation.
@@ -335,7 +384,7 @@ function AppWorkspace({
     if (showComparisons && (pageRef.current === "runs" || pageRef.current === "reports")) {
       void resources.comparisons.refresh().then(receiveComparisons).catch(() => setRetryComparisonPoll(true))
     }
-    if (pageRef.current === "runs" || visibleReads.includes("reports")) void refreshReports().catch(() => { /* The reports read owns its retry state. */ })
+    if (visibleReads.includes("reports")) void refreshReports().catch(() => { /* The reports read owns its retry state. */ })
   }, [invalidateWorkspace, resources, receiveComparisons, refreshWorkspace, refreshReports, showComparisons, setPendingComparisonIDs, setRetryComparisonPoll])
 
   const navigate = useCallback((next: DesktopPage) => {
@@ -437,7 +486,7 @@ function AppWorkspace({
       void resources.comparisons.refresh().then(receiveComparisons).catch(() => setRetryComparisonPoll(true))
       setShowComparisons(true)
 			invalidateWorkspace()
-			void refreshWorkspace().catch(() => setRetryWorkspacePoll(true))
+			if ((PAGE_READS[pageRef.current] as readonly string[]).includes("workspace")) void refreshWorkspace().catch(() => setRetryWorkspacePoll(true))
 		} catch (error) {
 			setCommandError(publicDesktopErrorMessage(error, t("app:comparisonError")))
 			throw error
@@ -458,8 +507,8 @@ function AppWorkspace({
   const renderWorkspace = (page: DesktopPage) => {
     const requiredReads: readonly ResourceKey[] = PAGE_READS[page]
     const failedRead = requiredReads.find(key => states[key].error !== null && states[key].data === null)
-    const loadError = failedRead ? states[failedRead].error : null
-    const pageReady = requiredReads.every(key => states[key].data !== null)
+    const loadError = startup?.status === "failed" ? new DesktopClientError("desktop_startup_failed") : failedRead ? states[failedRead].error : null
+    const pageReady = startup?.status !== "running" && requiredReads.every(key => states[key].data !== null)
     const catalog = (page === "catalog" ? connectionState : page === "cases" ? definitionState : page === "quick-test" ? quickCatalogState : catalogState).data
 
     const pageStatus = loadError ? (
@@ -495,7 +544,7 @@ function AppWorkspace({
     ) : null
 
       return (page === "runs" && startup?.status !== "running" && startup?.status !== "failed" ? null : pageStatus) ?? (page === "overview" ? (
-        <OverviewWorkspace workspace={snapshot!} catalog={catalog!} reports={reports!} onOpenReport={openReport} />
+        <OverviewWorkspace workspace={overviewState.data!.workspace} catalog={EMPTY_CATALOG} reports={overviewState.data!.reports} counts={overviewState.data!.catalog} runCount={overviewState.data!.run_count} reportCount={overviewState.data!.report_count} onOpenReport={openReport} />
       ) : page === "quick-test" ? (
         <QuickTaskPage
           catalog={catalog!}
@@ -543,7 +592,7 @@ function AppWorkspace({
           comparisonControl={!showComparisons || comparisonState.error || (!comparisonState.data && !comparisonState.pending) ? <Button size="sm" variant="ghost" onClick={() => {
             setShowComparisons(true)
             void resources.comparisons.refresh().catch(() => {})
-          }}>{t(comparisonState.error ? "runs:comparisons.retry" : "runs:comparisons.load")}</Button> : comparisonState.pending ? <span role="status" className="text-xs text-muted-foreground">{t("runs:comparisons.loading")}</span> : comparisons?.comparisons.length === 0 ? <span role="status" className="text-xs text-muted-foreground">{t("runs:comparisons.empty")}</span> : undefined}
+          }}>{t(comparisonState.error ? "runs:comparisons.retry" : "runs:comparisons.load")}</Button> : comparisonState.pending ? <span role="status" className="text-xs text-muted-foreground">{t("runs:comparisons.loading")}</span> : comparisons?.comparisons.length === 0 ? <span role="status" className="text-xs text-muted-foreground">{t("runs:comparisons.empty")}</span> : comparisons?.next_cursor ? <Button size="sm" variant="ghost" disabled={comparisonAppending} onClick={() => void loadMoreComparisons()}>{t(comparisonAppendError ? "runs:comparisons.retry" : "runs:executions.more")}</Button> : undefined}
           comparisons={showComparisons ? comparisons ?? EMPTY_COMPARISONS : EMPTY_COMPARISONS}
           preferredReportID={preferredReportID}
           reportOpenSequence={reportOpenSequence}
@@ -555,6 +604,7 @@ function AppWorkspace({
         />
       ) : (
         <RunWorkspace
+          historyRevision={reportGeneration}
           client={client}
           snapshot={snapshot ?? EMPTY_WORKSPACE}
           readStatus={pageStatus}

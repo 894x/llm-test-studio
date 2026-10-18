@@ -174,6 +174,10 @@ export interface DesktopClient extends CatalogActions {
   recoverRemoteNodeUpgrade(command: RemoteNodeUpgradeAction): Promise<RemoteNodeUpgradeView>
   getDiagnostics(): Promise<DesktopDiagnosticsSnapshot>
   openDiagnosticsDirectory(): Promise<void>
+  getAvailableReports(ids: string[]): Promise<string[]>
+  getOverview(): Promise<OverviewSnapshot>
+  getRunHistory(after: string): Promise<RunHistoryPage>
+  getRunSummaries(ids: string[]): Promise<RunHistoryPage>
   getQuickTestHistory(after: string): Promise<QuickHistoryPage>
   getWorkspace(): Promise<WorkspaceSnapshot>
   getCatalog(scope: CatalogScope): Promise<CatalogSnapshot>
@@ -184,7 +188,7 @@ export interface DesktopClient extends CatalogActions {
   exportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<ExportedReport>
   saveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<boolean>
   copyReportPNG(dataBase64: string): Promise<void>
-  getComparisons(): Promise<ComparisonSnapshot>
+  getComparisons(after?: string, ids?: string[]): Promise<ComparisonSnapshot>
   launchJob(command: LaunchCommand): Promise<JobView>
   getJobs(after: string, limit: number): Promise<JobPage>
   getJob(jobID: string): Promise<JobView>
@@ -253,6 +257,10 @@ type WailsDesktopBinding = {
   GetDiagnostics(): Promise<unknown>
   OpenDiagnosticsDirectory(): Promise<unknown>
   ReportFrontendDiagnostic(diagnostic: FrontendDiagnostic): Promise<unknown>
+  GetAvailableReports(document: string): Promise<unknown>
+  GetOverview(): Promise<unknown>
+  GetRunHistory(after: string): Promise<unknown>
+  GetRunSummaries(ids: string): Promise<unknown>
   GetQuickTestHistory(after: string): Promise<unknown>
   GetWorkspace(): Promise<unknown>
   GetCatalog(scope: CatalogScope): Promise<unknown>
@@ -262,6 +270,7 @@ type WailsDesktopBinding = {
   ExportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<unknown>
   SaveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<unknown>
   CopyReportPNG(dataBase64: string): Promise<unknown>
+  GetComparisonHistory(after: string, ids: string): Promise<unknown>
   GetComparisons(): Promise<unknown>
   LaunchJob(command: LaunchCommand): Promise<unknown>
   GetJobs(after: string, limit: number): Promise<unknown>
@@ -308,8 +317,8 @@ const REQUIRED_WAILS_BINDING_METHODS = [
   "RetryRemoteInstallation", "RemoveRemoteNode",
   "StartRemoteNodeUpgrade", "GetRemoteNodeUpgrade", "RetryRemoteNodeUpgrade", "RecoverRemoteNodeUpgrade",
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
-  "GetStartupProgress", "GetQuickTestHistory", "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
-  "SaveReportExport", "CopyReportPNG", "GetComparisons", "LaunchJob", "GetJobs", "GetJob", "GetJobPerformanceResult", "ControlJob", "GetJobControls", "RetryJobControl", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
+  "GetStartupProgress", "GetOverview", "GetAvailableReports", "GetRunHistory", "GetRunSummaries", "GetQuickTestHistory", "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
+  "SaveReportExport", "CopyReportPNG", "GetComparisons", "GetComparisonHistory", "LaunchJob", "GetJobs", "GetJob", "GetJobPerformanceResult", "ControlJob", "GetJobControls", "RetryJobControl", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
   "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel", "SaveQuickTestTarget",
   "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
   "DeleteChannelModel", "CreateTestCase", "UpdateTestCase", "DeleteTestCase", "CreateSuite",
@@ -376,6 +385,14 @@ export function createFixtureClient(
     async getReportGeneration() { return { schema_version: 1, runs: [] } },
     subscribeReportGeneration() { return () => {} },
     async getStartupProgress() { return { ...READY_STARTUP } },
+    async getAvailableReports(ids) { return reports.reports.filter(report => ids.includes(report.id)).map(report => report.id) },
+    async getOverview() { return createOverviewSnapshot(workspace, catalogState, reports) },
+    async getRunHistory(after) {
+      const runs = workspace.runs.filter(run => !run.job_id).sort((a,b) => b.started_at.localeCompare(a.started_at) || b.id.localeCompare(a.id))
+      const offset = after ? runs.findIndex(run => run.id === after) + 1 : 0
+      return structuredClone({ schema_version: 1, runs: runs.slice(offset, offset + 25), next_cursor: offset + 25 < runs.length ? runs[offset + 24].id : "" })
+    },
+    async getRunSummaries(ids) { return structuredClone({ schema_version: 1, runs: workspace.runs.filter(run => ids.includes(run.id)), next_cursor: "" }) },
     async getQuickTestHistory(after) {
       const items = [
         ...workspace.runs.filter(run => run.source === "quick_task").map(run => ({ key: `${run.started_at}|run|${run.id}`, run })),
@@ -584,6 +601,10 @@ function createLazyFixtureClient(): DesktopClient {
     openDiagnosticsDirectory: async () =>
       (await client).openDiagnosticsDirectory(),
     getStartupProgress: async () => (await client).getStartupProgress(),
+    getAvailableReports: async ids => (await client).getAvailableReports(ids),
+    getOverview: async () => (await client).getOverview(),
+    getRunHistory: async after => (await client).getRunHistory(after),
+    getRunSummaries: async ids => (await client).getRunSummaries(ids),
     getQuickTestHistory: async after => (await client).getQuickTestHistory(after),
     getWorkspace: async () => (await client).getWorkspace(),
     getCatalog: async (scope) => (await client).getCatalog(scope),
@@ -601,7 +622,7 @@ function createLazyFixtureClient(): DesktopClient {
 		exportReport: async (reportId, format, watermark, locale) => (await client).exportReport(reportId, format, watermark, locale),
 		saveReportExport: async (filename, mediaType, dataBase64, locale) => (await client).saveReportExport(filename, mediaType, dataBase64, locale),
 		copyReportPNG: async (dataBase64) => (await client).copyReportPNG(dataBase64),
-		getComparisons: async () => (await client).getComparisons(),
+		getComparisons: async (after, ids) => (await client).getComparisons(after, ids),
     launchJob: async command => (await client).launchJob(command),
     getJobs: async (after, limit) => (await client).getJobs(after, limit),
     getJob: async jobID => (await client).getJob(jobID),
@@ -655,6 +676,19 @@ export function singleFlightRead<T>(read: () => Promise<T>): (() => Promise<T>) 
 }
 
 function wailsClient(binding: WailsDesktopBinding): DesktopClient {
+  const comparisonReads = new Map<string, Promise<ComparisonSnapshot>>()
+  const readComparisons = (after = "", ids: string[] = []) => {
+    const document = JSON.stringify(ids)
+    const key = `${after}:${document}`
+    let request = comparisonReads.get(key)
+    if (!request) {
+      request = callBinding(() => binding.GetComparisonHistory(after, document), parseComparisonSnapshot,
+        reportFrontendFailure(binding, "load_comparisons"), "comparison_unavailable")
+        .finally(() => { comparisonReads.delete(key) })
+      comparisonReads.set(key, request)
+    }
+    return request
+  }
   const catalogRead = (scope: CatalogScope) => singleFlightRead(() => callBinding(
     () => binding.GetCatalog(scope), parseCatalogSnapshot,
     reportFrontendFailure(binding, "load_catalog"), "catalog_unavailable",
@@ -718,6 +752,14 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       callBinding(() => binding.GetDiagnostics(), parseDiagnosticsSnapshot),
     openDiagnosticsDirectory: async () =>
       callBinding(() => binding.OpenDiagnosticsDirectory(), parseVoid),
+    getAvailableReports: ids => callBinding(() => binding.GetAvailableReports(JSON.stringify(ids)), value => {
+      if (!Array.isArray(value) || value.some(id => typeof id !== "string" || !ids.includes(id)) || new Set(value).size !== value.length)
+        throw new DesktopDataError("Invalid available report IDs")
+      return value as string[]
+    }),
+    getOverview: singleFlightRead(() => callBinding(() => binding.GetOverview(), parseOverview)),
+    getRunHistory: after => callBinding(() => binding.GetRunHistory(after), value => parseRunHistoryPage(value, 25)),
+    getRunSummaries: ids => callBinding(() => binding.GetRunSummaries(JSON.stringify(ids)), value => parseRunHistoryPage(value, 100)),
     getQuickTestHistory: after => callBinding(() => binding.GetQuickTestHistory(after), parseQuickHistoryPage),
     getWorkspace: singleFlightRead(() =>
       callBinding(
@@ -745,13 +787,7 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 			callBinding(() => binding.SaveReportExport(filename, mediaType, dataBase64, locale), parseBoolean),
 		copyReportPNG: async (dataBase64) =>
 			callBinding(() => binding.CopyReportPNG(dataBase64), parseVoid),
-		getComparisons: singleFlightRead(() =>
-			callBinding(
-				() => binding.GetComparisons(),
-				parseComparisonSnapshot,
-				reportFrontendFailure(binding, "load_comparisons"),
-				"comparison_unavailable",
-			)),
+    getComparisons: readComparisons,
     launchJob: async command => callBinding(() => binding.LaunchJob(command), value => {
       const job = parseJobView(value)
       const kind = command.kind === "plan" || command.kind === "quick_task" ? "run" : command.kind
@@ -1386,4 +1422,40 @@ export function parseQuickHistoryPage(value: unknown): QuickHistoryPage {
     throw new DesktopDataError("Invalid quick history window")
   }
   return { schema_version: 1, runs, reports, next_cursor: page.next_cursor }
+}
+
+export type RunHistoryPage = { schema_version: 1; runs: WorkspaceSnapshot["runs"]; next_cursor: string }
+function parseRunHistoryPage(value: unknown, limit: number): RunHistoryPage {
+  if (!isRecord(value) || value.schema_version !== 1 || typeof value.next_cursor !== "string" ||
+    Object.keys(value).some(key => !["schema_version", "runs", "next_cursor"].includes(key))) throw new DesktopDataError("Invalid run history page")
+  const runs = parseSnapshot({ schema_version: 1, plans: [], runs: value.runs }).runs
+  if (runs.length > limit || (value.next_cursor && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z\|run\|[0-9a-f-]{36}$/.test(value.next_cursor))) throw new DesktopDataError("Invalid run history window")
+  return { schema_version: 1, runs, next_cursor: value.next_cursor }
+}
+
+export type OverviewCounts = { models: number; channels: number; enabled_channels: number; configured_channels: number;
+  channel_models: number; test_cases: number; suites: number; plans: number }
+export type OverviewSnapshot = { schema_version: 1; catalog: OverviewCounts; run_count: number; report_count: number;
+  workspace: WorkspaceSnapshot; reports: ReportSnapshot }
+export function createOverviewSnapshot(workspace: WorkspaceSnapshot, catalog: CatalogSnapshot, reports: ReportSnapshot): OverviewSnapshot {
+  return { schema_version: 1, catalog: { models: catalog.models.length, channels: catalog.channels.length,
+    enabled_channels: catalog.channels.filter(item => item.enabled).length,
+    configured_channels: catalog.channels.filter(item => item.credential_configured).length,
+    channel_models: catalog.channel_models.length, test_cases: catalog.test_cases.length, suites: catalog.suites.length, plans: catalog.plans.length },
+    run_count: workspace.runs.length, report_count: reports.reports.length,
+    workspace: { ...workspace, plans: [], runs: workspace.runs.filter(run => run.id === workspace.active_run_id).slice(0, 1) },
+    reports: { ...reports, reports: [...reports.reports].sort((a,b) => b.generated_at.localeCompare(a.generated_at) || b.id.localeCompare(a.id)).slice(0,4) } }
+}
+function parseOverview(value: unknown): OverviewSnapshot {
+  if (!isRecord(value) || value.schema_version !== 1 || !isRecord(value.catalog) ||
+    Object.keys(value).some(key => !["schema_version","catalog","run_count","report_count","workspace","reports"].includes(key)))
+    throw new DesktopDataError("Invalid overview snapshot")
+  const counts = value.catalog
+  const keys = ["models","channels","enabled_channels","configured_channels","channel_models","test_cases","suites","plans"]
+  if (Object.keys(counts).length !== keys.length || keys.some(key => !Number.isSafeInteger(counts[key]) || (counts[key] as number) < 0) ||
+    !Number.isSafeInteger(value.run_count) || (value.run_count as number) < 0 || !Number.isSafeInteger(value.report_count) || (value.report_count as number) < 0)
+    throw new DesktopDataError("Invalid overview counts")
+  const workspace = parseSnapshot(value.workspace), reports = parseReportSnapshot(value.reports)
+  if (workspace.runs.length > 1 || workspace.plans.length || reports.reports.length > 4) throw new DesktopDataError("Unbounded overview")
+  return { schema_version: 1, catalog: value.catalog as OverviewCounts, run_count: value.run_count as number, report_count: value.report_count as number, workspace, reports }
 }

@@ -9,7 +9,7 @@ import {
 import { EMPTY_COMPARISONS } from "@/features/comparisons/data"
 import { parseQuickPerformanceReport } from "@/features/quick-test/data"
 
-import { createDesktopClient, createFixtureClient, DesktopClientError, singleFlightRead } from "./desktop-client"
+import { createDesktopClient, createOverviewSnapshot, createFixtureClient, DesktopClientError, singleFlightRead } from "./desktop-client"
 import { DesktopDataError } from "./data-error"
 import type { LaunchCommand } from "@/features/jobs/data"
 import { jobFixture, submissionFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID, RUN_ID } from "@/test/jobs-fixture"
@@ -189,7 +189,7 @@ describe("Wails desktop client", () => {
     ["getWorkspace", "GetWorkspace", FIXTURE_WORKSPACE],
     ["getCatalog", "GetCatalog", FIXTURE_CATALOG],
     ["getReports", "GetReports", FIXTURE_REPORTS],
-    ["getComparisons", "GetComparisons", EMPTY_COMPARISONS],
+    ["getComparisons", "GetComparisonHistory", EMPTY_COMPARISONS],
   ] as const)("shares concurrent %s reads and performs a fresh read after settlement", async (method, bindingMethod, payload) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     let resolveRead!: (value: unknown) => void
@@ -227,7 +227,7 @@ describe("Wails desktop client", () => {
     ["getWorkspace", "GetWorkspace", FIXTURE_WORKSPACE],
     ["getCatalog", "GetCatalog", FIXTURE_CATALOG],
     ["getReports", "GetReports", FIXTURE_REPORTS],
-    ["getComparisons", "GetComparisons", EMPTY_COMPARISONS],
+    ["getComparisons", "GetComparisonHistory", EMPTY_COMPARISONS],
   ] as const)("allows retry after a shared %s read rejects", async (method, bindingMethod, payload) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding[bindingMethod].mockRejectedValueOnce(new Error("temporary read failure"))
@@ -1068,7 +1068,7 @@ describe("Wails desktop client", () => {
     ["GetWorkspace", "getWorkspace", "无法读取运行工作区", "load_workspace"],
     ["GetCatalog", "getCatalog", "无法读取模型、渠道与用例目录", "load_catalog"],
     ["GetReports", "getReports", "无法读取测试报告", "load_reports"],
-    ["GetComparisons", "getComparisons", "无法读取渠道对比", "load_comparisons"],
+    ["GetComparisonHistory", "getComparisons", "无法读取渠道对比", "load_comparisons"],
   ] as const)(
     "identifies %s when Wails only returns operation_failed",
     async (bindingMethod, clientMethod, message, operation) => {
@@ -1197,6 +1197,11 @@ function installBinding(
     RetryRemoteInstallation: vi.fn(async (_command?: unknown) => undefined),
     RemoveRemoteNode: vi.fn(async (_command?: unknown) => undefined),
     GetQuickTestHistory: vi.fn(async (): Promise<unknown> => ({ schema_version: 1, runs: [], reports: [], next_cursor: "" })),
+    GetAvailableReports: vi.fn(async () => []),
+    GetOverview: vi.fn(async () => createOverviewSnapshot(FIXTURE_WORKSPACE, FIXTURE_CATALOG, FIXTURE_REPORTS)),
+    GetRunHistory: vi.fn(async () => ({ schema_version: 1, runs: [], next_cursor: "" })),
+    GetRunSummaries: vi.fn(async () => ({ schema_version: 1, runs: [], next_cursor: "" })),
+    GetComparisonHistory: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
     GetWorkspace: vi.fn(async () => structuredClone(payload)),
     GetCatalog: vi.fn(async () => structuredClone(catalog)),
     GetReports: vi.fn(async () => structuredClone(reports)),

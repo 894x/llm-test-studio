@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { JobPage, JobView } from "@/features/jobs/data"
+import { isJobTerminal, type JobPage, type JobView } from "@/features/jobs/data"
 import type { JobClient } from "@/features/jobs/execution"
 
 // Read only the history pages the user has requested. Cursor pages are merged by
@@ -12,6 +12,10 @@ export function useExecutionJobs(client: JobClient, preferredJob: JobView | null
   const [error, setError] = useState<unknown>(null)
   const [pending, setPending] = useState(true)
   const [refresh, setRefresh] = useState(0)
+  const retained = useRef(pages)
+  const observedRefresh = useRef(-1)
+  const [observedPreferred, setObservedPreferred] = useState<JobView | null>(null)
+  const preferredObservation = useRef<JobView | null>(null)
   useEffect(() => {
     if (pendingReads.current?.client !== client) {
       pendingReads.current = { client, requests: new Map() }
@@ -28,22 +32,39 @@ export function useExecutionJobs(client: JobClient, preferredJob: JobView | null
     }
     let active = true
     let timer: number | undefined
-    const read = async () => {
-      const reads = await Promise.allSettled(cursors.map(readPage))
+    const read = async (initial = false) => {
+      const manual = observedRefresh.current !== refresh
+      observedRefresh.current = refresh
+      const needed = cursors.filter(cursor => manual || !retained.current.has(cursor))
+      const reads = await Promise.allSettled(needed.map(readPage))
       if (!active) return
-      setPages(previous => {
-        const next = new Map(previous)
-        reads.forEach((read, index) => { if (read.status === "fulfilled") next.set(cursors[index], read.value) })
-        return next
-      })
-      const failed = reads.find(read => read.status === "rejected")
+      const next = new Map(retained.current)
+      reads.forEach((read, index) => { if (read.status === "fulfilled") next.set(needed[index], read.value) })
+      const byID = new Map([...next.values()].flatMap(page => page.jobs.map(job => [job.job_id, job] as const)))
+      if (preferredJob && !byID.has(preferredJob.job_id)) byID.set(preferredJob.job_id, preferredObservation.current?.job_id === preferredJob.job_id ? preferredObservation.current : preferredJob)
+      const pendingJobs = [...byID.values()].filter(job => !job.execution || !isJobTerminal(job.execution.status) ||
+        (job.kind === "performance" && !job.performance_result_ready))
+      // Newly fetched pages already contain current observations. Subsequent
+      // ticks read only unsettled jobs, regardless of the loaded history size.
+      const updates = !initial || needed.length === 0
+        ? await Promise.allSettled(pendingJobs.map(job => client.getJob(job.job_id))) : []
+      if (!active) return
+      const changed = new Map(updates.flatMap(read => read.status === "fulfilled" ? [[read.value.job_id, read.value] as const] : []))
+      if (preferredJob && changed.has(preferredJob.job_id)) {
+        preferredObservation.current = changed.get(preferredJob.job_id)!
+        setObservedPreferred(preferredObservation.current)
+      }
+      for (const [cursor, page] of next) next.set(cursor, { ...page, jobs: page.jobs.map(job => changed.get(job.job_id) ?? job) })
+      retained.current = next
+      setPages(next)
+      const failed = [...reads, ...updates].find(read => read.status === "rejected")
       setError(failed?.status === "rejected" ? failed.reason : null)
       setPending(false)
-      timer = window.setTimeout(() => void read(), 2_000)
+      if (pendingJobs.length || failed) timer = window.setTimeout(() => void read(), 2_000)
     }
-    void read()
+    void read(true)
     return () => { active = false; window.clearTimeout(timer) }
-  }, [client, cursors, refresh, preferredJob?.job_id])
+  }, [client, cursors, refresh, preferredJob])
 
   const jobs = useMemo(() => {
     const byID = new Map<string, JobView>()
@@ -60,9 +81,9 @@ export function useExecutionJobs(client: JobClient, preferredJob: JobView | null
         byID.set(job.job_id, job)
       }
     }
-    if (preferredJob && !byID.has(preferredJob.job_id)) byID.set(preferredJob.job_id, preferredJob)
+    if (preferredJob && !byID.has(preferredJob.job_id)) byID.set(preferredJob.job_id, observedPreferred?.job_id === preferredJob.job_id ? observedPreferred : preferredJob)
     return [...byID.values()]
-  }, [cursors, pages, preferredJob])
+  }, [cursors, pages, preferredJob, observedPreferred])
   const last = pages.get(cursors[cursors.length - 1])
   const hasMore = !!last?.has_more
   return {

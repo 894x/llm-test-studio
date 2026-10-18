@@ -31,6 +31,7 @@ export interface ComparisonSummary {
 }
 
 export interface ComparisonSnapshot {
+  next_cursor?: string
   schema_version: 1
   comparisons: ComparisonSummary[]
 }
@@ -54,7 +55,8 @@ export function parseComparisonSnapshot(value: unknown): ComparisonSnapshot {
   if (new Set(comparisons.map((item) => item.id)).size !== comparisons.length) {
     throw new DesktopDataError(tx("desktop:comparisons_duplicate_channel_comparison_identifiers"))
   }
-  return { schema_version: 1, comparisons }
+  if (value.next_cursor !== undefined && typeof value.next_cursor !== "string") throw new DesktopDataError("Invalid comparison cursor")
+  return { schema_version: 1, comparisons, ...(typeof value.next_cursor === "string" ? { next_cursor: value.next_cursor } : {}) }
 }
 
 function parseComparison(value: unknown): ComparisonSummary {

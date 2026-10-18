@@ -1,3 +1,4 @@
+import type { OverviewCounts } from "@/app/desktop-client"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -19,7 +20,11 @@ export function OverviewWorkspace({
   catalog,
   reports,
   onOpenReport,
+  counts, runCount, reportCount,
 }: {
+  counts?: OverviewCounts
+  runCount?: number
+  reportCount?: number
   workspace: WorkspaceSnapshot
   catalog: CatalogSnapshot
   reports: ReportSnapshot
@@ -35,8 +40,8 @@ export function OverviewWorkspace({
       right.generated_at.localeCompare(left.generated_at) || right.id.localeCompare(left.id),
     )
     .slice(0, 4)
-  const enabledChannels = catalog.channels.filter((channel) => channel.enabled).length
-  const configuredChannels = catalog.channels.filter(
+  const enabledChannels = counts?.enabled_channels ?? catalog.channels.filter((channel) => channel.enabled).length
+  const configuredChannels = counts?.configured_channels ?? catalog.channels.filter(
     (channel) => channel.credential_configured,
   ).length
 
@@ -48,12 +53,12 @@ export function OverviewWorkspace({
       <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
         <div className="min-w-0">
           <section aria-label={t("summary.aria")} className="grid grid-cols-6 gap-2 px-4">
-            <SummaryCell value={t("summary.models", { count: catalog.models.length })} label={t("summary.logicalModels")} />
-            <SummaryCell value={t("summary.channels", { count: catalog.channels.length })} label={t("summary.enabled", { count: enabledChannels })} />
-            <SummaryCell value={t("summary.cases", { count: catalog.test_cases.length })} label={t("summary.suites", { count: catalog.suites.length })} />
-            <SummaryCell value={t("summary.plans", { count: catalog.plans.length })} label={t("summary.fixedVersions")} />
-            <SummaryCell value={t("summary.runs", { count: presentation.runs.length })} label={t(activeRun ? "summary.activeRun" : "summary.noActiveRun")} />
-            <SummaryCell value={t("summary.reports", { count: reports.reports.length })} label={t("summary.archivedConclusions")} />
+            <SummaryCell value={t("summary.models", { count: (counts?.models ?? catalog.models.length) })} label={t("summary.logicalModels")} />
+            <SummaryCell value={t("summary.channels", { count: (counts?.channels ?? catalog.channels.length) })} label={t("summary.enabled", { count: enabledChannels })} />
+            <SummaryCell value={t("summary.cases", { count: (counts?.test_cases ?? catalog.test_cases.length) })} label={t("summary.suites", { count: (counts?.suites ?? catalog.suites.length) })} />
+            <SummaryCell value={t("summary.plans", { count: (counts?.plans ?? catalog.plans.length) })} label={t("summary.fixedVersions")} />
+            <SummaryCell value={t("summary.runs", { count: runCount ?? presentation.runs.length })} label={t(activeRun ? "summary.activeRun" : "summary.noActiveRun")} />
+            <SummaryCell value={t("summary.reports", { count: reportCount ?? reports.reports.length })} label={t("summary.archivedConclusions")} />
           </section>
 
           <div className="grid grid-cols-2">
@@ -81,10 +86,10 @@ export function OverviewWorkspace({
             <section aria-labelledby="readiness-heading" className="min-h-52 min-w-0 px-4 py-3">
               <h2 id="readiness-heading" className="text-sm font-semibold">{t("readiness.title")}</h2>
               <dl className="mt-3 grid grid-cols-[128px_minmax(0,1fr)] [overflow-wrap:anywhere] gap-x-3 gap-y-2 text-xs">
-                <dt className="text-muted-foreground">{t("readiness.enabledChannels")}</dt><dd>{enabledChannels}/{catalog.channels.length}</dd>
-                <dt className="text-muted-foreground">{t("readiness.configuredCredentials")}</dt><dd>{configuredChannels}/{catalog.channels.length}</dd>
-                <dt className="text-muted-foreground">{t("readiness.modelMappings")}</dt><dd>{t("readiness.mappingCount", { count: catalog.channel_models.length })}</dd>
-                <dt className="text-muted-foreground">{t("readiness.reusableSuites")}</dt><dd>{t("readiness.suiteCount", { count: catalog.suites.length })}</dd>
+                <dt className="text-muted-foreground">{t("readiness.enabledChannels")}</dt><dd>{enabledChannels}/{(counts?.channels ?? catalog.channels.length)}</dd>
+                <dt className="text-muted-foreground">{t("readiness.configuredCredentials")}</dt><dd>{configuredChannels}/{(counts?.channels ?? catalog.channels.length)}</dd>
+                <dt className="text-muted-foreground">{t("readiness.modelMappings")}</dt><dd>{t("readiness.mappingCount", { count: (counts?.channel_models ?? catalog.channel_models.length) })}</dd>
+                <dt className="text-muted-foreground">{t("readiness.reusableSuites")}</dt><dd>{t("readiness.suiteCount", { count: (counts?.suites ?? catalog.suites.length) })}</dd>
                 <dt className="text-muted-foreground">{t("readiness.localSecrets")}</dt><dd>{t("readiness.localSecretsValue")}</dd>
               </dl>
             </section>

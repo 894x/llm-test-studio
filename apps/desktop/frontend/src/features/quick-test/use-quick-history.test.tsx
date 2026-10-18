@@ -15,7 +15,7 @@ afterEach(() => vi.useRealTimers())
 describe("quick history pages", () => {
   it("deduplicates concurrent loads, retries the failed cursor and retains all pages on refresh", async () => {
     const getQuickTestHistory = vi.fn().mockResolvedValueOnce(page(1, "next"))
-    const client = { getQuickTestHistory }
+    const client = { getQuickTestHistory, getRunSummaries: vi.fn(async () => ({ schema_version: 1 as const, runs: [], next_cursor: "" })) }
     const { result } = renderHook(() => useQuickHistory(client))
     await waitFor(() => expect(result.current.loaded).toBe(true))
     let finish!: (value: QuickHistoryPage) => void
@@ -32,16 +32,18 @@ describe("quick history pages", () => {
     await act(() => result.current.retry())
     expect(getQuickTestHistory).toHaveBeenLastCalledWith("last")
     expect(result.current.data.runs).toHaveLength(3)
-    getQuickTestHistory.mockResolvedValueOnce(page(4, "new-next")).mockResolvedValueOnce(page(1, "next")).mockResolvedValueOnce(page(2, "last"))
+    getQuickTestHistory.mockResolvedValueOnce(page(4, "new-next"))
+    const beforeRefresh = getQuickTestHistory.mock.calls.length
     await act(() => result.current.refresh())
     expect(result.current.data.runs).toHaveLength(4)
-    expect(result.current.data.next_cursor).toBe("last")
+    expect(result.current.data.next_cursor).toBe("new-next")
+    expect(getQuickTestHistory).toHaveBeenCalledTimes(beforeRefresh + 1)
   })
 
   it("refreshes after an invalidation during an in-flight page and retries failed refreshes from the head", async () => {
     let finish!: (value: QuickHistoryPage) => void
     const getQuickTestHistory = vi.fn().mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
-    const client = { getQuickTestHistory }
+    const client = { getQuickTestHistory, getRunSummaries: vi.fn(async () => ({ schema_version: 1 as const, runs: [], next_cursor: "" })) }
     const { result } = renderHook(() => useQuickHistory(client))
     await waitFor(() => expect(getQuickTestHistory).toHaveBeenCalledTimes(1))
     act(() => result.current.invalidate())
@@ -62,7 +64,7 @@ describe("quick history pages", () => {
     let visible = true
     const getQuickTestHistory = vi.fn().mockResolvedValue(page(1, "", true))
     const wrapper = ({ children }: { children: ReactNode }) => <Activity mode={visible ? "visible" : "hidden"}>{children}</Activity>
-    const client = { getQuickTestHistory }
+    const client = { getQuickTestHistory, getRunSummaries: vi.fn(async () => ({ schema_version: 1 as const, runs: [], next_cursor: "" })) }
     const { result, rerender } = renderHook(() => useQuickHistory(client), { wrapper })
     await waitFor(() => expect(result.current.loaded).toBe(true))
     vi.useFakeTimers()

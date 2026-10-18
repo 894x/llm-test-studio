@@ -3,12 +3,13 @@ import { useTranslation } from "react-i18next"
 import type { DesktopClient } from "@/app/desktop-client"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
+import type { ReportGenerationProgress } from "@/features/reports/generation-progress"
 import { QuickTaskWorkspace } from "./quick-task-workspace"
 import { useQuickHistory } from "./use-quick-history"
 
 type Props = Omit<ComponentProps<typeof QuickTaskWorkspace>, "workspace" | "reports" | "refresh" | "historyFooter"> & {
   actions: DesktopClient
-  historyRevision: unknown
+  historyRevision: Record<string, ReportGenerationProgress>
 }
 
 export function QuickTaskPage({ actions, historyRevision, onJobChange, onPerformanceArchived, ...props }: Props) {
@@ -18,8 +19,9 @@ export function QuickTaskPage({ actions, historyRevision, onJobChange, onPerform
   const revision = useRef(historyRevision)
   useEffect(() => {
     if (revision.current === historyRevision) return
+    const ready = Object.values(historyRevision).filter(item => item.phase === "ready" && item.sequence !== revision.current[item.run_id]?.sequence)
     revision.current = historyRevision
-    invalidate()
+    if (ready.length) invalidate(ready.map(item => item.run_id))
   }, [historyRevision, invalidate])
   useEffect(() => {
     const target = end.current
@@ -33,7 +35,7 @@ export function QuickTaskPage({ actions, historyRevision, onJobChange, onPerform
   }, [data.next_cursor, loading, error, loadMore])
   const receiveJob = useCallback<NonNullable<Props["onJobChange"]>>(job => {
     onJobChange?.(job)
-    invalidate()
+    invalidate(job.run_ids)
   }, [onJobChange, invalidate])
   const receiveArchive = useCallback((id: string) => {
     void onPerformanceArchived(id)

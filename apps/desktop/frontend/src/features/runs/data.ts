@@ -127,6 +127,7 @@ export type TestPlan = {
 }
 
 export type RunRecord = {
+  reportID?: string
   caseCount: number
   observedCaseCount: number
   entryProgress: EntryProgress[]
@@ -188,6 +189,7 @@ export function presentWorkspace(
   return {
     plans: presentPlans(snapshot.plans, options),
     runs: snapshot.runs.map((item) => ({
+      reportID: item.report_id,
       caseCount: item.case_count,
       observedCaseCount: item.observed_case_count,
       entryProgress: item.entry_progress,

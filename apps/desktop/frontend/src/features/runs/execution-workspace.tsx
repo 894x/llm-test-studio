@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react"
+import type { ReportGenerationProgress } from "@/features/reports/generation-progress"
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import PanelRightIcon from "lucide-react/dist/esm/icons/panel-right.mjs"
 import FileTextIcon from "lucide-react/dist/esm/icons/file-text.mjs"
@@ -24,6 +25,7 @@ import { formatTargetDuration, presentWorkspace, type RunRecord, type RunStatus,
 import { RunInspectorContent } from "./run-workspace"
 import { RunInspectorFrame, InspectorDefinitionRow } from "./run-inspector-frame"
 import type { RunShortcutRenderer } from "./use-run-shortcuts"
+import { useRunHistory, type RunHistoryClient } from "./use-run-history"
 import { useExecutionJobs } from "./use-execution-jobs"
 
 type ExecutionRow = { id: string; job?: JobView; runs: RunRecord[]; title: string; time: string }
@@ -48,19 +50,32 @@ const subscribeDesktop = (notify: () => void) => {
 }
 const isDesktop = () => window.matchMedia(desktopQuery).matches
 
-export function RunWorkspace({ client, snapshot, reports, preferredJob, preferredRunID, commandError,
-  renderRunShortcuts, onJobChange, onOpenReport, onOpenComparison, readStatus }: {
-  client: JobClient; snapshot: WorkspaceSnapshot; reports: ReportSnapshot
+export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, preferredJob, preferredRunID, commandError,
+  renderRunShortcuts, onJobChange, onOpenReport, onOpenComparison, readStatus, historyRevision }: {
+  client: JobClient & Partial<RunHistoryClient>; snapshot: WorkspaceSnapshot; reports: ReportSnapshot
   preferredJob: JobView | null; preferredRunID?: string; commandError: string
   renderRunShortcuts?: RunShortcutRenderer
   onJobChange?: (job: JobView) => void
   onOpenReport: (id: string) => void | Promise<void>
   onOpenComparison?: (id: string) => void | Promise<void>
+  historyRevision?: Record<string, ReportGenerationProgress>
   readStatus?: ReactNode
 }) {
   const { t, i18n } = useTranslation("runs")
   const { t: tj } = useTranslation("jobs")
   const history = useExecutionJobs(client, preferredJob)
+  const runHistory = useRunHistory(client, history.jobs, preferredRunID)
+  const readyHistory = JSON.stringify(Object.values(historyRevision ?? {}).filter(item => item.phase === "ready").map(item => item.run_id).sort())
+  const observedReady = useRef(new Set<string>())
+  const refreshRunIDs = runHistory.refreshIDs
+  useEffect(() => {
+    const ready = JSON.parse(readyHistory) as string[]
+    const changed = ready.filter(id => !observedReady.current.has(id))
+    if (!changed.length) return
+    changed.forEach(id => observedReady.current.add(id))
+    void refreshRunIDs(changed)
+  }, [readyHistory, refreshRunIDs])
+  const snapshot = client.getRunHistory ? runHistory.snapshot : suppliedSnapshot
   const desktop = useSyncExternalStore(subscribeDesktop, isDesktop)
   const [selectedID, setSelectedID] = useState("")
   const [selectedChildID, setSelectedChildID] = useState(preferredRunID ?? "")
@@ -94,8 +109,8 @@ export function RunWorkspace({ client, snapshot, reports, preferredJob, preferre
     executions.push(...standalone.slice(0, standaloneLimit).map(run => ({ id: run.id, runs: [run], title: run.title,
       time: sources.get(run.id)!.started_at })))
     executions.sort((a, b) => b.time.localeCompare(a.time) || b.id.localeCompare(a.id))
-    return { executions, moreStandalone: standalone.length > standaloneLimit }
-  }, [history.jobs, presentation.runs, snapshot.runs, standaloneLimit, tj])
+    return { executions, moreStandalone: standalone.length > standaloneLimit || runHistory.hasMore }
+  }, [history.jobs, presentation.runs, snapshot.runs, standaloneLimit, runHistory.hasMore, tj])
   const needle = query.trim().toLocaleLowerCase()
   const visible = rows.executions.filter(row =>
     (kind === "all" || (row.job?.kind ?? "run") === kind) &&
@@ -113,6 +128,12 @@ export function RunWorkspace({ client, snapshot, reports, preferredJob, preferre
     renderRunShortcuts={renderRunShortcuts} onJobChange={onJobChange} onOpenReport={onOpenReport} onOpenComparison={onOpenComparison} />
     : <p className="p-4 text-xs text-muted-foreground">{t("inspector.noneSelected")}</p>
 
+  const loadMore = () => {
+    if (history.pending || runHistory.pending) return
+    history.loadMore()
+    void runHistory.loadMore()
+    setStandaloneLimit(limit => limit + 25)
+  }
   return <main className="flex min-h-0 min-w-0 flex-1 gap-4 pl-4">
     <section aria-labelledby="workspace-heading" className="flex min-h-0 min-w-0 flex-1 flex-col max-[1179px]:pr-4">
       <div className="flex shrink-0 items-center justify-between gap-3 py-3">
@@ -121,7 +142,7 @@ export function RunWorkspace({ client, snapshot, reports, preferredJob, preferre
         <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
           <span>{t("executions.shown", { count: visible.length })}</span>
           {filtered ? <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setPlan("all") }}>{t("executions.clear")}</Button> : null}
-          <Button size="sm" variant="ghost" disabled={history.pending} onClick={history.retry}>{history.pending ? <Spinner /> : null}{t("executions.refresh")}</Button>
+          <Button size="sm" variant="ghost" disabled={history.pending} onClick={() => { history.retry(); void runHistory.refresh() }}>{history.pending ? <Spinner /> : null}{t("executions.refresh")}</Button>
           {!desktop && selected ? <Sheet><SheetTrigger asChild><Button variant="outline" size="sm"><PanelRightIcon />{t("mobile.details")}</Button></SheetTrigger>
           <SheetContent className="data-[side=right]:w-[340px] max-w-full gap-0 p-0 pt-8">
             <SheetHeader className="sr-only"><SheetTitle>{t("inspector.details")}</SheetTitle><SheetDescription>{selected.title}</SheetDescription></SheetHeader>
@@ -143,12 +164,16 @@ export function RunWorkspace({ client, snapshot, reports, preferredJob, preferre
           ...["prepared", "pending", "accepted"].map(value => ({ value: `delivery_${value}`, label: tj(`deliveryStates.${value}`) })),
         ]} />
         <SearchableSelect aria-label={t("plans.aria")} value={plan} onValueChange={setPlan} options={[
-          { value: "all", label: t("plans.all") }, ...presentation.plans.map(item => ({ value: item.id, label: item.name })),
+          { value: "all", label: t("plans.all") }, ...Array.from(new Map([...presentation.plans.map(item => [item.id, item.name] as const), ...snapshot.runs.map(run => [run.plan_id, run.plan_name] as const)])).map(([value, label]) => ({ value, label })),
         ]} />
       </div>
-      {history.error ? <Alert className="mb-2"><AlertDescription>{publicDesktopErrorMessage(history.error, tj("readFailed"))}</AlertDescription></Alert> : null}
+      {(history.error || runHistory.error) ? <Alert className="mb-2"><AlertDescription>{publicDesktopErrorMessage(history.error || runHistory.error, tj("readFailed"))}</AlertDescription></Alert> : null}
       {commandError ? <Alert variant="destructive" className="mb-2"><AlertDescription>{commandError}</AlertDescription></Alert> : null}
-      <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1">
+      <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1" onScrollCapture={event => {
+        const viewport = event.target as HTMLElement
+        if (viewport.dataset.slot === "scroll-area-viewport" && viewport.scrollHeight > viewport.clientHeight &&
+          viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 120) loadMore()
+      }}>
         {visible.length ? <Table aria-label={t("table.aria")} className="table-fixed [&_td]:whitespace-normal [&_td]:[overflow-wrap:anywhere]">
           <colgroup><col className="w-[88px]" /><col /><col /><col /><col className="w-[144px]" /></colgroup>
           <TableHeader><TableRow><TableHead>{t("table.status")}</TableHead><TableHead>{t("table.runPlan")}</TableHead>
@@ -167,7 +192,7 @@ export function RunWorkspace({ client, snapshot, reports, preferredJob, preferre
       </ScrollArea>
       <div className="flex shrink-0 items-center justify-between gap-2 py-2">
         <span className="text-[11px] text-muted-foreground">{t("executions.historyHint")}</span>
-        {history.hasMore || rows.moreStandalone ? <Button variant="outline" size="sm" disabled={history.pending} onClick={() => { history.loadMore(); setStandaloneLimit(limit => limit + 25) }}>{t("executions.more")}</Button> : null}
+        {history.hasMore || rows.moreStandalone ? <Button variant="outline" size="sm" disabled={history.pending || runHistory.pending} onClick={loadMore}>{t("executions.more")}</Button> : null}
       </div>
     </section>
     {desktop ? <aside aria-label={t("inspector.details")} className="flex min-h-0 min-w-0 w-[320px] shrink-0 flex-col border-l border-divider">{details}</aside> : null}
@@ -203,7 +228,7 @@ function ExecutionProgress({ row }: { row: ExecutionRow }) {
 
 function ExecutionInspector({ row, client, reports, selectedChildID, onSelectChild, detailTab, onDetailTabChange,
   renderRunShortcuts, onJobChange, onOpenReport, onOpenComparison }: {
-  row: ExecutionRow; client: JobClient; reports: ReportSnapshot
+  row: ExecutionRow; client: JobClient & Partial<RunHistoryClient>; reports: ReportSnapshot
   selectedChildID: string; onSelectChild: (id: string) => void
   detailTab: string; onDetailTabChange: (tab: string) => void
   renderRunShortcuts?: RunShortcutRenderer; onJobChange?: (job: JobView) => void
@@ -213,8 +238,8 @@ function ExecutionInspector({ row, client, reports, selectedChildID, onSelectChi
   const { t } = useTranslation("runs")
   const run = row.runs.find(item => item.id === selectedChildID) ?? row.runs[0]
   const job = row.job
-  const reportIDs = job ? reports.reports.filter(report => job.report_ids.includes(report.id) ||
-    (report.run_id && job.run_ids.includes(report.run_id))).map(report => report.id) : []
+  const reportIDs = [...new Set([...row.runs.flatMap(run => run.reportID ? [run.reportID] : []), ...(job ? reports.reports.filter(report => job.report_ids.includes(report.id) ||
+    (report.run_id && job.run_ids.includes(report.run_id))).map(report => report.id) : [])])]
   if (job?.kind === "performance") return <PerformanceInspector row={row} client={client} reportIDs={reportIDs}
     onJobChange={onJobChange} onOpenReport={onOpenReport} />
   const execution = job ? <JobDetails key={job.job_id} client={client} jobID={job.job_id} initialJob={job}
@@ -229,19 +254,36 @@ function ExecutionInspector({ row, client, reports, selectedChildID, onSelectChi
 }
 
 function PerformanceInspector({ row, client, reportIDs, onJobChange, onOpenReport }: {
-  row: ExecutionRow; client: JobClient; reportIDs: string[]
+  row: ExecutionRow; client: JobClient & Partial<RunHistoryClient>; reportIDs: string[]
   onJobChange?: (job: JobView) => void
   onOpenReport: (id: string) => void | Promise<void>
 }) {
   const { t } = useTranslation("runs")
   const { t: tj } = useTranslation("jobs")
   const [tab, setTab] = useState("summary")
+  const [archivedID, setArchivedID] = useState("")
+  const [availableID, setAvailableID] = useState("")
+  useEffect(() => {
+    if (!archivedID || !client.getAvailableReports) return
+    let active = true
+    let timer: number | undefined
+    const read = async () => {
+      try {
+        const ids = await client.getAvailableReports!([archivedID])
+        if (!active) return
+        if (ids.includes(archivedID)) { setAvailableID(archivedID); return }
+      } catch { /* Retry only the selected archive identity while visible. */ }
+      if (active) timer = window.setTimeout(() => void read(), 2000)
+    }
+    void read()
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [archivedID, client])
   return <JobDetails client={client} jobID={row.job!.job_id} initialJob={row.job}
-    onJobChange={onJobChange} showPerformanceResult={false}
+    onJobChange={onJobChange} onArchived={setArchivedID} showPerformanceResult={false}
     renderLayout={({ job, result, error, details }) => {
       const report = result?.observation?.report
       const failure = job.execution?.failure
-      const reportID = reportIDs[0]
+      const reportID = availableID || reportIDs[0]
       const outcome = result ? tj(`outcomes.${result.observation_state}`) : tj("resultPending")
       return <RunInspectorFrame title={row.title} id={job.job_id} status={<ExecutionStatus row={{ ...row, job }} />}
         tab={tab} onTabChange={setTab} execution={details}
