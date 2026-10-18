@@ -6,6 +6,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
 	"github.com/894x/llm-test-studio/internal/application/jobs"
+	"github.com/894x/llm-test-studio/internal/application/quickhistory"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
 	"github.com/894x/llm-test-studio/internal/application/remotesync"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
@@ -81,7 +82,12 @@ type ComparisonService interface {
 
 type desktopEventEmitter func(context.Context, string, ...interface{})
 
+type QuickHistoryQuery interface {
+	Page(context.Context, string) (quickhistory.Page, error)
+}
+
 type Dependencies struct {
+	QuickHistory           QuickHistoryQuery
 	Query                  WorkspaceQuery
 	Catalog                CatalogQuery
 	CatalogCommands        CatalogCommands

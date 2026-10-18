@@ -34,7 +34,7 @@ func TestDesktopBindingMethodSetSurvivesPackageMove(t *testing.T) {
 		"GetJobControls",
 		"GetJobPerformanceResult",
 		"GetJobs",
-		"GetQuickTask",
+		"GetQuickTask", "GetQuickTestHistory",
 		"GetRemoteNodeUpgrade",
 		"GetRemoteNodes",
 		"GetReportDetail",

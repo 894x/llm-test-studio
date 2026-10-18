@@ -45,6 +45,7 @@ function desktopClient(): DesktopClient & {
   let observedJob = jobFixture()
   const client = {
     workspace: structuredClone(FIXTURE_WORKSPACE),
+    getQuickTestHistory: vi.fn(async () => ({ schema_version: 1 as const, runs: structuredClone(client.workspace.runs.filter(run => run.source === "quick_task")), reports: structuredClone(FIXTURE_REPORTS.reports.filter(report => report.source === "quick_performance")), next_cursor: "" })),
     getWorkspace: vi.fn(async () => structuredClone(client.workspace)),
     getCatalog: vi.fn(async (scope: CatalogScope) => structuredClone(selectCatalog(FIXTURE_CATALOG, scope))),
     getReports: vi.fn(async () => structuredClone(FIXTURE_REPORTS)),
@@ -657,6 +658,49 @@ describe("desktop run workspace", () => {
 		})
 	})
 
+  it("loads quick history on intersection and retains all loaded records and scrolling across navigation", async () => {
+    window.history.replaceState(null, "", "#quick-test")
+    let intersect: IntersectionObserverCallback | undefined
+    const disconnect = vi.fn()
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(callback: IntersectionObserverCallback) { intersect = callback }
+      observe() {}
+      disconnect = disconnect
+    })
+    try {
+      const client = desktopClient()
+      const all = Array.from({ length: 62 }, (_, index) => ({ ...FIXTURE_WORKSPACE.runs[0],
+        id: `70000000-0000-4000-8000-${String(index).padStart(12, "0")}`, plan_name: `History ${index}`,
+        source: "quick_task" as const, status: "completed" as const }))
+      vi.mocked(client.getQuickTestHistory).mockImplementation(async after => {
+        const offset = Number(after || 0)
+        return { schema_version: 1, runs: all.slice(offset, offset + 25), reports: [], next_cursor: offset + 25 < all.length ? String(offset + 25) : "" }
+      })
+      render(<App client={client} />)
+      const list = await screen.findByRole("list", { name: "测试记录" })
+      expect(within(list).getAllByRole("listitem")).toHaveLength(25)
+      expect(client.getWorkspace).not.toHaveBeenCalled()
+      expect(client.getReports).not.toHaveBeenCalled()
+      const trigger = () => intersect?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+      act(trigger)
+      await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(50))
+      act(trigger)
+      await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(62))
+      expect(client.getQuickTestHistory).toHaveBeenNthCalledWith(2, "25")
+      expect(client.getQuickTestHistory).toHaveBeenNthCalledWith(3, "50")
+      const viewport = list.closest('[data-slot="scroll-area-viewport"]') as HTMLElement
+      viewport.scrollTop = 1450
+      await userEvent.click(screen.getByRole("button", { name: "模型与渠道" }))
+      await waitFor(() => expect(window.location.hash).toBe("#catalog"))
+      expect(disconnect).toHaveBeenCalled()
+      vi.mocked(client.getQuickTestHistory).mockReturnValueOnce(new Promise(() => {}))
+      await userEvent.click(screen.getByRole("button", { name: "快速测试" }))
+      expect(screen.getByRole("list", { name: "测试记录" })).toBe(list)
+      expect(within(list).getAllByRole("listitem")).toHaveLength(62)
+      expect(viewport.scrollTop).toBe(1450)
+    } finally { vi.unstubAllGlobals() }
+  })
+
   it("offers only current OpenAI catalog models to quick test while keeping the field editable", async () => {
     window.history.replaceState(null, "", "#quick-test")
     const user = userEvent.setup()
@@ -687,7 +731,7 @@ describe("desktop run workspace", () => {
     const summary = FIXTURE_REPORTS.reports[1]
     client.workspace.active_run_id = undefined
     client.workspace.runs = [{
-      ...client.workspace.runs[0], id: summary.run_id!, source: "quick_task", status: "completed", plan_name: "Past quick test",
+      ...client.workspace.runs[0], id: summary.run_id!, source: "quick_task", status: "completed", report_id: summary.id, plan_name: "Past quick test",
     }]
     const detail = protocolReportFixture()
     detail.report.id = summary.id
@@ -748,9 +792,7 @@ describe("desktop run workspace", () => {
 			case_count: 1, failed_case_count: 0, passed_case_count: 1, verified_case_count: 1, observed_case_count: 0, indeterminate_case_count: 0,
 			attachment_count: 0,
 		})
-		vi.mocked(client.getReports)
-			.mockResolvedValueOnce(structuredClone(FIXTURE_REPORTS))
-			.mockResolvedValue(structuredClone(updatedReports))
+		vi.mocked(client.getReports).mockResolvedValue(structuredClone(updatedReports))
 		vi.mocked(client.launchJob).mockResolvedValue(jobFixture({ execution: null, report_ids: [reportID] }))
     vi.mocked(client.getJob).mockResolvedValue({ ...completedJob(), report_ids: [reportID] })
     vi.mocked(client.getJobPerformanceResult).mockResolvedValue(performanceResultFixture(performance))
@@ -765,7 +807,8 @@ describe("desktop run workspace", () => {
 		const panel = screen.getByRole("region", { name: "快速性能测试" })
 		await user.click(within(panel).getByRole("button", { name: "开始性能测试" }))
 
-		await waitFor(() => expect(vi.mocked(client.getReports).mock.calls.length).toBeGreaterThanOrEqual(2))
+		await waitFor(() => expect(vi.mocked(client.getQuickTestHistory).mock.calls.length).toBeGreaterThanOrEqual(2))
+    expect(client.getReports).not.toHaveBeenCalled()
 		const history = screen.getByRole("list", { name: "测试记录" })
 		await user.click(await within(history).findByRole("button", { name: "打开报告 快速性能测试" }))
 		expect(window.location.hash).toBe("#reports")
@@ -1395,6 +1438,7 @@ describe("desktop run workspace", () => {
     const client: DesktopClient = {
       getDiagnostics: vi.fn(),
       openDiagnosticsDirectory: vi.fn(),
+      getQuickTestHistory: vi.fn(),
       getWorkspace: vi.fn(async () => {
         throw new Error("sk-secret from https://provider.example/v1")
       }),

@@ -167,6 +167,10 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 			t.Fatalf("production directory permissions = %#o, want 0700", permissions)
 		}
 	}
+	historyPage, err := dependencies.QuickHistory.Page(context.Background(), "")
+	if err != nil || historyPage.SchemaVersion != 1 || len(historyPage.Runs)+len(historyPage.Reports) != 0 {
+		t.Fatalf("initialized quick history = %+v, %v", historyPage, err)
+	}
 	snapshot, err := dependencies.Query.Snapshot(context.Background())
 	if err != nil {
 		t.Fatalf("query initialized workspace: %v", err)

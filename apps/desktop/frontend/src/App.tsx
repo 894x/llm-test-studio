@@ -51,7 +51,7 @@ import {
 } from "@/features/shell/navigation"
 
 const OverviewWorkspace = lazy(() => import("@/features/overview/overview-workspace").then(module => ({ default: module.OverviewWorkspace })))
-const QuickTaskWorkspace = lazy(() => import("@/features/quick-test/quick-task-workspace").then(module => ({ default: module.QuickTaskWorkspace })))
+const QuickTaskPage = lazy(() => import("@/features/quick-test/quick-task-page").then(module => ({ default: module.QuickTaskPage })))
 const ReportWorkspace = lazy(() => import("@/features/reports/report-workspace").then(module => ({ default: module.ReportWorkspace })))
 const ModelChannelWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces").then(module => ({ default: module.ModelChannelWorkspace })))
 const CasesWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces").then(module => ({ default: module.CasesWorkspace })))
@@ -59,7 +59,7 @@ const PlansWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces"
 
 const PAGE_READS = {
   overview: ["workspace", "catalog", "reports"],
-  "quick-test": ["workspace", "quickCatalog", "reports"],
+  "quick-test": ["quickCatalog"],
   catalog: ["connections"], cases: ["definitions"], plans: ["catalog"],
   runs: ["workspace"], reports: ["reports"],
 } as const
@@ -318,9 +318,6 @@ function AppWorkspace({
     return () => { active = false; window.clearTimeout(timer) }
   }, [refreshReports, reportRetryUntil, page])
 
-  const refreshQuickTask = useCallback(async () => {
-    await Promise.all([refreshWorkspace(), refreshReports()])
-  }, [refreshWorkspace, refreshReports])
 
   const lastObservedJob = useRef("")
   const receiveJobObservation = useCallback((job: JobView) => {
@@ -351,14 +348,8 @@ function AppWorkspace({
 
   const refreshArchivedPerformanceReport = useCallback(async (reportID: string): Promise<void> => {
     resources.reports.invalidate()
-    try {
-      await refreshReports()
-      setPreferredReportID(reportID)
-    } catch {
-      // The quick-test result remains available in its sheet; the reports
-      // workspace can be refreshed again through normal app polling/reload.
-    }
-  }, [resources, refreshReports])
+    setPreferredReportID(reportID)
+  }, [resources])
 
   const openReport = useCallback(async (reportID: string): Promise<void> => {
     setPreferredReportID(reportID)
@@ -506,16 +497,14 @@ function AppWorkspace({
       return (page === "runs" && startup?.status !== "running" && startup?.status !== "failed" ? null : pageStatus) ?? (page === "overview" ? (
         <OverviewWorkspace workspace={snapshot!} catalog={catalog!} reports={reports!} onOpenReport={openReport} />
       ) : page === "quick-test" ? (
-        <QuickTaskWorkspace
+        <QuickTaskPage
           catalog={catalog!}
-          workspace={snapshot!}
-          reports={reports!}
+          historyRevision={reportGeneration}
           draft={quickDraft}
           onDraftChange={setQuickDraft}
           runID={quickRunID}
           onRunSelected={setQuickRunID}
           actions={client}
-          refresh={refreshQuickTask}
           onJobLaunched={setPreferredJob}
           functionalJobs={quickFunctionalJobs}
           onFunctionalJobsChange={setQuickFunctionalJobs}

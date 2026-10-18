@@ -31,6 +31,7 @@ type DesktopApp struct {
 	ctx                      context.Context
 	cancel                   context.CancelFunc
 	query                    WorkspaceQuery
+	quickHistory             QuickHistoryQuery
 	catalog                  CatalogQuery
 	catalogCommands          CatalogCommands
 	reports                  ReportingQuery

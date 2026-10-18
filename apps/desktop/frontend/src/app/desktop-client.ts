@@ -1,3 +1,4 @@
+import type { QuickHistoryPage } from "@/features/quick-test/history-data"
 import { parseStartupProgress, READY_STARTUP, type StartupProgress } from "./startup-progress"
 import { DesktopDataError } from "@/app/data-error"
 import { EMPTY_REMOTE_NODES, parseRemoteNodes, parseRemoteNodeUpgrade, parseNullableRemoteNodeUpgrade,
@@ -173,6 +174,7 @@ export interface DesktopClient extends CatalogActions {
   recoverRemoteNodeUpgrade(command: RemoteNodeUpgradeAction): Promise<RemoteNodeUpgradeView>
   getDiagnostics(): Promise<DesktopDiagnosticsSnapshot>
   openDiagnosticsDirectory(): Promise<void>
+  getQuickTestHistory(after: string): Promise<QuickHistoryPage>
   getWorkspace(): Promise<WorkspaceSnapshot>
   getCatalog(scope: CatalogScope): Promise<CatalogSnapshot>
   getReports(): Promise<ReportSnapshot>
@@ -251,6 +253,7 @@ type WailsDesktopBinding = {
   GetDiagnostics(): Promise<unknown>
   OpenDiagnosticsDirectory(): Promise<unknown>
   ReportFrontendDiagnostic(diagnostic: FrontendDiagnostic): Promise<unknown>
+  GetQuickTestHistory(after: string): Promise<unknown>
   GetWorkspace(): Promise<unknown>
   GetCatalog(scope: CatalogScope): Promise<unknown>
   GetReports(): Promise<unknown>
@@ -305,7 +308,7 @@ const REQUIRED_WAILS_BINDING_METHODS = [
   "RetryRemoteInstallation", "RemoveRemoteNode",
   "StartRemoteNodeUpgrade", "GetRemoteNodeUpgrade", "RetryRemoteNodeUpgrade", "RecoverRemoteNodeUpgrade",
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
-  "GetStartupProgress", "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
+  "GetStartupProgress", "GetQuickTestHistory", "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
   "SaveReportExport", "CopyReportPNG", "GetComparisons", "LaunchJob", "GetJobs", "GetJob", "GetJobPerformanceResult", "ControlJob", "GetJobControls", "RetryJobControl", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
   "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel", "SaveQuickTestTarget",
   "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
@@ -373,6 +376,15 @@ export function createFixtureClient(
     async getReportGeneration() { return { schema_version: 1, runs: [] } },
     subscribeReportGeneration() { return () => {} },
     async getStartupProgress() { return { ...READY_STARTUP } },
+    async getQuickTestHistory(after) {
+      const items = [
+        ...workspace.runs.filter(run => run.source === "quick_task").map(run => ({ key: `${run.started_at}|run|${run.id}`, run })),
+        ...reports.reports.filter(report => report.source === "quick_performance").map(report => ({ key: `${report.generated_at}|performance|${report.id}`, report })),
+      ].sort((a,b) => b.key.localeCompare(a.key)).filter(item => !after || item.key < after)
+      const page = items.slice(0,25)
+      return structuredClone({ schema_version: 1, runs: page.flatMap(item => "run" in item ? [item.run] : []),
+        reports: page.flatMap(item => "report" in item ? [item.report] : []), next_cursor: items.length > 25 ? page[24].key : "" })
+    },
     async getWorkspace() {
       return cloneSnapshot(workspace)
     },
@@ -572,6 +584,7 @@ function createLazyFixtureClient(): DesktopClient {
     openDiagnosticsDirectory: async () =>
       (await client).openDiagnosticsDirectory(),
     getStartupProgress: async () => (await client).getStartupProgress(),
+    getQuickTestHistory: async after => (await client).getQuickTestHistory(after),
     getWorkspace: async () => (await client).getWorkspace(),
     getCatalog: async (scope) => (await client).getCatalog(scope),
     getReports: async () => (await client).getReports(),
@@ -705,6 +718,7 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       callBinding(() => binding.GetDiagnostics(), parseDiagnosticsSnapshot),
     openDiagnosticsDirectory: async () =>
       callBinding(() => binding.OpenDiagnosticsDirectory(), parseVoid),
+    getQuickTestHistory: after => callBinding(() => binding.GetQuickTestHistory(after), parseQuickHistoryPage),
     getWorkspace: singleFlightRead(() =>
       callBinding(
         () => binding.GetWorkspace(),
@@ -1354,4 +1368,22 @@ function isTimestamp(value: unknown): value is string {
     (value.endsWith("Z") || /[+-]00:00$/.test(value)) &&
     Number.isFinite(Date.parse(value))
   )
+}
+
+export function parseQuickHistoryPage(value: unknown): QuickHistoryPage {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new DesktopDataError("Invalid quick history page")
+  const page = value as Record<string, unknown>
+  const keys = ["schema_version", "runs", "reports", "next_cursor"]
+  if (Object.keys(page).some(key => !keys.includes(key)) || page.schema_version !== 1 || typeof page.next_cursor !== "string") {
+    throw new DesktopDataError("Invalid quick history fields")
+  }
+  if (page.next_cursor && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z\|(run|performance)\|[0-9a-f-]{36}$/.test(page.next_cursor)) {
+    throw new DesktopDataError("Invalid quick history cursor")
+  }
+  const runs = parseSnapshot({ schema_version: 1, plans: [], runs: page.runs }).runs
+  const reports = parseReportSnapshot({ schema_version: 1, reports: page.reports }).reports
+  if (runs.length + reports.length > 25 || runs.some(run => run.source !== "quick_task") || reports.some(report => report.source !== "quick_performance")) {
+    throw new DesktopDataError("Invalid quick history window")
+  }
+  return { schema_version: 1, runs, reports, next_cursor: page.next_cursor }
 }

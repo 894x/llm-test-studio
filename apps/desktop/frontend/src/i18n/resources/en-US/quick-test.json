@@ -1,4 +1,11 @@
 {
+  "historyPage": {
+    "loading": "Loading records…",
+    "error": "Could not load records. Loaded records are preserved.",
+    "retry": "Retry",
+    "more": "Load more",
+    "end": "All records loaded"
+  },
   "title": "Quick Test",
   "description": "Choose a task and connection for functional tests, or load and adjust a performance plan.",
   "connection": "Connection",

@@ -369,7 +369,7 @@ func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
 			if _, duplicate := reportIDs[report.ReportID]; duplicate {
 				return Snapshot{}, classified(ErrInconsistent, fmt.Errorf("duplicate report id %q", report.ReportID))
 			}
-			summary, err := quickPerformanceSummary(report)
+			summary, err := SummarizeQuickPerformance(report)
 			if err != nil {
 				return Snapshot{}, classified(ErrInconsistent, err)
 			}
@@ -390,7 +390,8 @@ func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	return Snapshot{SchemaVersion: CurrentSchemaVersion, Reports: summaries}, nil
 }
 
-func quickPerformanceSummary(report quicktest.PerformanceArchiveSummary) (Summary, error) {
+// SummarizeQuickPerformance preserves the archived conclusion in list projections.
+func SummarizeQuickPerformance(report quicktest.PerformanceArchiveSummary) (Summary, error) {
 	generatedAt, err := quicktest.ValidatePerformanceArchiveSummary(report)
 	if err != nil {
 		return Summary{}, err

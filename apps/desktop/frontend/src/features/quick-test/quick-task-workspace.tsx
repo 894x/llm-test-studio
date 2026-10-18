@@ -87,6 +87,7 @@ function performanceProfile({
 
 export function QuickTaskWorkspace({
   catalog,
+  historyFooter,
   workspace,
   reports,
   draft,
@@ -105,6 +106,7 @@ export function QuickTaskWorkspace({
   onSaveChannel,
 }: {
   catalog: CatalogSnapshot
+  historyFooter?: ReactNode
   workspace: WorkspaceSnapshot
   reports: ReportSnapshot
   draft: TaskDraft
@@ -228,7 +230,7 @@ export function QuickTaskWorkspace({
         active: !status || !isJobTerminal(status), completed: run?.completed, planned: run?.planned,
         detail: run ? t("task.observed", run) : undefined,
         error: observed.execution?.failure ? t(`common:errorCode.${observed.execution.failure.error_code}`, { defaultValue: observed.execution.failure.error_code }) : undefined,
-        reportID: reports.reports.find(report => run && report.run_id === run.id)?.id,
+        reportID: run?.report_id ?? reports.reports.find(report => run && report.run_id === run.id)?.id,
       }
     }),
     ...workspace.runs.filter(run => run.source === "quick_task" && !functionalJobs.some(entry =>
@@ -240,7 +242,7 @@ export function QuickTaskWorkspace({
       active: isRunActive(run.status), completed: run.completed, planned: run.planned,
       detail: t("task.observed", run),
       error: run.error_code ? t(`common:errorCode.${run.error_code}`, { defaultValue: run.error_code }) : undefined,
-      reportID: reports.reports.find(report => report.run_id === run.id)?.id,
+      reportID: run.report_id ?? reports.reports.find(report => report.run_id === run.id)?.id,
     })),
     ...reports.reports.filter(report => report.source === "quick_performance" && !performanceHistory.some(item => item.reportID === report.id)).map(report => ({
       id: report.id, reportID: report.id, mode: "performance" as const,
@@ -254,7 +256,7 @@ export function QuickTaskWorkspace({
       return { ...item, status: report.run_status === "cancelled" ? "cancelled" : report.passed ? "passed" : "failed" }
     }),
   ].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
-  const visibleHistory = history.filter((item, index) => item.active || index < 50)
+  const visibleHistory = history
   const requestedHistoryID = selectedHistoryID || runID || (mode === "functional" ? functionalJobs[0]?.job.job_id : "") || ""
   const selectedID = history.find(item => item.id === requestedHistoryID || item.runID === requestedHistoryID)?.id ?? requestedHistoryID
   const performanceJobLaunched = (accepted: JobView, command: QuickPerformanceCommand) => {
@@ -576,6 +578,7 @@ export function QuickTaskWorkspace({
               onRestore={id => { setMode("functional"); setSelectedHistoryID(id); void restore(id) }}
               onOpenReport={id => void onOpenReport(id)} onCancel={id => void cancel(id)} onRefresh={() => void refreshProgress()} />
               : <p className="py-4 text-xs leading-relaxed text-muted-foreground">{t("task.noHistory")}</p>}
+            {historyFooter}
             {runID && !history.some(item => item.runID === runID) ? <p role="status" className="flex items-center gap-2 py-4 text-xs text-muted-foreground"><Spinner />{t("task.waiting")}</p> : null}
           </ScrollArea>
         </aside>

@@ -22,13 +22,27 @@ func (repository *Repository) ListRunProjections(ctx context.Context) ([]workspa
 		return nil, fmt.Errorf("begin workspace projection read: %w", err)
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(
-		ctx,
-		workspaceProjectionQuery,
-		domain.CurrentEntitySchemaVersion,
-		domain.CurrentReportSchemaVersion,
-		domain.CurrentRunSnapshotSchemaVersion,
-	)
+	projections, err := readWorkspaceProjections(ctx, tx, workspaceProjectionQuery)
+	if err != nil {
+		return nil, err
+	}
+	var rootCount int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM execution_runs`).Scan(&rootCount); err != nil {
+		return nil, err
+	}
+	if rootCount != len(projections) {
+		return nil, storageCorrupt("workspace current revision pointer")
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return projections, nil
+}
+
+func readWorkspaceProjections(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]workspace.RunProjection, error) {
+	parameters := []any{domain.CurrentEntitySchemaVersion, domain.CurrentReportSchemaVersion, domain.CurrentRunSnapshotSchemaVersion}
+	parameters = append(parameters, args...)
+	rows, err := tx.QueryContext(ctx, query, parameters...)
 	if err != nil {
 		return nil, reportProjectionReadError(ctx, "query workspace projections", err)
 	}
@@ -82,16 +96,7 @@ func (repository *Repository) ListRunProjections(ctx context.Context) ([]workspa
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	var rootCount int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM execution_runs`).Scan(&rootCount); err != nil {
-		return nil, err
-	}
-	if rootCount != len(projections) {
-		return nil, storageCorrupt("workspace current revision pointer")
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
+
 	return projections, nil
 }
 
@@ -110,8 +115,8 @@ WITH current_runs AS MATERIALIZED (
     JOIN execution_run_revisions AS revision ON revision.run_id = root.id AND revision.revision = root.current_revision
 ),
 run_owner_claims AS (
-    SELECT run_id, job_id, position, 'owned' AS namespace FROM execution_job_runs
-    UNION ALL SELECT run_id, job_id, position, 'mirror' AS namespace FROM remote_job_runs
+    SELECT run_id, job_id, position, 'owned' AS namespace FROM execution_job_runs WHERE run_id IN (SELECT id FROM current_runs)
+    UNION ALL SELECT run_id, job_id, position, 'mirror' AS namespace FROM remote_job_runs WHERE run_id IN (SELECT id FROM current_runs)
 ),
 run_owner_fields AS MATERIALIZED (
     SELECT owner.run_id, owner.job_id, owner.position,
@@ -158,13 +163,13 @@ planned_cases AS MATERIALIZED (
     WHERE item.type = 'object'
 ),
 request_runs AS MATERIALIZED (
-    SELECT run_id, MAX(request_id IS NOT NULL) AS has_requests FROM case_results GROUP BY run_id
+    SELECT run_id, MAX(request_id IS NOT NULL) AS has_requests FROM case_results WHERE run_id IN (SELECT id FROM current_runs) GROUP BY run_id
 ),
 result_documents AS MATERIALIZED (
     SELECT run_id, entry_id, case_id, request_id, schema_version,
            json_extract(document_json,'$.schema_version','$.run_id','$.entry_status',
              '$.dimensions.phase','$.verification.status','$.execution_status','$.performance.progress.completed') AS fields
-    FROM case_results
+    FROM case_results WHERE run_id IN (SELECT id FROM current_runs)
 ),
 result_fields AS MATERIALIZED (
     SELECT item.run_id, item.entry_id, item.case_id, item.request_id, item.schema_version,
@@ -197,7 +202,7 @@ result_stats AS (
 ),
 performance_latest AS (
     SELECT MAX(rowid) AS result_row FROM case_results
-    WHERE json_type(document_json,'$.performance') = 'object' GROUP BY run_id, entry_id
+    WHERE run_id IN (SELECT id FROM current_runs) AND json_type(document_json,'$.performance') = 'object' GROUP BY run_id, entry_id
 ),
 performance_stats AS (
     SELECT result.run_id,
@@ -223,7 +228,7 @@ entry_stats AS (
 ),
 report_documents AS MATERIALIZED (
     SELECT run_id, id, schema_version, json_type(document_json,'$.entry_reports') = 'array' AS current_tree,
-           json_extract(document_json,'$.schema_version','$.conclusion.passed') AS fields FROM reports
+           json_extract(document_json,'$.schema_version','$.conclusion.passed') AS fields FROM reports WHERE run_id IN (SELECT id FROM current_runs)
 ),
 report_stats AS (
     SELECT run_id, COUNT(*) AS report_count, MIN(id) AS report_id,
@@ -232,8 +237,8 @@ report_stats AS (
              AND json_type(fields,'$[1]') IN ('true','false') THEN 0 ELSE 1 END) AS corrupt
     FROM report_documents GROUP BY run_id
 ),
-evidence_stats AS (SELECT run_id,COUNT(*) AS count FROM evidence GROUP BY run_id),
-artifact_stats AS (SELECT run_id,COUNT(*) AS count FROM artifacts GROUP BY run_id)
+evidence_stats AS (SELECT run_id,COUNT(*) AS count FROM evidence WHERE run_id IN (SELECT id FROM current_runs) GROUP BY run_id),
+artifact_stats AS (SELECT run_id,COUNT(*) AS count FROM artifacts WHERE run_id IN (SELECT id FROM current_runs) GROUP BY run_id)
 SELECT json_object(
     'Meta',json_object('id',run.id,'schema_version',run.schema_version,'revision',run.current_revision,
       'created_at',run.created_at,'updated_at',run.updated_at),

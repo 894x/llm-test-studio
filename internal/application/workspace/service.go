@@ -443,3 +443,11 @@ func newestActiveRun(runs []RunSummary) string {
 	}
 	return ""
 }
+
+// Summary validates and projects a single bounded history record.
+func (projection RunProjection) Summary() (RunSummary, error) {
+	if err := projection.Validate(); err != nil {
+		return RunSummary{}, err
+	}
+	return summarizeRun(projection), nil
+}

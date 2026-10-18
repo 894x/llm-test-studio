@@ -13,6 +13,7 @@ import (
 
 type desktopRequirements struct {
 	workspace       bool
+	quickHistory    bool
 	catalog         bool
 	catalogCommands bool
 	reports         bool
@@ -28,6 +29,7 @@ type desktopRequirements struct {
 type desktopLease struct {
 	ctx             context.Context
 	workspace       WorkspaceQuery
+	quickHistory    QuickHistoryQuery
 	catalog         CatalogQuery
 	catalogCommands CatalogCommands
 	reports         ReportingQuery
@@ -100,6 +102,7 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	app.startupProgress.Stage = "ready"
 	app.startupProgress.ElapsedMS = time.Since(app.startupStarted).Milliseconds()
 	app.query = dependencies.Query
+	app.quickHistory = dependencies.QuickHistory
 	app.catalog = dependencies.Catalog
 	app.catalogCommands = dependencies.CatalogCommands
 	app.reports = dependencies.Reports
@@ -152,6 +155,9 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 	if app.startupErr != nil {
 		return desktopLease{}, app.startupErr
 	}
+	if require.quickHistory && isNilInterface(app.quickHistory) {
+		return desktopLease{}, ErrQuickTestUnavailable
+	}
 	if require.workspace && isNilInterface(app.query) {
 		return desktopLease{}, ErrWorkspaceUnavailable
 	}
@@ -200,7 +206,8 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 		}
 	}
 	return desktopLease{
-		ctx: app.ctx, workspace: app.query, catalog: app.catalog, catalogCommands: app.catalogCommands,
+		quickHistory: app.quickHistory,
+		ctx:          app.ctx, workspace: app.query, catalog: app.catalog, catalogCommands: app.catalogCommands,
 		reports: app.reports, commands: app.commands, release: release,
 		comparisons: app.comparisons,
 		launcher:    app.launcher, jobQuery: app.jobQuery, controls: app.controls, controlRecords: app.controlRecords,

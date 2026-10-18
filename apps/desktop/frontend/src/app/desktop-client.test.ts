@@ -18,6 +18,25 @@ import { FILE_SELECTION } from "@/test/local-file-fixture"
 import { remoteUpgradeFixture, REMOTE_CONFIGURATION_ID, UPGRADE_OPERATION_ID } from "@/test/remote-upgrade-fixture"
 
 describe("Wails desktop client", () => {
+  it("reads bounded quick history through its own binding and rejects malformed pages", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const client = createDesktopClient()
+    const cursor = "2026-01-01T00:00:00.000000000Z|run|70000000-0000-4000-8000-000000000001"
+    await expect(client.getQuickTestHistory(cursor)).resolves.toEqual({ schema_version: 1, runs: [], reports: [], next_cursor: "" })
+    expect(binding.GetQuickTestHistory).toHaveBeenCalledExactlyOnceWith(cursor)
+    expect(binding.GetWorkspace).not.toHaveBeenCalled()
+    expect(binding.GetReports).not.toHaveBeenCalled()
+    for (const page of [
+      { schema_version: 2, runs: [], reports: [], next_cursor: "" },
+      { schema_version: 1, runs: [], reports: [], next_cursor: "invalid" },
+      { schema_version: 1, runs: [], reports: [], next_cursor: "", secret: "private" },
+      { schema_version: 1, runs: [FIXTURE_WORKSPACE.runs[0]], reports: [], next_cursor: "" },
+    ]) {
+      binding.GetQuickTestHistory.mockResolvedValueOnce(page)
+      await expect(client.getQuickTestHistory("")).rejects.toBeInstanceOf(DesktopDataError)
+    }
+  })
+
   it("imports a bounded image document through current bindings and strictly validates its metadata", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const client = createDesktopClient()
@@ -1177,6 +1196,7 @@ function installBinding(
     SelectDefaultExecution: vi.fn(async (_command?: unknown) => undefined),
     RetryRemoteInstallation: vi.fn(async (_command?: unknown) => undefined),
     RemoveRemoteNode: vi.fn(async (_command?: unknown) => undefined),
+    GetQuickTestHistory: vi.fn(async (): Promise<unknown> => ({ schema_version: 1, runs: [], reports: [], next_cursor: "" })),
     GetWorkspace: vi.fn(async () => structuredClone(payload)),
     GetCatalog: vi.fn(async () => structuredClone(catalog)),
     GetReports: vi.fn(async () => structuredClone(reports)),
