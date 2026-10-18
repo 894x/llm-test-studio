@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/field"
 import { Progress } from "@/components/ui/progress"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import {
   Sheet,
@@ -27,7 +26,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
@@ -42,6 +40,7 @@ import {
   type TestPlan,
 } from "./data"
 import { CaseConcurrencyField } from "./case-concurrency-field"
+import { RunInspectorFrame, InspectorDefinitionRow as DefinitionRow } from "./run-inspector-frame"
 import { eligibleRuntimeChannels, eligibleRuntimeModels } from "./run-targets"
 
 const STATUS_CLASS: Record<RunStatus, string> = {
@@ -71,23 +70,6 @@ function StatusBadge({ status }: { status: RunStatus }) {
   )
 }
 
-function DefinitionRow({
-  label,
-  value,
-}: {
-  label: string
-  value: string
-}) {
-  return (
-    <div data-slot="inspector-definition-row" className="min-w-0 py-2 [overflow-wrap:anywhere]">
-      <dt className="text-[11px] text-muted-foreground">{label}</dt>
-      <dd className="mt-1 min-w-0 whitespace-normal text-xs font-medium" title={value}>
-        {value}
-      </dd>
-    </div>
-  )
-}
-
 export function RunInspectorContent({ run, shortcuts, execution, tab, onTabChange }: {
   run: RunRecord; shortcuts?: ReactNode; execution?: ReactNode
   tab: string; onTabChange: (tab: string) => void
@@ -101,101 +83,56 @@ export function RunInspectorContent({ run, shortcuts, execution, tab, onTabChang
     ? t("inspector.completedRequests", { count: run.completed })
     : t("inspector.completedFraction", { completed: run.completed, total: run.total })
 
-  return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="px-4 pb-3 pt-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-sm font-semibold [overflow-wrap:anywhere]">{run.title}</div>
-            <div className="mt-1 [overflow-wrap:anywhere] font-mono text-[10px] text-muted-foreground">
-              {run.id}
+  return <RunInspectorFrame title={run.title} id={run.id} status={<StatusBadge status={run.status} />}
+    tab={tab} onTabChange={onTabChange} execution={execution} footer={shortcuts}
+    summary={<>
+      <div className="space-y-3 py-2" aria-label={t("caseProgress.suites")}>
+        {run.entryProgress.map((suite, index) => (
+          <div key={suite.entry_id} className="min-w-0">
+            <div className="flex items-start justify-between gap-2 text-xs">
+              <span className="min-w-0 [overflow-wrap:anywhere]" title={suite.name}>{index + 1}. {suite.name}</span>
+              <span className="shrink-0 text-muted-foreground">{t(`caseProgress.status.${suite.status}`)}</span>
             </div>
+            <div className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+              {t("caseProgress.count", { completed: suite.observed_case_count, total: suite.case_count })}
+            </div>
+            <Progress value={Math.round(suite.observed_case_count / suite.case_count * 100)} className="mt-1.5"
+              aria-label={t("caseProgress.suiteAria", { name: suite.name, completed: suite.observed_case_count, total: suite.case_count })} />
           </div>
-          <StatusBadge status={run.status} />
-        </div>
+        ))}
       </div>
-      <Tabs value={!execution && tab === "execution" ? "summary" : tab} onValueChange={onTabChange} className="min-h-0 min-w-0 flex-1 gap-0">
-        <TabsList variant="line" className="mx-4 h-8">
-          {execution ? <TabsTrigger value="execution" className="text-xs">{t("inspector.execution")}</TabsTrigger> : null}
-          <TabsTrigger value="summary" className="text-xs">
-            {t("inspector.summary")}
-          </TabsTrigger>
-          <TabsTrigger value="failures" className="text-xs">
-            {t("inspector.failures")}
-          </TabsTrigger>
-          <TabsTrigger value="artifacts" className="text-xs">
-            {t("inspector.artifacts")}
-          </TabsTrigger>
-        </TabsList>
-        {execution ? <TabsContent value="execution" className="min-h-0 min-w-0 flex-1"><ScrollArea contentWidth="viewport" className="min-h-0 h-full px-4">{execution}</ScrollArea></TabsContent> : null}
-        <TabsContent
-          value="summary"
-          className="min-h-0 min-w-0 flex-1"
-        >
-          <ScrollArea contentWidth="viewport" className="min-h-0 h-full [overflow-wrap:anywhere] px-4 py-2">
-          <div className="space-y-3 py-2" aria-label={t("caseProgress.suites")}>
-            {run.entryProgress.map((suite, index) => (
-              <div key={suite.entry_id} className="min-w-0">
-                <div className="flex items-start justify-between gap-2 text-xs">
-                  <span className="min-w-0 [overflow-wrap:anywhere]" title={suite.name}>{index + 1}. {suite.name}</span>
-                  <span className="shrink-0 text-muted-foreground">{t(`caseProgress.status.${suite.status}`)}</span>
-                </div>
-                <div className="mt-1 text-[11px] tabular-nums text-muted-foreground">
-                  {t("caseProgress.count", { completed: suite.observed_case_count, total: suite.case_count })}
-                </div>
-                <Progress value={Math.round(suite.observed_case_count / suite.case_count * 100)} className="mt-1.5"
-                  aria-label={t("caseProgress.suiteAria", { name: suite.name, completed: suite.observed_case_count, total: suite.case_count })} />
-              </div>
-            ))}
-          </div>
-          <dl data-slot="inspector-description-list" className="space-y-1">
-            <DefinitionRow
-              label={t("inspector.planRevision")}
-              value={`${run.planRevision} · ${targetDetail}`}
-            />
-            <DefinitionRow
-              label={t("inspector.model")}
-              value={`${run.model} · ${run.modelRevision}`}
-            />
-            <DefinitionRow
-              label={t("inspector.channel")}
-              value={`${run.channel} · ${run.channelRevision}`}
-            />
-            <DefinitionRow
-              label={t("inspector.load")}
-              value={`${run.loadProfile} · ${progressDetail}`}
-            />
-            <DefinitionRow
-              label={t("inspector.duration")}
-              value={`${run.duration} · P95 ${run.p95}`}
-            />
-            <DefinitionRow
-              label={t("inspector.artifacts")}
-              value={t("inspector.savedArtifacts", { count: run.artifactCount })}
-            />
-          </dl>
-          </ScrollArea>
-        </TabsContent>
-        <TabsContent
-          value="failures"
-          className="min-h-0 min-w-0 flex-1"
-        >
-          <ScrollArea contentWidth="viewport" className="min-h-0 h-full [overflow-wrap:anywhere] px-4 py-3 text-xs">{run.failureSummary ?? t("inspector.noFailures")}</ScrollArea>
-        </TabsContent>
-        <TabsContent
-          value="artifacts"
-          className="min-h-0 min-w-0 flex-1"
-        >
-          <ScrollArea contentWidth="viewport" className="min-h-0 h-full [overflow-wrap:anywhere] px-4 py-3 text-xs">
-          {run.artifactCount > 0
-            ? t("inspector.artifactsPending", { count: run.artifactCount })
-            : t("inspector.noArtifacts")}
-          </ScrollArea>
-        </TabsContent>
-      </Tabs>
-      {shortcuts}
-    </div>
-  )
+      <dl data-slot="inspector-description-list" className="space-y-1">
+        <DefinitionRow
+          label={t("inspector.planRevision")}
+          value={`${run.planRevision} · ${targetDetail}`}
+        />
+        <DefinitionRow
+          label={t("inspector.model")}
+          value={`${run.model} · ${run.modelRevision}`}
+        />
+        <DefinitionRow
+          label={t("inspector.channel")}
+          value={`${run.channel} · ${run.channelRevision}`}
+        />
+        <DefinitionRow
+          label={t("inspector.load")}
+          value={`${run.loadProfile} · ${progressDetail}`}
+        />
+        <DefinitionRow
+          label={t("inspector.duration")}
+          value={`${run.duration} · P95 ${run.p95}`}
+        />
+        <DefinitionRow
+          label={t("inspector.artifacts")}
+          value={t("inspector.savedArtifacts", { count: run.artifactCount })}
+        />
+      </dl>
+    </>}
+    failures={run.failureSummary ?? t("inspector.noFailures")}
+    artifacts={run.artifactCount > 0
+      ? t("inspector.artifactsPending", { count: run.artifactCount })
+      : t("inspector.noArtifacts")}
+  />
 }
 
 export function NewRunSheet({

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import PanelRightIcon from "lucide-react/dist/esm/icons/panel-right.mjs"
+import FileTextIcon from "lucide-react/dist/esm/icons/file-text.mjs"
 import { publicDesktopErrorMessage } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -21,6 +22,7 @@ import type { ReportSnapshot } from "@/features/reports/data"
 import { cn } from "@/lib/utils"
 import { formatTargetDuration, presentWorkspace, type RunRecord, type RunStatus, type WorkspaceSnapshot } from "./data"
 import { RunInspectorContent } from "./run-workspace"
+import { RunInspectorFrame, InspectorDefinitionRow } from "./run-inspector-frame"
 import type { RunShortcutRenderer } from "./use-run-shortcuts"
 import { useExecutionJobs } from "./use-execution-jobs"
 
@@ -213,9 +215,10 @@ function ExecutionInspector({ row, client, reports, selectedChildID, onSelectChi
   const job = row.job
   const reportIDs = job ? reports.reports.filter(report => job.report_ids.includes(report.id) ||
     (report.run_id && job.run_ids.includes(report.run_id))).map(report => report.id) : []
+  if (job?.kind === "performance") return <PerformanceInspector row={row} client={client} reportIDs={reportIDs}
+    onJobChange={onJobChange} onOpenReport={onOpenReport} />
   const execution = job ? <JobDetails key={job.job_id} client={client} jobID={job.job_id} initialJob={job}
-    reportIDs={reportIDs} onOpenReport={onOpenReport} onJobChange={onJobChange}
-    renderPerformance={report => <PerformanceExecutionSummary report={report} />} /> : undefined
+    reportIDs={reportIDs} onOpenReport={onOpenReport} onJobChange={onJobChange} /> : undefined
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
     {job?.kind === "comparison" ? <div className="px-4 pt-3"><p className="mb-2 text-xs font-medium">{t("executions.children", { count: job.run_ids.length })}</p>
       {onOpenComparison ? <Button variant="outline" size="sm" className="mb-2" onClick={() => void onOpenComparison(job.comparison_id)}>{t("executions.comparisonReport")}</Button> : null}
@@ -223,6 +226,49 @@ function ExecutionInspector({ row, client, reports, selectedChildID, onSelectChi
     {run ? <RunInspectorContent key={run.id} run={run} tab={detailTab} onTabChange={onDetailTabChange} execution={execution} shortcuts={renderRunShortcuts?.(run.id)} />
       : <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1 px-4"><h2 className="pt-4 text-sm font-semibold">{row.title}</h2>{execution}</ScrollArea>}
   </div>
+}
+
+function PerformanceInspector({ row, client, reportIDs, onJobChange, onOpenReport }: {
+  row: ExecutionRow; client: JobClient; reportIDs: string[]
+  onJobChange?: (job: JobView) => void
+  onOpenReport: (id: string) => void | Promise<void>
+}) {
+  const { t } = useTranslation("runs")
+  const { t: tj } = useTranslation("jobs")
+  const [tab, setTab] = useState("summary")
+  return <JobDetails client={client} jobID={row.job!.job_id} initialJob={row.job}
+    onJobChange={onJobChange} showPerformanceResult={false}
+    renderLayout={({ job, result, error, details }) => {
+      const report = result?.observation?.report
+      const failure = job.execution?.failure
+      const reportID = reportIDs[0]
+      const outcome = result ? tj(`outcomes.${result.observation_state}`) : tj("resultPending")
+      return <RunInspectorFrame title={row.title} id={job.job_id} status={<ExecutionStatus row={{ ...row, job }} />}
+        tab={tab} onTabChange={setTab} execution={details}
+        summary={<>
+          {error ? <Alert role="status"><AlertDescription>{tj("stale")} {publicDesktopErrorMessage(error, tj("readFailed"))}</AlertDescription></Alert> : null}
+          <div className="space-y-2 py-2">
+            <p className="text-muted-foreground">{outcome}</p>
+            <ExecutionProgress row={{ ...row, job }} />
+          </div>
+          {report ? <PerformanceExecutionSummary report={report} /> : <p className="py-2 text-muted-foreground">
+            {result ? tj(result.execution_started ? "noCheckpoint" : "noObservation") : t("executions.awaitingData")}
+          </p>}
+        </>}
+        failures={<div className="space-y-3 py-1">
+          {failure ? <p>{failure.phase} · {tj(`common:errorCode.${failure.error_code}`, { defaultValue: failure.error_code })}</p> : null}
+          {report?.error_code ? <p>{tj(`common:errorCode.${report.error_code}`)}</p> : null}
+          {report?.failures.map(item => <p key={item.error_code}>{tj(`common:errorCode.${item.error_code}`)} · {item.count}</p>)}
+          {!failure && !report?.error_code && !report?.failures.length ? <p>{t("inspector.noFailures")}</p> : null}
+        </div>}
+        artifacts={<p className="py-1">{reportID ? t("shortcuts.viewReport") : t("inspector.noArtifacts")}</p>}
+        footer={<div className="shrink-0 border-t border-divider px-4 py-3">
+          <Button size="sm" variant="outline" disabled={!reportID} onClick={() => { if (reportID) void onOpenReport(reportID) }}>
+            <FileTextIcon />{t("shortcuts.viewReport")}
+          </Button>
+        </div>}
+      />
+    }} />
 }
 
 function PerformanceExecutionSummary({ report }: { report: QuickPerformanceReport }) {
@@ -240,10 +286,7 @@ function PerformanceExecutionSummary({ report }: { report: QuickPerformanceRepor
       : t("inspector.completedRequests", { count: progress.completed })],
     [t("inspector.duration"), formatTargetDuration(progress.total_duration_ms)],
   ]
-  return <dl aria-label={t("inspector.summary")} className="flex min-w-0 flex-col gap-3">
-    {fields.map(([label, value]) => <div key={label}>
-      <dt className="text-[11px] text-muted-foreground">{label}</dt>
-      <dd className="mt-1 [overflow-wrap:anywhere]">{value}</dd>
-    </div>)}
+  return <dl data-slot="inspector-description-list" className="space-y-1">
+    {fields.map(([label, value]) => <InspectorDefinitionRow key={label} label={label} value={value} />)}
   </dl>
 }

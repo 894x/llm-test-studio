@@ -6,11 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
 import type { QuickPerformanceProgress, QuickPerformanceReport } from "@/features/quick-test/data"
-import { isJobTerminal, type ControlInput, type JobView } from "./data"
+import { isJobTerminal, type ControlInput, type JobView, type PerformanceResultView } from "./data"
 import { jobControlRevision, type JobClient } from "./execution"
 import { useJobObservation } from "./use-job-observation"
 
-export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport, onJobChange, onArchived, renderProgress, renderPerformance }: {
+export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport, onJobChange, onArchived, renderProgress, renderPerformance, showPerformanceResult = true, renderLayout }: {
   client: JobClient; jobID: string; initialJob?: JobView
   reportIDs?: string[]
   onOpenReport?: (id: string) => void | Promise<void>
@@ -18,6 +18,8 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
   onArchived?: (id: string) => void | Promise<void>
   renderProgress?: (progress: QuickPerformanceProgress) => ReactNode
   renderPerformance?: (report: QuickPerformanceReport) => ReactNode
+  showPerformanceResult?: boolean
+  renderLayout?: (state: { job: JobView; result: PerformanceResultView | null; error: unknown; details: ReactNode }) => ReactNode
 }) {
   const { t } = useTranslation("jobs")
   const [refresh, setRefresh] = useState(0)
@@ -50,7 +52,7 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
   const p = job.progress?.progress
   const submission = job.submission
   const confirmation = submission?.confirmation
-  return <section className="min-w-0 flex flex-col gap-4 py-3 text-xs [overflow-wrap:anywhere]" aria-label={t("details")}>
+  const details = <section className="min-w-0 flex flex-col gap-4 py-3 text-xs [overflow-wrap:anywhere]" aria-label={t("details")}>
     <dl className="flex flex-col gap-3">
       <Property label={t("jobID")} value={job.job_id} />
       <Property label={t("source")} value={t(submission ? "thisDesktop" : "sharedNode")} />
@@ -87,7 +89,7 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
         <Button size="sm" variant="ghost" disabled={!controls.has_more} onClick={() => { setControlBack(value => [...value, controlCursor]); setControlCursor(controls.next_cursor) }}>{t("next")}</Button>
       </div>
     </div> : null}
-    {result ? <section className="flex flex-col gap-3" aria-label={t("performanceResult")}>
+    {showPerformanceResult && result ? <section className="flex flex-col gap-3" aria-label={t("performanceResult")}>
       <h3 className="font-medium">{t(`outcomes.${result.observation_state}`)}</h3>
       {result.observation ? <>
         <p className="text-muted-foreground">{t(`stages.${result.observation.stage}`)} · {t(`boundaries.${result.observation.boundary}`)}</p>
@@ -101,6 +103,7 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
       </> : <p className="text-muted-foreground">{t(result.execution_started ? "noCheckpoint" : "noObservation")}</p>}
     </section> : null}
   </section>
+  return renderLayout ? renderLayout({ job, result, error, details }) : details
 }
 
 function Property({ label, value }: { label: string; value: string }) {
