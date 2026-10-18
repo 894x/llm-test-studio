@@ -15,11 +15,35 @@ import (
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 type mixedPlanClock struct{}
 
 func (mixedPlanClock) Now() time.Time { return time.Now().UTC() }
+
+type mixedPlanSLAExecutor struct {
+	runs.Executor
+	e2eMS float64
+}
+
+func (executor mixedPlanSLAExecutor) Execute(
+	ctx context.Context,
+	request runs.ExecutionRequest,
+	emit func(runs.ResultDraft) error,
+) error {
+	return executor.Executor.Execute(ctx, request, func(draft runs.ResultDraft) error {
+		// Keep real protocol execution, but make SLA policy tests independent of
+		// clock resolution: a fast local HTTP request can measure zero ms.
+		if request.Entry.Performance == nil && draft.Dimensions["phase"] == "measured" {
+			draft.Metrics["e2e_ms"] = executor.e2eMS
+			if draft.Observation != nil {
+				draft.Observation.Metrics["e2e_ms"] = executor.e2eMS
+			}
+		}
+		return emit(draft)
+	})
+}
 
 func TestMixedPlanExecutesAndPersistsPerformanceItems(t *testing.T) {
 	for _, scenario := range []struct {
@@ -28,6 +52,7 @@ func TestMixedPlanExecutesAndPersistsPerformanceItems(t *testing.T) {
 		firstPolicy, pressurePolicy              string
 		requests                                 int32
 		stoppedAt                                int
+		slaE2EMS                                 float64
 	}{
 		{name: "cancel_during_pressure", cancel: true, firstPolicy: "continue", pressurePolicy: "continue", requests: 2, stoppedAt: 2},
 		{name: "mixed_success", firstPolicy: "stop", pressurePolicy: "continue", requests: 5, stoppedAt: -1},
@@ -35,7 +60,22 @@ func TestMixedPlanExecutesAndPersistsPerformanceItems(t *testing.T) {
 		{name: "basic_continue", basicFail: true, firstPolicy: "continue", pressurePolicy: "continue", requests: 5, stoppedAt: -1},
 		{name: "pressure_stop", pressureFail: true, firstPolicy: "continue", pressurePolicy: "stop", requests: 3, stoppedAt: 2},
 		{name: "pressure_continue", pressureFail: true, firstPolicy: "continue", pressurePolicy: "continue", requests: 5, stoppedAt: -1},
-		{name: "sla_stop", slaFail: true, firstPolicy: "stop", pressurePolicy: "continue", requests: 1, stoppedAt: 1},
+		{
+			name: "sla_stop", slaE2EMS: 100, slaFail: true,
+			firstPolicy: "stop", pressurePolicy: "continue", requests: 1, stoppedAt: 1,
+		},
+		{
+			name: "sla_continue", slaE2EMS: 100, slaFail: true,
+			firstPolicy: "continue", pressurePolicy: "continue", requests: 5, stoppedAt: -1,
+		},
+		{
+			name: "sla_at_limit", slaE2EMS: 50,
+			firstPolicy: "stop", pressurePolicy: "continue", requests: 5, stoppedAt: -1,
+		},
+		{
+			name: "sla_below_limit", slaE2EMS: 25,
+			firstPolicy: "stop", pressurePolicy: "continue", requests: 5, stoppedAt: -1,
+		},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			var requests atomic.Int32
@@ -73,8 +113,8 @@ func TestMixedPlanExecutesAndPersistsPerformanceItems(t *testing.T) {
 			snapshot.Channel.BaseURL = server.URL + "/v1"
 			snapshot.Entries[0].OnFailure = scenario.firstPolicy
 			snapshot.PlanDocument.Entries[0].OnFailure = scenario.firstPolicy
-			if scenario.slaFail {
-				snapshot.Entries[0].SLA.Thresholds = map[string]float64{"e2e_p95_ms": 0.000001}
+			if scenario.slaE2EMS > 0 {
+				snapshot.Entries[0].SLA.Thresholds = map[string]float64{"e2e_p95_ms": 50}
 				snapshot.PlanDocument.Entries[0].SLA = snapshot.Entries[0].SLA
 			}
 			profile := domain.PerformancePlanProfile{LoadMode: domain.LoadFixedConcurrency, ArrivalPattern: "constant", WorkloadMode: "fixed", RequestCount: 2, Concurrency: 1, TimeoutMS: 1000, InputTokens: 8, OutputTokens: 1}
@@ -92,7 +132,13 @@ func TestMixedPlanExecutesAndPersistsPerformanceItems(t *testing.T) {
 			if err := repository.CreateRun(t.Context(), run); err != nil {
 				t.Fatal(err)
 			}
-			host, err := runs.NewHost(runs.HostDependencies{Repository: repository, Executor: runs.NewProtocolExecutor(server.Client().Transport), Clock: mixedPlanClock{}})
+			var executor runs.Executor = runs.NewProtocolExecutor(server.Client().Transport)
+			if scenario.slaE2EMS > 0 {
+				executor = mixedPlanSLAExecutor{Executor: executor, e2eMS: scenario.slaE2EMS}
+			}
+			host, err := runs.NewHost(runs.HostDependencies{
+				Repository: repository, Executor: executor, Clock: mixedPlanClock{},
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -145,6 +191,28 @@ func TestMixedPlanExecutesAndPersistsPerformanceItems(t *testing.T) {
 			}
 			if len(report.EntryReports) != 3 {
 				t.Fatalf("items: %d", len(report.EntryReports))
+			}
+			if scenario.slaE2EMS > 0 {
+				entry := report.EntryReports[0]
+				wantMetric := domain.MetricValue{Value: scenario.slaE2EMS, Unit: "ms", Samples: 1}
+				if got := entry.SLA["e2e_p95_ms"]; got != wantMetric {
+					t.Fatalf("persisted SLA = %+v, want %+v", got, wantMetric)
+				}
+				if entry.Verification.Status != testspec.VerdictPassed {
+					t.Fatalf("functional assertions must pass independently of SLA: %+v", entry.Verification)
+				}
+				if entry.Conclusion.Passed == scenario.slaFail {
+					t.Fatalf("entry conclusion = %+v, want SLA failure %t", entry.Conclusion, scenario.slaFail)
+				}
+				if report.Conclusion.Passed == scenario.slaFail {
+					t.Fatalf("plan conclusion = %+v, want SLA failure %t", report.Conclusion, scenario.slaFail)
+				}
+				if scenario.slaFail {
+					wantIssue := "SLA e2e_p95_ms failed: observed 100, threshold 50"
+					if len(entry.Conclusion.Issues) != 1 || entry.Conclusion.Issues[0] != wantIssue {
+						t.Fatalf("unexpected failure cause: %+v", entry.Conclusion.Issues)
+					}
+				}
 			}
 			if requests.Load() != scenario.requests {
 				t.Fatalf("requests = %d, want %d", requests.Load(), scenario.requests)
