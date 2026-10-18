@@ -44,6 +44,7 @@ type Options struct {
 }
 
 type Service struct {
+	cache    fileconfig.ParsedCache[domain.Suite]
 	builtin  fs.FS
 	userRoot string
 }
@@ -94,13 +95,13 @@ func (service *Service) Entries(ctx context.Context) ([]Entry, error) {
 	if service == nil || ctx == nil {
 		return nil, ErrInvalid
 	}
-	builtin, err := discoverFS(ctx, service.builtin, SourceBuiltin)
+	builtin, err := discoverFS(ctx, service.builtin, SourceBuiltin, &service.cache)
 	if err != nil {
 		return nil, err
 	}
 	user := map[string]discovered{}
 	if _, statErr := os.Stat(service.userRoot); statErr == nil {
-		user, err = discoverFS(ctx, os.DirFS(service.userRoot), SourceUser)
+		user, err = discoverFS(ctx, os.DirFS(service.userRoot), SourceUser, &service.cache)
 		if err != nil {
 			return nil, err
 		}
@@ -222,7 +223,12 @@ func (service *Service) Delete(ctx context.Context, id string, expectedRevision 
 	return nil
 }
 
-func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]discovered, error) {
+func discoverFS(
+	ctx context.Context,
+	sourceFS fs.FS,
+	source Source,
+	caches ...*fileconfig.ParsedCache[domain.Suite],
+) (map[string]discovered, error) {
 	result := make(map[string]discovered)
 	err := fs.WalkDir(sourceFS, ".", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -245,7 +251,21 @@ func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]
 		if err != nil {
 			return err
 		}
-		suite, err := decodeDocument(raw)
+		var suite domain.Suite
+		if len(caches) == 0 {
+			suite, err = decodeDocument(raw)
+		} else {
+			suite, err = caches[0].Read(
+				string(source)+":"+path,
+				raw,
+				func() (domain.Suite, error) { return decodeDocument(raw) },
+				func(value domain.Suite) domain.Suite {
+					value.Cases = append([]domain.CaseRef{}, value.Cases...)
+					value.Inputs = domain.CloneSuiteInputs(value.Inputs)
+					return value
+				},
+			)
+		}
 		if err != nil || string(suite.Protocol) != parts[0] {
 			return fmt.Errorf("invalid suite file %q", path)
 		}

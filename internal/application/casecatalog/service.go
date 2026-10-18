@@ -37,6 +37,7 @@ type Options struct {
 }
 
 type Service struct {
+	cache    fileconfig.ParsedCache[domain.TestCase]
 	builtin  fs.FS
 	userRoot string
 }
@@ -126,13 +127,13 @@ func (service *Service) Entries(ctx context.Context) ([]Entry, error) {
 	if service == nil || ctx == nil {
 		return nil, ErrInvalid
 	}
-	builtin, err := discoverFS(ctx, service.builtin, SourceBuiltin)
+	builtin, err := discoverFS(ctx, service.builtin, SourceBuiltin, &service.cache)
 	if err != nil {
 		return nil, err
 	}
 	user := map[string]discovered{}
 	if _, statErr := os.Stat(service.userRoot); statErr == nil {
-		user, err = discoverFS(ctx, os.DirFS(service.userRoot), SourceUser)
+		user, err = discoverFS(ctx, os.DirFS(service.userRoot), SourceUser, &service.cache)
 		if err != nil {
 			return nil, err
 		}
@@ -250,7 +251,12 @@ func (service *Service) Save(ctx context.Context, group, directory string, raw [
 	return nil
 }
 
-func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]discovered, error) {
+func discoverFS(
+	ctx context.Context,
+	sourceFS fs.FS,
+	source Source,
+	caches ...*fileconfig.ParsedCache[domain.TestCase],
+) (map[string]discovered, error) {
 	result := make(map[string]discovered)
 	err := fs.WalkDir(sourceFS, ".", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -273,7 +279,20 @@ func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]
 		if err != nil {
 			return err
 		}
-		testCase, err := casecodec.DecodeFilesystemCase(path, raw)
+		var testCase domain.TestCase
+		if len(caches) == 0 {
+			testCase, err = casecodec.DecodeFilesystemCase(path, raw)
+		} else {
+			testCase, err = caches[0].Read(
+				string(source)+":"+path,
+				raw,
+				func() (domain.TestCase, error) { return casecodec.DecodeFilesystemCase(path, raw) },
+				func(value domain.TestCase) domain.TestCase {
+					value.Definitions = value.Definitions.Clone()
+					return value
+				},
+			)
+		}
 		if err != nil {
 			return fmt.Errorf("invalid case file %q", path)
 		}

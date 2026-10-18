@@ -123,6 +123,7 @@ func (document Document) Validate() error {
 }
 
 type Service struct {
+	cache    fileconfig.ParsedCache[Document]
 	builtin  map[string]Document
 	root     string
 	lockPath string
@@ -396,7 +397,12 @@ func (service *Service) loadOne(ctx context.Context, id string) (Document, error
 	if err != nil {
 		return Document{}, fmt.Errorf("read plan file: %w", err)
 	}
-	return decodeDocument(raw, id)
+	return service.cache.Read(
+		id,
+		raw,
+		func() (Document, error) { return decodeDocument(raw, id) },
+		cloneDocument,
+	)
 }
 
 func decodeDocument(raw []byte, id string) (Document, error) {
