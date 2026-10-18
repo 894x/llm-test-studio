@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { JobDetails } from "@/features/jobs/job-details"
 import type { JobStatus, JobView, SubmissionView } from "@/features/jobs/data"
 import type { JobClient } from "@/features/jobs/execution"
-import { QuickPerformanceReportPanel } from "@/features/quick-test/quick-performance-sheet"
+import type { QuickPerformanceReport } from "@/features/quick-test/data"
 import type { ReportSnapshot } from "@/features/reports/data"
 import { cn } from "@/lib/utils"
 import { formatTargetDuration, presentWorkspace, type RunRecord, type RunStatus, type WorkspaceSnapshot } from "./data"
@@ -215,7 +215,7 @@ function ExecutionInspector({ row, client, reports, selectedChildID, onSelectChi
     (report.run_id && job.run_ids.includes(report.run_id))).map(report => report.id) : []
   const execution = job ? <JobDetails key={job.job_id} client={client} jobID={job.job_id} initialJob={job}
     reportIDs={reportIDs} onOpenReport={onOpenReport} onJobChange={onJobChange}
-    renderPerformance={report => <QuickPerformanceReportPanel report={report} onOpenReport={onOpenReport} />} /> : undefined
+    renderPerformance={report => <PerformanceExecutionSummary report={report} />} /> : undefined
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
     {job?.kind === "comparison" ? <div className="px-4 pt-3"><p className="mb-2 text-xs font-medium">{t("executions.children", { count: job.run_ids.length })}</p>
       {onOpenComparison ? <Button variant="outline" size="sm" className="mb-2" onClick={() => void onOpenComparison(job.comparison_id)}>{t("executions.comparisonReport")}</Button> : null}
@@ -223,4 +223,27 @@ function ExecutionInspector({ row, client, reports, selectedChildID, onSelectChi
     {run ? <RunInspectorContent key={run.id} run={run} tab={detailTab} onTabChange={onDetailTabChange} execution={execution} shortcuts={renderRunShortcuts?.(run.id)} />
       : <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1 px-4"><h2 className="pt-4 text-sm font-semibold">{row.title}</h2>{execution}</ScrollArea>}
   </div>
+}
+
+function PerformanceExecutionSummary({ report }: { report: QuickPerformanceReport }) {
+  const { t } = useTranslation("runs")
+  const { profile, progress } = report
+  const load = profile.load_mode === "open_loop"
+    ? t("presentation.openLoop", { rate: profile.rate_per_second ?? "—" })
+    : t("quickTest:performance.concurrencySummary", { count: profile.concurrency })
+  const fields = [
+    [t("inspector.model"), report.model_id || "—"],
+    [t("inspector.channel"), report.base_url || report.endpoint || "—"],
+    [t("inspector.load"), load],
+    [t("table.progress"), progress.planned > 0
+      ? t("inspector.completedFraction", { completed: progress.completed, total: progress.planned })
+      : t("inspector.completedRequests", { count: progress.completed })],
+    [t("inspector.duration"), formatTargetDuration(progress.total_duration_ms)],
+  ]
+  return <dl aria-label={t("inspector.summary")} className="flex min-w-0 flex-col gap-3">
+    {fields.map(([label, value]) => <div key={label}>
+      <dt className="text-[11px] text-muted-foreground">{label}</dt>
+      <dd className="mt-1 [overflow-wrap:anywhere]">{value}</dd>
+    </div>)}
+  </dl>
 }
