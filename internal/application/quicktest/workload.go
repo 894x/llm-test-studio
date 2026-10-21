@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/execution/load"
 )
 
@@ -32,9 +33,10 @@ type performanceWorkloadTarget struct {
 }
 
 type performanceWorkload struct {
-	profile   PerformanceProfile
-	runNonce  uint64
-	rungIndex uint32
+	profile     PerformanceProfile
+	runNonce    uint64
+	rungIndex   uint32
+	affinityKey string
 }
 
 func normalizedWorkloadMode(mode PerformanceWorkloadMode) PerformanceWorkloadMode {
@@ -165,12 +167,12 @@ func (workload *performanceWorkload) prompt(index uint64, target uint32) string 
 }
 
 func (workload *performanceWorkload) requestBodyForTarget(index uint64, target performanceWorkloadTarget) (json.RawMessage, error) {
-	body, err := json.Marshal(map[string]any{
-		"messages":   []map[string]string{{"role": "user", "content": workload.prompt(index, target.InputTokens)}},
-		"max_tokens": target.OutputTokens,
-		"stream":     true,
-	})
-	return body, err
+	return performanceBody(
+		domain.ProtocolOpenAIChat,
+		workload.prompt(index, target.InputTokens),
+		target.OutputTokens,
+		workload.affinityKey,
+	)
 }
 
 type performanceTokenBudget struct {

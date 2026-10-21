@@ -557,6 +557,10 @@ export function QuickPerformanceReportPanel({
             value={report.profile.random_input ? tx("desktop:quick-test_enabled") : tx("desktop:quick-test_disabled")}
           />
           <ResultValue
+            label={t("performance.affinity")}
+            value={report.profile.affinity_enabled ? tx("desktop:quick-test_enabled") : tx("desktop:quick-test_disabled")}
+          />
+          <ResultValue
             label={tx("desktop:quick-test_random_seed")}
             value={performanceSeed(report)}
             numeric

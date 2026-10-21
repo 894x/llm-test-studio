@@ -16,6 +16,7 @@ export interface PerformanceForm {
   arrivalPattern: QuickPerformanceArrivalPattern
   workloadMode: QuickPerformanceWorkloadMode
   randomInput: boolean
+  affinityEnabled: boolean
   requestCount: number
   durationSeconds: number
   concurrency: number
@@ -45,7 +46,7 @@ export interface PerformanceForm {
 
 export type PerformanceNumberFieldName = Exclude<
   keyof PerformanceForm,
-  "loadMode" | "arrivalPattern" | "workloadMode" | "randomInput" | "capacityEnabled"
+  "loadMode" | "arrivalPattern" | "workloadMode" | "randomInput" | "affinityEnabled" | "capacityEnabled"
 >
 export type PerformanceFieldErrors = Partial<Record<PerformanceNumberFieldName, string>>
 
@@ -81,6 +82,7 @@ export function performanceFormFromProfile(profile?: QuickPerformanceProfile): P
     arrivalPattern: source.arrival_pattern ?? "constant",
     workloadMode: source.workload_mode ?? "fixed",
     randomInput: source.random_input ?? false,
+    affinityEnabled: source.affinity_enabled ?? false,
     requestCount: source.request_count,
     durationSeconds: source.duration_ms / 1_000,
     concurrency: source.concurrency,
@@ -125,6 +127,7 @@ export function performanceProfileFromForm(form: PerformanceForm): Required<Quic
     arrival_pattern: openLoop ? form.arrivalPattern : "constant",
     workload_mode: form.workloadMode,
     random_input: form.randomInput,
+    affinity_enabled: form.affinityEnabled,
     random_seed: performanceNeedsSeed(form) ? form.randomSeed : 0,
     input_tokens_stddev: normalWorkload ? form.inputTokensStdDev : 0,
     output_tokens_stddev: normalWorkload ? form.outputTokensStdDev : 0,

@@ -9,6 +9,7 @@ import (
 
 const FeatureExecutionOrigin = "execution_origin"
 const FeatureMixedPlanItems = "mixed_plan_items"
+const FeaturePerformanceAffinity = "performance_affinity"
 
 // SupportsJob checks only the current task requirements, independent of client
 // release and build. Report-transfer requirements may be stricter for a caller.
@@ -84,6 +85,9 @@ func performanceFeatures(profile quicktest.PerformanceProfile) []string {
 	}
 	if profile.RandomInput {
 		features = append(features, "random_input")
+	}
+	if profile.AffinityEnabled {
+		features = append(features, FeaturePerformanceAffinity)
 	}
 	return features
 }

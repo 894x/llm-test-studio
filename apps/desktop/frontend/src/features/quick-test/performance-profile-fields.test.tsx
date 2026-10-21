@@ -20,6 +20,18 @@ function ProfileEditor({ onSave }: { onSave: (profile: QuickPerformanceProfile) 
     </form></SheetContent></Sheet>
 }
 describe("performance plan parameter authoring", () => {
+  it("defaults affinity off and saves a keyboard-enabled affinity setting", async () => {
+    const user = userEvent.setup()
+    const save = vi.fn()
+    render(<ProfileEditor onSave={save} />)
+    const affinity = screen.getByRole("checkbox", { name: "启用亲和性" })
+    expect(affinity).not.toBeChecked()
+    affinity.focus()
+    await user.keyboard(" ")
+    expect(affinity).toBeChecked()
+    await user.click(screen.getByRole("button", { name: "保存计划" }))
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ affinity_enabled: true }))
+  })
   it("saves the random-input setting", async () => {
     const user = userEvent.setup()
     const run = vi.fn(async () => undefined)
@@ -73,7 +85,7 @@ describe("performance plan parameter authoring", () => {
           max_in_flight: 37,
           arrival_pattern: "constant",
           workload_mode: "fixed",
-          random_input: false,
+          random_input: false, affinity_enabled: false,
           random_seed: 0,
           input_tokens_stddev: 0,
           output_tokens_stddev: 0,
@@ -313,7 +325,7 @@ describe("performance plan parameter authoring", () => {
           max_in_flight: 256,
           arrival_pattern: "poisson",
           workload_mode: "normal",
-          random_input: false,
+          random_input: false, affinity_enabled: false,
           random_seed: 424242,
           input_tokens_stddev: 20,
           output_tokens_stddev: 8,

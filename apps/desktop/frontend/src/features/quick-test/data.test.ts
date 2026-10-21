@@ -41,6 +41,12 @@ type PhaseFourFixture = ReturnType<typeof phaseThreeReport> & {
 }
 
 describe("parseQuickPerformanceReport phase-three fields", () => {
+  it("keeps validated affinity settings and accepts historical reports without them", () => {
+    const raw = phaseThreeReport()
+    expect(parseQuickPerformanceReport(raw).profile.affinity_enabled).toBeUndefined()
+    expect(parseQuickPerformanceReport({ ...raw, profile: { ...raw.profile, affinity_enabled: true } }).profile.affinity_enabled).toBe(true)
+    expect(() => parseQuickPerformanceReport({ ...raw, profile: { ...raw.profile, affinity_enabled: "yes" } })).toThrow()
+  })
   it("keeps a validated random-input setting in report profiles", () => {
     const raw = phaseThreeReport()
     expect(parseQuickPerformanceReport({ ...raw, profile: { ...raw.profile, random_input: true } }).profile.random_input).toBe(true)

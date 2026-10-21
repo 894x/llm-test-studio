@@ -95,6 +95,7 @@ func TestPlanCatalogRoundTripsPerformanceProfileWithoutBinding(t *testing.T) {
 	document.Entries = []domain.PlanEntry{legacyPerformanceEntry(document.ID, document.Name, domain.PerformancePlanProfile{
 		LoadMode: domain.LoadFixedConcurrency, ArrivalPattern: "constant", WorkloadMode: "fixed",
 		RequestCount: 100, Concurrency: 4, TimeoutMS: 60_000, InputTokens: 256, OutputTokens: 128,
+		AffinityEnabled: true,
 	})}
 	if err := service.CreateDocument(context.Background(), document); err != nil {
 		t.Fatal(err)

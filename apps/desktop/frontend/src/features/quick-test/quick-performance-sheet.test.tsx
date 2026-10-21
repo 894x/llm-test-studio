@@ -217,6 +217,17 @@ describe("QuickPerformanceSheet", () => {
     await waitFor(() => expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({ random_input: true }))))
   })
 
+  it("sends the affinity switch to job preparation", async () => {
+    const user = userEvent.setup()
+    const client = executionClient(successfulPerformanceReport())
+    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} client={client} />)
+    const affinity = screen.getByRole("checkbox", { name: "启用亲和性" })
+    expect(affinity).not.toBeChecked()
+    await user.click(affinity)
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({ affinity_enabled: true }))))
+  })
+
   it("rounds result throughput and latency presentation while keeping percentage precision", async () => {
     const user = userEvent.setup()
     const result = successfulPerformanceReport()
@@ -321,7 +332,7 @@ describe("QuickPerformanceSheet", () => {
           max_in_flight: 0,
           arrival_pattern: "constant",
           workload_mode: "fixed",
-          random_input: false,
+          random_input: false, affinity_enabled: false,
           random_seed: 0,
           input_tokens_stddev: 0,
           output_tokens_stddev: 0,
@@ -448,7 +459,7 @@ describe("QuickPerformanceSheet", () => {
           max_in_flight: 37,
           arrival_pattern: "constant",
           workload_mode: "fixed",
-          random_input: false,
+          random_input: false, affinity_enabled: false,
           random_seed: 0,
           input_tokens_stddev: 0,
           output_tokens_stddev: 0,
@@ -698,7 +709,7 @@ describe("QuickPerformanceSheet", () => {
           max_in_flight: 256,
           arrival_pattern: "poisson",
           workload_mode: "normal",
-          random_input: false,
+          random_input: false, affinity_enabled: false,
           random_seed: 424242,
           input_tokens_stddev: 20,
           output_tokens_stddev: 8,

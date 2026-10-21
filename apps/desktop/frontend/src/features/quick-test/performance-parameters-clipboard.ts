@@ -9,7 +9,9 @@ export function parsePerformanceParameters(text: string): PerformanceForm {
   const value: unknown = JSON.parse(text)
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid_performance_parameters")
   const keys = Object.keys(value)
-  if (keys.length !== PARAMETER_KEYS.size || keys.some(key => !PARAMETER_KEYS.has(key)))
+  // Shared parameter JSON predates the optional affinity switch.
+  const expectedKeyCount = PARAMETER_KEYS.size - ("affinity_enabled" in value ? 0 : 1)
+  if (keys.length !== expectedKeyCount || keys.some(key => !PARAMETER_KEYS.has(key)))
     throw new Error("invalid_performance_parameters")
   const form = performanceFormFromProfile(parseQuickPerformanceProfile(value))
   if (Object.keys(validatePerformanceForm(form)).length) throw new Error("invalid_performance_parameters")

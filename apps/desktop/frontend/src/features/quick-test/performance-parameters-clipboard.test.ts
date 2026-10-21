@@ -8,6 +8,13 @@ afterEach(() => vi.unstubAllGlobals())
 const profile = performanceProfileFromForm(performanceFormFromProfile())
 
 describe("performance parameter clipboard format", () => {
+  it("accepts existing copied parameters without affinity and round trips enabled affinity", () => {
+    const legacy = { ...profile, affinity_enabled: undefined }
+    expect(parsePerformanceParameters(JSON.stringify(legacy)).affinityEnabled).toBe(false)
+    const enabled = { ...profile, affinity_enabled: true }
+    expect(performanceProfileFromForm(parsePerformanceParameters(JSON.stringify(enabled)))).toEqual(enabled)
+    expect(() => parsePerformanceParameters(JSON.stringify({ ...profile, affinity_enabled: "yes" }))).toThrow()
+  })
   it.each(FIXTURE_PERFORMANCE_PLANS)("round trips $name ($protocol)", plan => {
     const parameters = performanceProfileFromForm(performanceFormFromProfile(plan.performance))
     const imported = parsePerformanceParameters(JSON.stringify(parameters, null, 2))

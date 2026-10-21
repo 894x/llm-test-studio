@@ -85,7 +85,8 @@ export function PerformanceProfileFields({ editor, pending, actionsContainer }: 
 
   return <div className="min-w-0 space-y-4">
     <PerformanceParameterActions editor={editor} disabled={pending} container={actionsContainer} />
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <section aria-labelledby="quick-performance-load-heading" className="grid grid-cols-2 gap-3 rounded-lg border bg-surface-subtle p-3">
+                <h3 id="quick-performance-load-heading" className="col-span-full text-xs font-semibold">{t("performance.loadAndRouting")}</h3>
                 <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                     <FieldLabel htmlFor="quick-performance-loadMode">{tx("desktop:catalog_load_mode")}</FieldLabel>
@@ -127,6 +128,19 @@ export function PerformanceProfileFields({ editor, pending, actionsContainer }: 
                     <span aria-hidden="true">{t("workspace.enable")}</span>
                   </FieldLabel>
                 </Field>
+                <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
+                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <FieldLabel htmlFor="quick-performance-affinityEnabled">{t("performance.affinity")}</FieldLabel>
+                    <FieldDescription id="quick-performance-affinityEnabled-hint" className="mt-0 text-[11px]">{t("performance.affinityHint")}</FieldDescription>
+                  </div>
+                  <FieldLabel htmlFor="quick-performance-affinityEnabled" className="flex h-8 cursor-pointer items-center gap-2 rounded-md border border-input bg-surface-control px-2.5">
+                    <Checkbox id="quick-performance-affinityEnabled" aria-label={t("performance.affinity")} aria-describedby="quick-performance-affinityEnabled-hint" checked={form.affinityEnabled} disabled={pending} onCheckedChange={checked => setForm(current => ({ ...current, affinityEnabled: checked === true }))} />
+                    <span aria-hidden="true">{t("workspace.enable")}</span>
+                  </FieldLabel>
+                </Field>
+              </section>
+              <section aria-labelledby="quick-performance-request-heading" className="grid grid-cols-2 gap-3 rounded-lg border bg-surface-subtle p-3 sm:grid-cols-3">
+                <h3 id="quick-performance-request-heading" className="col-span-full text-xs font-semibold">{t("performance.requestParameters")}</h3>
                 <PerformanceNumberField
                   field="requestCount"
                   hint={t("workspace.targetHint")}
@@ -278,7 +292,7 @@ export function PerformanceProfileFields({ editor, pending, actionsContainer }: 
                     onChange={(value) => update("randomSeed", value)}
                   />
                 ) : null}
-              </div>
+              </section>
               <div className="rounded-lg border bg-surface-subtle p-3">
                 <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <h3 className="text-xs font-semibold">

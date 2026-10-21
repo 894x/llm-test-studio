@@ -96,6 +96,7 @@ func TestRepositoryQuickPerformanceNormalWorkloadRoundTrip(t *testing.T) {
 	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777777", "2026-08-31T15:36:00Z")
 	report.Profile.WorkloadMode = quicktest.PerformanceWorkloadNormal
 	report.Profile.RandomSeed = 5
+	report.Profile.AffinityEnabled = true
 	report.Profile.SharedPrefixTokens = 2
 	report.Samples[0].TargetInputTokens = report.Profile.InputTokens
 	report.Samples[0].TargetOutputTokens = report.Profile.OutputTokens

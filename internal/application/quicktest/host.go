@@ -2,6 +2,7 @@ package quicktest
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"math"
@@ -115,19 +116,29 @@ func (service *Host) ExecutePrepared(
 		workload *performanceWorkload
 		err      error
 	)
+	var affinityKey string
+	if prepared.Profile.AffinityEnabled {
+		affinityKey = rand.Text()
+	}
 	if prepared.Profile.WorkloadMode == PerformanceWorkloadNormal || prepared.Profile.RandomInput {
 		workload, err = newPerformanceWorkload(report.Profile)
 		if err != nil {
 			report.ErrorCode = ErrorInvalidRequest
 			return report, nil
 		}
+		workload.affinityKey = affinityKey
 	} else {
 		prompt, promptErr := newFixedPerformancePrompt(prepared.Profile.InputTokens)
 		if promptErr != nil {
 			report.ErrorCode = load.ErrorRequestFailed
 			return report, nil
 		}
-		body, err = performanceBody(prepared.Protocol, prompt, prepared.Profile.OutputTokens)
+		body, err = performanceBody(
+			prepared.Protocol,
+			prompt,
+			prepared.Profile.OutputTokens,
+			affinityKey,
+		)
 		if err != nil {
 			report.ErrorCode = load.ErrorRequestFailed
 			return report, nil
@@ -137,7 +148,7 @@ func (service *Host) ExecutePrepared(
 	evidenceRecorder := newPerformanceEvidenceRecorder()
 	executor, cleanup, code := service.performanceExecutor(ctx, performanceExecutionConfig{
 		Protocol: prepared.Protocol, Address: address, Credential: lease, Model: prepared.ModelID,
-		Body: body, Workload: workload, OnFailure: evidenceRecorder.record,
+		Body: body, Workload: workload, AffinityKey: affinityKey, OnFailure: evidenceRecorder.record,
 	})
 	if code != "" {
 		report.ErrorCode = code
@@ -725,6 +736,7 @@ func performanceProfile(command PerformanceCommand) PerformanceProfile {
 		ArrivalPattern:     command.ArrivalPattern,
 		WorkloadMode:       command.WorkloadMode,
 		RandomInput:        command.RandomInput,
+		AffinityEnabled:    command.AffinityEnabled,
 		RandomSeed:         command.RandomSeed,
 		RequestCount:       command.RequestCount,
 		DurationMS:         command.DurationMS,
@@ -816,13 +828,14 @@ func validPerformanceProfileFields(profile PerformanceProfile) bool {
 }
 
 type performanceExecutionConfig struct {
-	Protocol   domain.Protocol
-	Address    normalizedAddress
-	Credential *credentials.Lease
-	Model      string
-	Body       json.RawMessage
-	Workload   *performanceWorkload
-	OnFailure  openai.FailureResponseEvidenceSink
+	Protocol    domain.Protocol
+	Address     normalizedAddress
+	Credential  *credentials.Lease
+	Model       string
+	Body        json.RawMessage
+	Workload    *performanceWorkload
+	AffinityKey string
+	OnFailure   openai.FailureResponseEvidenceSink
 }
 
 func (service *Host) performanceExecutor(ctx context.Context, config performanceExecutionConfig) (load.Executor, func(), domain.ErrorCode) {

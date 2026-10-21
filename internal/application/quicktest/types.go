@@ -64,6 +64,7 @@ type PerformanceCommand struct {
 	ArrivalPattern     load.ArrivalPattern     `json:"arrival_pattern,omitempty"`
 	WorkloadMode       PerformanceWorkloadMode `json:"workload_mode,omitempty"`
 	RandomInput        bool                    `json:"random_input,omitempty"`
+	AffinityEnabled    bool                    `json:"affinity_enabled,omitempty"`
 	RandomSeed         uint32                  `json:"random_seed,omitempty"`
 	RequestCount       uint64                  `json:"request_count"`
 	DurationMS         uint64                  `json:"duration_ms"`
@@ -94,6 +95,7 @@ type PerformanceProfile struct {
 	ArrivalPattern     load.ArrivalPattern     `json:"arrival_pattern,omitempty"`
 	WorkloadMode       PerformanceWorkloadMode `json:"workload_mode,omitempty"`
 	RandomInput        bool                    `json:"random_input,omitempty"`
+	AffinityEnabled    bool                    `json:"affinity_enabled,omitempty"`
 	RandomSeed         uint32                  `json:"random_seed,omitempty"`
 	RequestCount       uint64                  `json:"request_count"`
 	DurationMS         uint64                  `json:"duration_ms"`

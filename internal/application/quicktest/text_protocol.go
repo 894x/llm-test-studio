@@ -34,14 +34,27 @@ func performancePath(selected domain.Protocol) string {
 	return descriptor.RequestPaths[0].Path
 }
 
-func performanceBody(selected domain.Protocol, prompt string, outputTokens uint32) (json.RawMessage, error) {
-	if selected == domain.ProtocolOpenAIResponses {
-		return json.Marshal(map[string]any{"input": prompt, "max_output_tokens": outputTokens, "stream": true})
-	}
-	return json.Marshal(map[string]any{
+func performanceBody(
+	selected domain.Protocol,
+	prompt string,
+	outputTokens uint32,
+	affinityKey string,
+) (json.RawMessage, error) {
+	body := map[string]any{
 		"messages":   []map[string]string{{"role": "user", "content": prompt}},
 		"max_tokens": outputTokens, "stream": true,
-	})
+	}
+	if selected == domain.ProtocolOpenAIResponses {
+		body = map[string]any{"input": prompt, "max_output_tokens": outputTokens, "stream": true}
+	}
+	if affinityKey != "" {
+		if selected == domain.ProtocolAnthropicMessages {
+			body["metadata"] = map[string]string{"user_id": affinityKey}
+		} else {
+			body["prompt_cache_key"] = affinityKey
+		}
+	}
+	return json.Marshal(body)
 }
 
 func (service *Host) nativePerformanceExecutor(
@@ -77,7 +90,12 @@ func (service *Host) nativePerformanceExecutor(
 				return load.Observation{Index: request.Index, ErrorCode: classifyContext(err)}
 			}
 			defer release()
-			requestBody, err = performanceBody(selected, workload.prompt(request.Index, target.InputTokens), target.OutputTokens)
+			requestBody, err = performanceBody(
+				selected,
+				workload.prompt(request.Index, target.InputTokens),
+				target.OutputTokens,
+				config.AffinityKey,
+			)
 			if err != nil {
 				return load.Observation{Index: request.Index, ErrorCode: load.ErrorRequestFailed}
 			}

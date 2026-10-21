@@ -20,6 +20,10 @@
     "empty": "无匹配模型，可继续使用当前输入"
   },
   "performance": {
+    "loadAndRouting": "负载与路由",
+    "requestParameters": "请求参数",
+    "affinity": "启用亲和性",
+    "affinityHint": "本次测试复用会话标识，需网关支持并配置亲和规则。",
     "title": "快速性能测试",
     "description": "使用当前连接运行流式负载；实际发起请求后会自动封存报告。",
     "selectBinding": "运行性能计划",

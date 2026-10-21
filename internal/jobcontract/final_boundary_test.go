@@ -57,6 +57,7 @@ func TestTaskCapabilitiesRequireConfiguredPerformanceAndRunFeatures(t *testing.T
 			profile.WorkloadMode, profile.RandomSeed = quicktest.PerformanceWorkloadNormal, 1
 		}},
 		{feature: "random_input", change: func(profile *quicktest.PerformanceProfile) { profile.RandomInput = true }},
+		{feature: FeaturePerformanceAffinity, change: func(profile *quicktest.PerformanceProfile) { profile.AffinityEnabled = true }},
 	} {
 		t.Run("performance/"+test.feature, func(t *testing.T) {
 			spec := performanceSpec(t)
@@ -99,7 +100,7 @@ func completeTaskCapabilities() RunnerCapabilities {
 		JobKinds: []Kind{KindRun, KindPerformance, KindComparison}, Protocols: []string{"openai-chat"},
 		Features: []string{
 			FeatureExecutionOrigin, FeatureMixedPlanItems, "warmup", "ramp", "capacity", "open_loop", "time_slices",
-			"normal_workload", "random_input", "assets",
+			"normal_workload", "random_input", "assets", FeaturePerformanceAffinity,
 		},
 	}
 }

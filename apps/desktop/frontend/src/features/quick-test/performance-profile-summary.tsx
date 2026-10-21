@@ -21,6 +21,7 @@ export function PerformanceProfileSummary({ profile, compact = false }: {
       warmup: profile.warmup_requests ?? 0, ramp: (profile.ramp_duration_ms ?? 0) / 1_000,
     })],
     [t("performance.workload"), t(profile.random_input ? "performance.randomWorkload" : "performance.sharedWorkload")],
+    ...(profile.affinity_enabled ? [[t("performance.affinity"), t("workspace.enable")]] : []),
     ...(profile.capacity_enabled ? [[t("performance.capacity"), `${profile.capacity_start} → ${profile.load_mode === "open_loop" ? profile.rate_per_second : profile.concurrency} (+${profile.capacity_step})`]] : []),
   ]
   return <dl aria-label={t("performance.configuration")} className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] gap-3 text-xs">

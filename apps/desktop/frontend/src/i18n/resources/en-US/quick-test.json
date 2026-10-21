@@ -20,6 +20,10 @@
     "empty": "No matching model; keep the current input"
   },
   "performance": {
+    "loadAndRouting": "Load and routing",
+    "requestParameters": "Request parameters",
+    "affinity": "Enable affinity",
+    "affinityHint": "Reuse a session key for this test. Requires matching gateway affinity rules.",
     "title": "Quick performance test",
     "description": "Run a streaming workload with the current connection. Reports are archived after requests are executed.",
     "selectBinding": "Run performance plan",
