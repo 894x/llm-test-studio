@@ -34,24 +34,44 @@ func performancePath(selected domain.Protocol) string {
 	return descriptor.RequestPaths[0].Path
 }
 
+type performanceRequestBody struct {
+	Messages        []performanceMessage `json:"messages,omitempty"`
+	Input           string               `json:"input,omitempty"`
+	MaxTokens       uint32               `json:"max_tokens,omitempty"`
+	MaxOutputTokens uint32               `json:"max_output_tokens,omitempty"`
+	Stream          bool                 `json:"stream"`
+	PromptCacheKey  string               `json:"prompt_cache_key,omitempty"`
+	Metadata        *performanceMetadata `json:"metadata,omitempty"`
+}
+
+type performanceMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type performanceMetadata struct {
+	UserID string `json:"user_id"`
+}
+
 func performanceBody(
 	selected domain.Protocol,
 	prompt string,
 	outputTokens uint32,
 	affinityKey string,
 ) (json.RawMessage, error) {
-	body := map[string]any{
-		"messages":   []map[string]string{{"role": "user", "content": prompt}},
-		"max_tokens": outputTokens, "stream": true,
-	}
+	body := performanceRequestBody{Stream: true}
 	if selected == domain.ProtocolOpenAIResponses {
-		body = map[string]any{"input": prompt, "max_output_tokens": outputTokens, "stream": true}
+		body.Input = prompt
+		body.MaxOutputTokens = outputTokens
+	} else {
+		body.Messages = []performanceMessage{{Role: "user", Content: prompt}}
+		body.MaxTokens = outputTokens
 	}
 	if affinityKey != "" {
 		if selected == domain.ProtocolAnthropicMessages {
-			body["metadata"] = map[string]string{"user_id": affinityKey}
+			body.Metadata = &performanceMetadata{UserID: affinityKey}
 		} else {
-			body["prompt_cache_key"] = affinityKey
+			body.PromptCacheKey = affinityKey
 		}
 	}
 	return json.Marshal(body)
