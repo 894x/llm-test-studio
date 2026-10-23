@@ -33,10 +33,9 @@ type performanceWorkloadTarget struct {
 }
 
 type performanceWorkload struct {
-	profile     PerformanceProfile
-	runNonce    uint64
-	rungIndex   uint32
-	affinityKey string
+	profile   PerformanceProfile
+	runNonce  uint64
+	rungIndex uint32
 }
 
 func normalizedWorkloadMode(mode PerformanceWorkloadMode) PerformanceWorkloadMode {
@@ -166,12 +165,17 @@ func (workload *performanceWorkload) prompt(index uint64, target uint32) string 
 	return builder.String()
 }
 
-func (workload *performanceWorkload) requestBodyForTarget(index uint64, target performanceWorkloadTarget) (json.RawMessage, error) {
+func (workload *performanceWorkload) requestBodyForTarget(
+	selected domain.Protocol,
+	index uint64,
+	target performanceWorkloadTarget,
+	affinityKey string,
+) (json.RawMessage, error) {
 	return performanceBody(
-		domain.ProtocolOpenAIChat,
+		selected,
 		workload.prompt(index, target.InputTokens),
 		target.OutputTokens,
-		workload.affinityKey,
+		affinityKey,
 	)
 }
 

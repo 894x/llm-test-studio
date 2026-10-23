@@ -126,7 +126,6 @@ func (service *Host) ExecutePrepared(
 			report.ErrorCode = ErrorInvalidRequest
 			return report, nil
 		}
-		workload.affinityKey = affinityKey
 	} else {
 		prompt, promptErr := newFixedPerformancePrompt(prepared.Profile.InputTokens)
 		if promptErr != nil {
@@ -886,7 +885,12 @@ func (service *Host) performanceExecutor(ctx context.Context, config performance
 				return load.Observation{Index: request.Index, ErrorCode: classifyContext(budgetErr)}
 			}
 			defer release()
-			requestBody, bodyErr := workload.requestBodyForTarget(request.Index, target)
+			requestBody, bodyErr := workload.requestBodyForTarget(
+				domain.ProtocolOpenAIChat,
+				request.Index,
+				target,
+				config.AffinityKey,
+			)
 			if bodyErr != nil {
 				return load.Observation{Index: request.Index, ErrorCode: load.ErrorRequestFailed}
 			}

@@ -90,10 +90,10 @@ func (service *Host) nativePerformanceExecutor(
 				return load.Observation{Index: request.Index, ErrorCode: classifyContext(err)}
 			}
 			defer release()
-			requestBody, err = performanceBody(
+			requestBody, err = workload.requestBodyForTarget(
 				selected,
-				workload.prompt(request.Index, target.InputTokens),
-				target.OutputTokens,
+				request.Index,
+				target,
 				config.AffinityKey,
 			)
 			if err != nil {
