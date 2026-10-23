@@ -2,6 +2,7 @@ package runnerhttp
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -14,8 +15,8 @@ import (
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
-func TestReportHTTPRangeStaysIdentityEvenWhenGzipIsRequested(t *testing.T) {
-	document := []byte(strings.Repeat("immutable report ", 100))
+func TestReportHTTPGzipPreservesFreshAndRangeSemantics(t *testing.T) {
+	document := []byte(strings.Repeat("immutable report ", 5000))
 	digest := sha256.Sum256(document)
 	report := reportDownload{Document: document, SHA256: hex.EncodeToString(digest[:]), Kind: jobcontract.KindRun}
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -37,9 +38,25 @@ func TestReportHTTPRangeStaysIdentityEvenWhenGzipIsRequested(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		body, err := io.ReadAll(response.Body)
+		var reader io.Reader = response.Body
+		encoding := response.Header.Get("Content-Encoding")
+		if offset == 0 && encoding != "gzip" {
+			t.Fatal("fresh report did not use negotiated gzip")
+		}
+		if offset > 0 && encoding != "" {
+			t.Fatal("range report did not retain identity encoding")
+		}
+		if encoding == "gzip" {
+			compressed, err := gzip.NewReader(response.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reader = compressed
+			defer compressed.Close()
+		}
+		body, err := io.ReadAll(reader)
 		_ = response.Body.Close()
-		unchanged := err == nil && bytes.Equal(body, document[offset:]) && response.Header.Get("Content-Encoding") == ""
+		unchanged := err == nil && bytes.Equal(body, document[offset:])
 		if !unchanged || response.Header.Get("X-Content-SHA256") != report.SHA256 {
 			t.Fatal("immutable report representation changed")
 		}

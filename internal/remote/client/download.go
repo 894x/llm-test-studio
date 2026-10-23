@@ -1,12 +1,15 @@
 package client
 
 import (
+	"bufio"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -69,7 +72,10 @@ func (client *Client) downloadReport(ctx context.Context, download reportRequest
 	if offset == reference.Size {
 		return verifyDownload(file, reference)
 	}
-	input := remotessh.Request{Method: http.MethodGet, Route: "/jobs/" + jobID + "/" + download.Route + "/" + reference.ID}
+	input := remotessh.Request{
+		Method: http.MethodGet, Route: "/jobs/" + jobID + "/" + download.Route + "/" + reference.ID,
+		JSONGzip: offset == 0,
+	}
 	if offset > 0 {
 		input.RangeStart = &offset
 	}
@@ -90,11 +96,19 @@ func (client *Client) downloadReport(ctx context.Context, download reportRequest
 		return err
 	}
 	remaining := reference.Size - offset
+	encoding := response.Header.Values("Content-Encoding")
+	compressed := len(encoding) == 1 && strings.EqualFold(encoding[0], "gzip")
+	validEncoding := identityEncoding(response) || compressed && offset == 0 && !response.Uncompressed
 	validDigest := oneHeader(response, "X-Content-SHA256", reference.SHA256) &&
 		oneHeader(response, "ETag", `"`+reference.SHA256+`"`)
 	validResponse := oneHeader(response, "X-LLM-Test-Report-Kind", string(reference.Kind)) &&
-		oneHeader(response, "Content-Type", "application/json") && identityEncoding(response)
+		oneHeader(response, "Content-Type", "application/json") && validEncoding
+	wireLimit := remaining
 	validLength := response.ContentLength == remaining
+	if compressed {
+		wireLimit += gzipWireAllowance
+		validLength = response.ContentLength >= -1 && response.ContentLength <= wireLimit
+	}
 	if !validDigest || !validResponse || !validLength {
 		return ErrIntegrity
 	}
@@ -107,23 +121,50 @@ func (client *Client) downloadReport(ctx context.Context, download reportRequest
 	} else if response.Header.Get("Content-Range") != "" {
 		return ErrIntegrity
 	}
-	if _, err := io.CopyN(file, response.Body, remaining); err != nil {
+	if err := copyReportBody(file, response.Body, remaining, wireLimit, compressed); err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		return ErrConnection
-	}
-	var extra [1]byte
-	if count, err := response.Body.Read(extra[:]); count != 0 || err != io.EOF {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return ErrIntegrity
+		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	return verifyDownload(file, reference)
+}
+
+func copyReportBody(
+	destination io.Writer,
+	body io.Reader,
+	remaining int64,
+	wireLimit int64,
+	compressed bool,
+) error {
+	source := body
+	var wire *bufio.Reader
+	if compressed {
+		wire = bufio.NewReader(io.LimitReader(body, wireLimit+1))
+		reader, err := gzip.NewReader(wire)
+		if err != nil {
+			return ErrIntegrity
+		}
+		defer reader.Close()
+		reader.Multistream(false)
+		source = reader
+	}
+	if _, err := io.CopyN(destination, source, remaining); err != nil {
+		return ErrConnection
+	}
+	var extra [1]byte
+	if count, err := source.Read(extra[:]); count != 0 || err != io.EOF {
+		return ErrIntegrity
+	}
+	if compressed {
+		if count, err := wire.Read(extra[:]); count != 0 || err != io.EOF {
+			return ErrIntegrity
+		}
+	}
+	return nil
 }
 
 func oneHeader(response *http.Response, name, expected string) bool {

@@ -145,6 +145,8 @@ func (handler *Handler) report(writer http.ResponseWriter, request *http.Request
 	})
 }
 
+const reportGzipMinimumBytes = 64 << 10
+
 type reportDownload struct {
 	Document   []byte
 	SHA256     string
@@ -153,6 +155,11 @@ type reportDownload struct {
 }
 
 func serveReport(writer http.ResponseWriter, request *http.Request, report reportDownload) {
+	if negotiated, ok := writer.(*jsonResponseWriter); ok && negotiated.gzip && len(report.Document) >= reportGzipMinimumBytes {
+		report.Document = gzipJSON(report.Document)
+		writer.Header().Set("Content-Encoding", "gzip")
+		writer.Header().Add("Vary", "Accept-Encoding")
+	}
 	size := int64(len(report.Document))
 	if !validRange(request, size) {
 		writer.Header().Set("Content-Range", "bytes */"+strconv.FormatInt(size, 10))

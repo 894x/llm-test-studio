@@ -135,7 +135,7 @@ type failedGzipBody struct{}
 func (failedGzipBody) Read([]byte) (int, error) { return 0, errors.New("private transport failure") }
 func (failedGzipBody) Close() error             { return nil }
 
-func TestJSONGzipKeepsTransportErrorsSeparateAndDownloadIdentity(t *testing.T) {
+func TestJSONGzipKeepsTransportErrorsSeparateAndDownloadCompatibility(t *testing.T) {
 	response := fixtureResponse(http.StatusOK, []byte{})
 	response.Header.Set("Content-Encoding", "gzip")
 	response.ContentLength, response.Body = -1, failedGzipBody{}
@@ -144,9 +144,10 @@ func TestJSONGzipKeepsTransportErrorsSeparateAndDownloadIdentity(t *testing.T) {
 	}
 	raw, reference := reportFixture()
 	client, _ := New(fixtureIdentity(), func(_ context.Context, input remotessh.Request) (*http.Response, error) {
-		if input.JSONGzip {
-			t.Fatal("immutable report download enabled gzip")
+		if !input.JSONGzip {
+			t.Fatal("fresh download did not offer gzip to the runner")
 		}
+		// Older runners ignore the offer and keep returning identity JSON.
 		return reportResponse(raw, reference, 0), nil
 	})
 	file, err := os.CreateTemp(t.TempDir(), "partial")
