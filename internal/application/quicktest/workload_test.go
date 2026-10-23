@@ -181,3 +181,27 @@ func TestRandomInputPrefixesEveryRequestWithoutChangingConfiguredWordCount(t *te
 		}
 	}
 }
+
+func BenchmarkPerformancePrompt(b *testing.B) {
+	for _, profile := range []PerformanceProfile{
+		{WorkloadMode: PerformanceWorkloadFixed, RandomInput: true, InputTokens: 256, OutputTokens: 1},
+		{
+			WorkloadMode: PerformanceWorkloadNormal, RandomSeed: 1,
+			InputTokens: 256, OutputTokens: 1, InputTokensStdDev: 32, SharedPrefixTokens: 64,
+		},
+	} {
+		workload, err := newPerformanceWorkload(profile)
+		if err != nil {
+			b.Fatal(err)
+		}
+		name := string(profile.WorkloadMode) + "/random=" + strconv.FormatBool(profile.RandomInput)
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if prompt := workload.prompt(7, 256); len(prompt) == 0 {
+					b.Fatal("empty prompt")
+				}
+			}
+		})
+	}
+}

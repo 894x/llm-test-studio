@@ -135,13 +135,20 @@ func (workload *performanceWorkload) prompt(index uint64, target uint32) string 
 		uniqueWord = "r" + strconv.FormatUint(workload.runNonce, 36) + "-" +
 			strconv.FormatUint(uint64(workload.rungIndex), 36) + "-" + strconv.FormatUint(index, 36)
 	}
-	estimatedBytes := uint64(sharedCount)*2 + uint64(target-sharedCount)*uint64(len(uniqueWord)+1)
 	if workload.profile.WorkloadMode == PerformanceWorkloadFixed {
-		estimatedBytes = uint64(target)*5 + uint64(len(uniqueWord))
+		prefix := "test"
+		if workload.profile.RandomInput {
+			prefix = uniqueWord
+		}
+		var builder strings.Builder
+		builder.Grow(len(prefix) + int(target-1)*len(" test"))
+		builder.WriteString(prefix)
+		for position := uint32(1); position < target; position++ {
+			builder.WriteString(" test")
+		}
+		return builder.String()
 	}
-	if estimatedBytes > 0 {
-		estimatedBytes--
-	}
+	estimatedBytes := uint64(sharedCount)*2 + uint64(target-sharedCount)*uint64(len(uniqueWord)+1) - 1
 	var builder strings.Builder
 	builder.Grow(int(estimatedBytes))
 	for position := uint32(0); position < target; position++ {
@@ -150,10 +157,6 @@ func (workload *performanceWorkload) prompt(index uint64, target uint32) string 
 		}
 		if position == 0 && workload.profile.RandomInput {
 			builder.WriteString(uniqueWord)
-			continue
-		}
-		if workload.profile.WorkloadMode == PerformanceWorkloadFixed {
-			builder.WriteString("test")
 			continue
 		}
 		if position < sharedCount {
