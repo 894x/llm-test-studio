@@ -34,14 +34,19 @@ func performancePath(selected domain.Protocol) string {
 	return descriptor.RequestPaths[0].Path
 }
 
-type performanceRequestBody struct {
-	Messages        []performanceMessage `json:"messages,omitempty"`
-	Input           string               `json:"input,omitempty"`
-	MaxTokens       uint32               `json:"max_tokens,omitempty"`
-	MaxOutputTokens uint32               `json:"max_output_tokens,omitempty"`
-	Stream          bool                 `json:"stream"`
-	PromptCacheKey  string               `json:"prompt_cache_key,omitempty"`
-	Metadata        *performanceMetadata `json:"metadata,omitempty"`
+type performanceMessagesBody struct {
+	Messages       []performanceMessage `json:"messages"`
+	MaxTokens      uint32               `json:"max_tokens"`
+	Stream         bool                 `json:"stream"`
+	PromptCacheKey string               `json:"prompt_cache_key,omitempty"`
+	Metadata       *performanceMetadata `json:"metadata,omitempty"`
+}
+
+type performanceResponsesBody struct {
+	Input           string `json:"input"`
+	MaxOutputTokens uint32 `json:"max_output_tokens"`
+	Stream          bool   `json:"stream"`
+	PromptCacheKey  string `json:"prompt_cache_key,omitempty"`
 }
 
 type performanceMessage struct {
@@ -59,20 +64,21 @@ func performanceBody(
 	outputTokens uint32,
 	affinityKey string,
 ) (json.RawMessage, error) {
-	body := performanceRequestBody{Stream: true}
 	if selected == domain.ProtocolOpenAIResponses {
-		body.Input = prompt
-		body.MaxOutputTokens = outputTokens
-	} else {
-		body.Messages = []performanceMessage{{Role: "user", Content: prompt}}
-		body.MaxTokens = outputTokens
+		return json.Marshal(performanceResponsesBody{
+			Input: prompt, MaxOutputTokens: outputTokens, Stream: true, PromptCacheKey: affinityKey,
+		})
 	}
-	if affinityKey != "" {
-		if selected == domain.ProtocolAnthropicMessages {
+	body := performanceMessagesBody{
+		Messages:  []performanceMessage{{Role: "user", Content: prompt}},
+		MaxTokens: outputTokens, Stream: true,
+	}
+	if selected == domain.ProtocolAnthropicMessages {
+		if affinityKey != "" {
 			body.Metadata = &performanceMetadata{UserID: affinityKey}
-		} else {
-			body.PromptCacheKey = affinityKey
 		}
+	} else {
+		body.PromptCacheKey = affinityKey
 	}
 	return json.Marshal(body)
 }
