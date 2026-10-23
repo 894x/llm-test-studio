@@ -879,21 +879,16 @@ func (service *Host) performanceExecutor(ctx context.Context, config performance
 		}
 	} else {
 		executor = func(requestContext context.Context, request load.Request) load.Observation {
-			target := workload.target(request.Index)
-			release, budgetErr := sharedPerformanceInputTokenBudget.acquire(requestContext, target.InputTokens)
-			if budgetErr != nil {
-				return load.Observation{Index: request.Index, ErrorCode: classifyContext(budgetErr)}
-			}
-			defer release()
-			requestBody, bodyErr := workload.requestBodyForTarget(
+			requestBody, release, code := workload.prepareRequest(
+				requestContext,
 				domain.ProtocolOpenAIChat,
 				request.Index,
-				target,
 				config.AffinityKey,
 			)
-			if bodyErr != nil {
-				return load.Observation{Index: request.Index, ErrorCode: load.ErrorRequestFailed}
+			if code != "" {
+				return load.Observation{Index: request.Index, ErrorCode: code}
 			}
+			defer release()
 			requestExecutor, executorErr := client.Executor(domain.TestRequest{
 				Method: domain.RequestPOST, Path: "/chat/completions", Headers: map[string]string{}, Body: requestBody,
 			})

@@ -104,21 +104,17 @@ func (service *Host) nativePerformanceExecutor(
 	executor := func(ctx context.Context, request load.Request) load.Observation {
 		requestBody := body
 		if workload != nil {
-			target := workload.target(request.Index)
-			release, err := sharedPerformanceInputTokenBudget.acquire(ctx, target.InputTokens)
-			if err != nil {
-				return load.Observation{Index: request.Index, ErrorCode: classifyContext(err)}
-			}
-			defer release()
-			requestBody, err = workload.requestBodyForTarget(
+			preparedBody, release, code := workload.prepareRequest(
+				ctx,
 				selected,
 				request.Index,
-				target,
 				config.AffinityKey,
 			)
-			if err != nil {
-				return load.Observation{Index: request.Index, ErrorCode: load.ErrorRequestFailed}
+			if code != "" {
+				return load.Observation{Index: request.Index, ErrorCode: code}
 			}
+			defer release()
+			requestBody = preparedBody
 		}
 		started := time.Now()
 		result, err := client.Execute(ctx, protocols.Execution{Spec: testspec.Spec{

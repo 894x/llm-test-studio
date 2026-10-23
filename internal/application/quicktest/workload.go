@@ -165,18 +165,28 @@ func (workload *performanceWorkload) prompt(index uint64, target uint32) string 
 	return builder.String()
 }
 
-func (workload *performanceWorkload) requestBodyForTarget(
+func (workload *performanceWorkload) prepareRequest(
+	ctx context.Context,
 	selected domain.Protocol,
 	index uint64,
-	target performanceWorkloadTarget,
 	affinityKey string,
-) (json.RawMessage, error) {
-	return performanceBody(
+) (json.RawMessage, func(), domain.ErrorCode) {
+	target := workload.target(index)
+	release, err := sharedPerformanceInputTokenBudget.acquire(ctx, target.InputTokens)
+	if err != nil {
+		return nil, nil, classifyContext(err)
+	}
+	body, err := performanceBody(
 		selected,
 		workload.prompt(index, target.InputTokens),
 		target.OutputTokens,
 		affinityKey,
 	)
+	if err != nil {
+		release()
+		return nil, nil, load.ErrorRequestFailed
+	}
+	return body, release, ""
 }
 
 type performanceTokenBudget struct {
