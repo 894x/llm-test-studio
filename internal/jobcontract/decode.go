@@ -27,6 +27,7 @@ const (
 	scopeCommand
 	scopeMaintenanceCommand
 	scopeMaintenanceRecord
+	scopeBoolean
 )
 
 // Scan collection counts before decoding typed slices. A bounded byte body can
@@ -47,6 +48,12 @@ func scanValue(decoder *json.Decoder, scope documentScope) error {
 	token, err := decoder.Token()
 	if err != nil {
 		return invalid("body")
+	}
+	if scope == scopeBoolean {
+		if _, ok := token.(bool); !ok {
+			return invalid("functional_progress")
+		}
+		return nil
 	}
 	switch token {
 	case json.Delim('{'):
@@ -99,6 +106,8 @@ func childScope(parent documentScope, name string) documentScope {
 	switch parent {
 	case scopeRoot, scopeJob:
 		switch name {
+		case "functional_progress":
+			return scopeBoolean
 		case "job":
 			if parent == scopeRoot {
 				return scopeJob
@@ -157,11 +166,12 @@ func envelopeFields(scope documentScope) []string {
 		// Secret's string-only decoder also uses the same strict decode helper.
 		return []string{
 			"job", "secrets", "contract", "job_id", "node_installation_id", "engine_build_id",
-			"target", "kind", "spec", "assets", "slot", "value",
+			"target", "kind", "spec", "assets", "functional_progress", "slot", "value",
 		}
 	case scopeJob:
 		return []string{
-			"contract", "job_id", "node_installation_id", "engine_build_id", "target", "kind", "spec", "assets",
+			"contract", "job_id", "node_installation_id", "engine_build_id", "target",
+			"kind", "spec", "assets", "functional_progress",
 		}
 	case scopePayload:
 		return []string{"run", "performance", "comparison"}

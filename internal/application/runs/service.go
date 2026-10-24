@@ -12,6 +12,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/execution/load"
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
@@ -52,6 +53,7 @@ type ExecutionRequest struct {
 	Cases       []domain.TestCase
 	Credential  *credentials.Lease
 	StopSending <-chan struct{}
+	OnProgress  func(load.Progress)
 }
 
 // LoadProfile schedules complete Case executions using the entry's policy.

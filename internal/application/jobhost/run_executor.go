@@ -8,11 +8,14 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/execution/load"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
@@ -50,6 +53,7 @@ type runGroup struct {
 	unavailable    atomic.Bool
 	failureOnce    sync.Once
 	onFailure      func()
+	onProgress     func(quicktest.PerformanceProgress)
 	requestContext context.Context
 	stopRequests   context.CancelFunc
 }
@@ -69,6 +73,7 @@ func NewRunExecutor(dependencies RunExecutorDependencies) (*RunExecutor, error) 
 		Repository: repository, Executor: dependencies.Executor, Clock: dependencies.Clock,
 		PersistenceFailure: core.observeFailure,
 		ReportDiagnostic:   dependencies.ReportDiagnostic,
+		RequestProgress:    core.observeProgress,
 	})
 	if err != nil {
 		return nil, err
@@ -89,6 +94,27 @@ func NewRunExecutor(dependencies RunExecutorDependencies) (*RunExecutor, error) 
 	}
 	core.host, core.reports, core.groups = host, reports, groups
 	return core, nil
+}
+
+// Scheduler progress supplies occupancy; functional verdicts still come from
+// persisted results, not the scheduler's transport success counts.
+func (core *RunExecutor) observeProgress(runID string, progress load.Progress) {
+	core.mu.Lock()
+	group := core.active[runID]
+	core.mu.Unlock()
+	if group == nil || group.onProgress == nil {
+		return
+	}
+	group.onProgress(quicktest.PerformanceProgress{
+		Phase: progress.Phase, Planned: progress.Planned, Offered: progress.Offered,
+		Launched: progress.Launched, Completed: progress.Completed,
+		InFlight: progress.InFlight, PeakInFlight: progress.PeakInFlight,
+		Succeeded: progress.Succeeded, Failed: progress.Failed, Rejected: progress.Rejected,
+		Stopped: progress.Stopped, Capped: progress.Capped,
+		SendDurationMS:  float64(progress.SendDuration) / float64(time.Millisecond),
+		DrainDurationMS: float64(progress.DrainDuration) / float64(time.Millisecond),
+		TotalDurationMS: float64(progress.TotalDuration) / float64(time.Millisecond),
+	})
 }
 
 func (core *RunExecutor) observeFailure(runID string) {
@@ -173,6 +199,9 @@ func (core *RunExecutor) Execute(ctx context.Context, execution Execution) (Outc
 	group := &runGroup{
 		inputs: inputs, failed: make(chan struct{}, 1), done: make(chan struct{}),
 		onFailure: execution.OnPersistenceFailure, requestContext: requestContext, stopRequests: stopRequests,
+	}
+	if execution.Spec.FunctionalProgress {
+		group.onProgress = execution.OnProgress
 	}
 	if err := core.register(group); err != nil {
 		return Outcome{}, err

@@ -107,6 +107,13 @@ func (repository *Repository) RecordJobProgress(
 		return fmt.Errorf("begin job progress: %w", err)
 	}
 	defer tx.Rollback()
+	spec, err := queryJobSpec(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if spec.Kind != jobcontract.KindPerformance && !spec.FunctionalProgress {
+		return jobhost.ErrInvalid
+	}
 	if err := journalJobEventTx(ctx, tx, jobEventWrite{
 		JobID: id, Kind: jobcontract.EventProgress, At: at, Payload: progress,
 	}); err != nil {

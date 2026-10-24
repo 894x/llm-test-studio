@@ -26,7 +26,8 @@ func queryStoredJobView(ctx context.Context, tx *sql.Tx, id string) (storedJobVi
 		return storedJobView{}, err
 	}
 	stored := storedJobView{execution: execution}
-	if execution.kind() != string(jobcontract.KindPerformance) {
+	kind := jobcontract.Kind(execution.kind())
+	if kind != jobcontract.KindPerformance && kind != jobcontract.KindRun {
 		return stored, nil
 	}
 	remote := execution.remote != nil
@@ -36,7 +37,7 @@ func queryStoredJobView(ctx context.Context, tx *sql.Tx, id string) (storedJobVi
 		id,
 		remote,
 	)
-	if err == nil {
+	if err == nil && kind == jobcontract.KindPerformance {
 		stored.performance, err = queryStoredJobPerformance(
 			ctx,
 			tx,
@@ -57,9 +58,10 @@ func projectStoredJobView(ctx context.Context, stored storedJobView) (jobs.JobVi
 	}
 	var progress *jobs.ProgressView
 	var ready bool
-	if read.Execution != nil && read.Spec.Kind == jobcontract.KindPerformance {
+	functionalProgress := read.Spec.Kind == jobcontract.KindRun && read.Spec.FunctionalProgress
+	if read.Execution != nil && (read.Spec.Kind == jobcontract.KindPerformance || functionalProgress) {
 		progress, err = stored.progress.decode(read)
-		if err == nil {
+		if err == nil && read.Spec.Kind == jobcontract.KindPerformance {
 			ready, err = stored.performance.decode(&read)
 		}
 		if err != nil {

@@ -111,9 +111,13 @@ func (coordinator *Coordinator) Prepare(ctx context.Context, command PrepareComm
 	if target.Kind == jobcontract.TargetRemote {
 		target.NodeID = info.NodeID
 	}
+	quickRun := command.Kind == jobcontract.KindRun && command.Payload.Run != nil &&
+		command.Payload.Run.Snapshot.QuickTask != nil
+	functionalProgress := quickRun && slices.Contains(info.Capabilities.Features, jobcontract.FeatureFunctionalProgress)
 	spec, err := (jobcontract.JobSpec{Contract: jobcontract.CurrentContract, JobID: command.JobID,
 		NodeInstallationID: info.NodeInstallationID, EngineBuildID: info.EngineBuildID, Target: target,
-		Kind: command.Kind, Spec: command.Payload, Assets: command.Assets}).Freeze()
+		Kind: command.Kind, Spec: command.Payload, Assets: command.Assets,
+		FunctionalProgress: functionalProgress}).Freeze()
 	if err != nil {
 		return SubmissionRecord{}, err
 	}

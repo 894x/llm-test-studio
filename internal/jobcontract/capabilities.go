@@ -10,6 +10,7 @@ import (
 const FeatureExecutionOrigin = "execution_origin"
 const FeatureMixedPlanItems = "mixed_plan_items"
 const FeaturePerformanceAffinity = "performance_affinity"
+const FeatureFunctionalProgress = "functional_progress"
 
 // SupportsJob checks only the current task requirements, independent of client
 // release and build. Report-transfer requirements may be stricter for a caller.
@@ -21,6 +22,9 @@ func (capabilities RunnerCapabilities) SupportsJob(spec JobSpec) bool {
 	}
 	protocols := []string{}
 	features := []string{}
+	if spec.FunctionalProgress {
+		features = append(features, FeatureFunctionalProgress)
+	}
 	if spec.Kind == KindPerformance {
 		performance := spec.Spec.Performance
 		protocols = append(protocols, string(performance.Protocol))

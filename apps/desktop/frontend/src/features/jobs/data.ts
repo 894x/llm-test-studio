@@ -107,7 +107,15 @@ export function parseJobView(value: unknown): JobView {
   if ((!result.submission && (!result.execution || result.location.kind !== "remote")) ||
       (result.submission?.delivery === "prepared" && result.execution !== null) ||
       (result.performance_result_ready && (result.kind !== "performance" || !result.execution || !isJobTerminal(result.execution.status))) ||
-      (result.progress && (!result.execution || result.kind !== "performance" || result.progress.sequence > result.execution.latest_sequence))) return invalid()
+      (result.progress && (!result.execution || result.kind === "comparison" || result.progress.sequence > result.execution.latest_sequence))) return invalid()
+  if (result.kind === "run" && result.progress) {
+    const p = result.progress.progress
+    const phases = ["sending", "draining", "completed", "cancelled"]
+    const validCounts = p.completed === p.succeeded + p.failed && p.rejected <= p.completed &&
+      p.in_flight <= p.launched && p.launched === p.completed - p.rejected + p.in_flight
+    if (!phases.includes(p.phase) || !validCounts ||
+      ((p.phase === "completed" || p.phase === "cancelled") && p.in_flight !== 0)) return invalid()
+  }
   return result
 }
 function pagination(item: Record<string, unknown>): { next_cursor: string; has_more: boolean } {

@@ -21,6 +21,7 @@ func CoreCapabilities() jobcontract.RunnerCapabilities {
 			"warmup", "ramp", "capacity", "open_loop",
 			"time_slices", "normal_workload", "random_input",
 			jobcontract.FeaturePerformanceAffinity,
+			jobcontract.FeatureFunctionalProgress,
 		},
 	}
 }

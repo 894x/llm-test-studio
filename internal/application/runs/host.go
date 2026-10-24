@@ -11,6 +11,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/execution/load"
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
@@ -33,6 +34,7 @@ type HostDependencies struct {
 	Reporter         ReportGenerator
 	ReportError      func(error)
 	ReportDiagnostic func(Diagnostic)
+	RequestProgress  func(string, load.Progress)
 	// PersistenceFailure is a synchronous owner signal, separate from lossy
 	// diagnostics. It must return promptly and must not call back into this Host.
 	PersistenceFailure func(string)
@@ -48,6 +50,7 @@ type Host struct {
 	reportError        func(error)
 	diagnostics        *diagnosticDispatcher
 	persistenceFailure func(string)
+	requestProgress    func(string, load.Progress)
 	recoveryContext    context.Context
 	stopRecovery       context.CancelFunc
 
@@ -117,6 +120,7 @@ func NewHost(dependencies HostDependencies) (*Host, error) {
 		reportError:        dependencies.ReportError,
 		diagnostics:        newDiagnosticDispatcher(dependencies.ReportDiagnostic),
 		persistenceFailure: dependencies.PersistenceFailure,
+		requestProgress:    dependencies.RequestProgress,
 		recoveryContext:    recoveryContext, stopRecovery: stopRecovery,
 		active: make(map[string]*runControl), closeDone: make(chan struct{}),
 	}, nil
@@ -475,6 +479,9 @@ func (service *Host) executeEntries(ctx context.Context, control *runControl) {
 			Credential: control.lease, StopSending: control.stop,
 		}
 		control.mu.Unlock()
+		if service.requestProgress != nil {
+			request.OnProgress = func(progress load.Progress) { service.requestProgress(runID, progress) }
+		}
 		suiteOffsetMS := milliseconds(time.Since(started))
 		var storageErr error
 		entryFailed := false

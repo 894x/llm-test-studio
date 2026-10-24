@@ -132,6 +132,7 @@ func (executor *ProtocolExecutor) executePhase(
 	}
 	outcome, runErr := load.Run(runContext, request.LoadProfile(), composite, load.Options{
 		StopSending: request.StopSending, RandomSeed: uint32(seed),
+		OnProgress: request.OnProgress,
 	})
 	for _, observation := range outcome.Results {
 		if state.sent(observation.Index) {

@@ -170,7 +170,8 @@ func ProjectJob(
 	}
 	view.PerformanceResultReady = resultReady
 	if progress != nil {
-		if spec.Kind != jobcontract.KindPerformance || progress.Validate(*execution) != nil {
+		progressSupported := spec.Kind == jobcontract.KindPerformance || spec.FunctionalProgress
+		if !progressSupported || progress.Validate(*execution) != nil {
 			return JobView{}, ErrInvalid
 		}
 		copy := *progress
@@ -188,6 +189,18 @@ func (progress ProgressView) Validate(snapshot jobcontract.Snapshot) error {
 		return ErrInvalid
 	}
 	p := progress.Progress
+	if snapshot.Receipt.Kind == jobcontract.KindRun {
+		validPhase := p.Phase == load.PhaseSending || p.Phase == load.PhaseDraining ||
+			p.Phase == load.PhaseCompleted || p.Phase == load.PhaseCancelled
+		validCounts := p.Completed == p.Succeeded+p.Failed && p.Rejected <= p.Completed &&
+			p.InFlight <= p.Launched && p.Launched == p.Completed-p.Rejected+p.InFlight
+		if !validPhase || !validCounts {
+			return ErrInvalid
+		}
+		if (p.Phase == load.PhaseCompleted || p.Phase == load.PhaseCancelled) && p.InFlight != 0 {
+			return ErrInvalid
+		}
+	}
 	switch p.Phase {
 	case load.PhaseSending, load.PhaseDraining, load.PhaseCompleted, load.PhaseCancelled,
 		quicktest.PerformancePhaseNotStarted, quicktest.PerformancePhaseWarmingUp, quicktest.PerformancePhaseRamping:

@@ -6,7 +6,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/remoteresults"
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -102,7 +104,8 @@ func applyRemoteEventTx(
 	case jobcontract.EventProgress:
 		var progress quicktest.PerformanceProgress
 		err = decodeCanonical(event.Payload, &progress, nil)
-		if mirror.Spec.Kind != jobcontract.KindPerformance {
+		functionalProgress := mirror.Spec.Kind == jobcontract.KindRun && mirror.Spec.FunctionalProgress
+		if mirror.Spec.Kind != jobcontract.KindPerformance && !functionalProgress {
 			err = remoteresults.ErrInvalid
 		}
 		switch progress.Phase {
@@ -110,6 +113,12 @@ func applyRemoteEventTx(
 		case quicktest.PerformancePhaseNotStarted, quicktest.PerformancePhaseWarmingUp, quicktest.PerformancePhaseRamping:
 		default:
 			err = remoteresults.ErrInvalid
+		}
+		if err == nil && functionalProgress {
+			view := jobs.ProgressView{
+				Sequence: event.Sequence, RecordedAt: event.CreatedAt.Format(time.RFC3339Nano), Progress: progress,
+			}
+			err = view.Validate(next)
 		}
 	case jobcontract.EventPerformanceCheckpoint:
 		err = importRemoteCheckpointTx(

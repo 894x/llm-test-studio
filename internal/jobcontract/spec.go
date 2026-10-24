@@ -95,6 +95,7 @@ type JobSpec struct {
 	Kind               Kind            `json:"kind"`
 	Spec               Payload         `json:"spec"`
 	Assets             []Asset         `json:"assets"`
+	FunctionalProgress bool            `json:"functional_progress,omitempty"`
 }
 
 type Secret struct {
@@ -143,6 +144,12 @@ func (spec JobSpec) Validate() error {
 	}
 	if payloadCount != 1 {
 		return invalid("spec")
+	}
+	if spec.FunctionalProgress {
+		quickRun := spec.Kind == KindRun && spec.Spec.Run != nil && spec.Spec.Run.Snapshot.QuickTask != nil
+		if !quickRun {
+			return invalid("functional_progress")
+		}
 	}
 	switch spec.Kind {
 	case KindRun:

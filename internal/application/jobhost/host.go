@@ -85,18 +85,17 @@ const (
 )
 
 type jobControl struct {
-	spec         jobcontract.JobSpec
-	secrets      map[string]*credentials.Lease
-	reservation  io.Closer
-	units        uint64
-	phase        jobPhase
-	reserved     bool
-	stop         chan struct{}
-	stopOnce     sync.Once
-	cancel       context.CancelCauseFunc
-	timer        *time.Timer
-	progressMu   sync.Mutex
-	lastProgress time.Time
+	spec        jobcontract.JobSpec
+	secrets     map[string]*credentials.Lease
+	reservation io.Closer
+	units       uint64
+	phase       jobPhase
+	reserved    bool
+	stop        chan struct{}
+	stopOnce    sync.Once
+	cancel      context.CancelCauseFunc
+	timer       *time.Timer
+	progressMu  sync.Mutex
 }
 
 type Status struct {
@@ -335,9 +334,6 @@ func (host *Host) observe(control *jobControl, progress quicktest.PerformancePro
 	control.progressMu.Lock()
 	defer control.progressMu.Unlock()
 	at := host.clock.Now().UTC()
-	if !control.lastProgress.IsZero() && at.Sub(control.lastProgress) < time.Second {
-		return
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), storageTimeout)
 	err := host.repository.RecordJobProgress(
 		ctx,
@@ -350,5 +346,4 @@ func (host *Host) observe(control *jobControl, progress quicktest.PerformancePro
 		host.storageFailed()
 		return
 	}
-	control.lastProgress = at
 }

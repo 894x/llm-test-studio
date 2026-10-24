@@ -131,6 +131,13 @@ export function QuickTaskWorkspace({
     "start" | "history" | "cancel" | "remember" | "forget" | "save" | null
   >(null)
   const observedJobs = useRef(new Map<string, string>())
+  const [historicalJobs, setHistoricalJobs] = useState<Record<string, JobView>>({})
+  const receiveHistoricalJob = useCallback((observed: JobView) => {
+    const marker = JSON.stringify(observed)
+    if (observedJobs.current.get(observed.job_id) === marker) return
+    observedJobs.current.set(observed.job_id, marker)
+    setHistoricalJobs(current => ({ ...current, [observed.job_id]: observed }))
+  }, [])
   const [unavailableReports, setUnavailableReports] = useState<Set<string>>(() => new Set())
   const [availableReportIDs, setAvailableReportIDs] = useState<Set<string>>(() => new Set())
   const reportUnavailable = useCallback((id: string) => {
@@ -235,6 +242,7 @@ export function QuickTaskWorkspace({
           : tj("awaitingConfirmation") : undefined,
         active: !status || !isJobTerminal(status), completed: run?.completed, planned: run?.planned,
         succeeded: run?.passed, failed: run?.failed, observed: run?.observed, indeterminate: run?.indeterminate,
+        inFlight: observed.progress?.progress.in_flight,
         detail: run ? t("task.observed", run) : undefined,
         error: observed.execution?.failure ? t(`common:errorCode.${observed.execution.failure.error_code}`, { defaultValue: observed.execution.failure.error_code }) : undefined,
         reportID: run?.report_id ?? reports.reports.find(report => run && report.run_id === run.id)?.id,
@@ -248,6 +256,7 @@ export function QuickTaskWorkspace({
       status: run.conclusion === "none" ? (run.status === "starting" ? "queued" : run.status) : run.conclusion,
       active: isRunActive(run.status), completed: run.completed, planned: run.planned,
       succeeded: run.passed, failed: run.failed, observed: run.observed, indeterminate: run.indeterminate,
+      inFlight: run.job_id ? historicalJobs[run.job_id]?.progress?.progress.in_flight : undefined,
       detail: t("task.observed", run),
       error: run.error_code ? t(`common:errorCode.${run.error_code}`, { defaultValue: run.error_code }) : undefined,
       reportID: run.report_id ?? reports.reports.find(report => report.run_id === run.id)?.id,
@@ -269,6 +278,8 @@ export function QuickTaskWorkspace({
     reportError: !item.reportID && unavailableReports.has(item.id),
   })).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
   const visibleHistory = history
+  const historicalActiveJobs = workspace.runs.filter(run => run.source === "quick_task" && run.job_id &&
+    isRunActive(run.status) && !functionalJobs.some(entry => entry.job.job_id === run.job_id))
   const pendingPerformanceIDs = performanceHistory.filter(item => item.reportID && !item.active &&
     !availableReportIDs.has(item.reportID) && !reports.reports.some(report => report.id === item.reportID))
     .map(item => item.reportID!).sort().join(",")
@@ -600,6 +611,9 @@ export function QuickTaskWorkspace({
       {functionalJobs.map(entry =>
         <QuickTaskJobObserver key={entry.job.job_id} client={actions} jobID={entry.job.job_id} onChange={receiveFunctionalJob}
           waitingForReport={!history.find(item => item.jobID === entry.job.job_id)?.reportID} />)}
+      {historicalActiveJobs.map(run =>
+        <QuickTaskJobObserver key={run.job_id} client={actions} jobID={run.job_id!} onChange={receiveHistoricalJob}
+          waitingForReport={!run.report_id} />)}
       {performanceHistory.map(item =>
         <QuickTaskJobObserver key={item.id} client={actions} jobID={item.id} onChange={performanceJobChanged} onArchived={onPerformanceArchived}
           waitingForReport={!availableReportIDs.has(item.reportID ?? "") && !reports.reports.some(report => report.id === item.reportID) && !unavailableReports.has(item.id)} onUnavailable={reportUnavailable} />)}
