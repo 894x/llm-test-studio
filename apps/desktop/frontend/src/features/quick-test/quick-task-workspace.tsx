@@ -293,6 +293,7 @@ export function QuickTaskWorkspace({
   const selectedID = history.find(item => item.id === requestedHistoryID || item.runID === requestedHistoryID)?.id ?? requestedHistoryID
   const performanceJobLaunched = (accepted: JobView, command: QuickPerformanceCommand) => {
     const id = accepted.job_id
+    const progress = accepted.progress?.progress
     setPerformanceSettings(current => ({ ...current, [id]: {
       protocol: command.protocol, address_mode: command.address_mode,
       base_url: command.url, endpoint: command.url, model_id: command.model_id,
@@ -306,7 +307,13 @@ export function QuickTaskWorkspace({
       timestamp: accepted.execution?.accepted_at ?? accepted.submission!.prepared_at,
       active: !accepted.execution || !isJobTerminal(accepted.execution.status),
       status: accepted.execution?.status ?? accepted.submission?.confirmation?.status ?? "queued",
-      phase: accepted.progress?.progress.phase ?? (!accepted.execution ? "not_started" : undefined),
+      phase: progress?.phase ?? (!accepted.execution ? "not_started" : undefined),
+      completed: progress?.completed,
+      planned: progress?.planned,
+      succeeded: progress?.succeeded,
+      failed: progress?.failed,
+      inFlight: progress?.in_flight,
+      detail: progress ? t("workspace.performanceCounts", { ...progress }) : undefined,
     }, ...current.filter(item => item.id !== id)])
     onJobLaunched?.(accepted)
   }
@@ -321,6 +328,7 @@ export function QuickTaskWorkspace({
       status: observed.execution?.status ?? observed.submission?.confirmation?.status ?? item.status,
       phase: observed.execution && isJobTerminal(observed.execution.status) ? undefined : progress?.phase ?? (!observed.execution ? "not_started" : undefined),
       completed: progress?.completed, planned: progress?.planned,
+      succeeded: progress?.succeeded, failed: progress?.failed, inFlight: progress?.in_flight,
       detail: progress ? t("workspace.performanceCounts", { ...progress }) : undefined,
       reportID: observed.performance_result_ready ? observed.report_ids[0] : undefined,
       error: observed.execution?.failure ? t(`common:errorCode.${observed.execution.failure.error_code}`) : undefined,
