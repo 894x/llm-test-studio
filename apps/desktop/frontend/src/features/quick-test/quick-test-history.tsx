@@ -53,11 +53,21 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
   onRefresh: () => void
 }) {
   const { t, i18n } = useTranslation("quickTest")
+  const currentYear = new Date().getFullYear()
   return (
     <TooltipProvider delayDuration={250}>
       <ol aria-label={t("workspace.history")} className="space-y-2">
         {items.map(item => {
           const statusLabel = item.statusLabel ?? (item.phase ? t(`phase.${item.phase}`) : t(`common:status.${item.status}`))
+          const statusColor = item.status === "passed" ? "text-outcome-pass"
+            : item.status === "failed" ? "text-outcome-fail"
+            : item.status === "running" || item.status === "draining" ? "text-primary" : "text-muted-foreground"
+          const timestamp = new Date(item.timestamp)
+          const fullTimestamp = timestamp.toLocaleString(i18n.language)
+          const compactTimestamp = timestamp.toLocaleString(i18n.language, {
+            year: timestamp.getFullYear() === currentYear ? undefined : "numeric",
+            month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+          })
           const Icon = item.mode === "performance" ? GaugeIcon : FlaskConicalIcon
           const percentage = item.planned && item.completed !== undefined
             ? Math.min(100, 100 * item.completed / item.planned) : undefined
@@ -81,18 +91,32 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
           })() : undefined
           return (
             <li key={item.id} data-selected={item.id === selectedID} className="group relative min-w-0 rounded-md p-3 transition-colors hover:bg-surface-hover data-[selected=true]:bg-surface-active">
-              <Button type="button" variant="ghost" disabled={busy} aria-label={item.title} aria-description={t("task.restore")} aria-current={item.id === selectedID ? "true" : undefined} onClick={() => onSelect(item)} className="absolute inset-0 size-full cursor-pointer rounded-md p-0 hover:bg-transparent focus-visible:ring-inset" />
+              <Tooltip>
+                <TooltipTrigger asChild><Button type="button" variant="ghost" disabled={busy} aria-label={item.title} aria-description={t("task.restore")} aria-current={item.id === selectedID ? "true" : undefined} onClick={() => onSelect(item)} className="absolute inset-0 size-full cursor-pointer rounded-md p-0 hover:bg-transparent focus-visible:ring-inset" /></TooltipTrigger>
+                <TooltipContent>{fullTimestamp}</TooltipContent>
+              </Tooltip>
               <div className="pointer-events-none relative">
                 <div className="flex items-start gap-2">
                   <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   <p className="min-w-0 flex-1 text-xs font-medium [overflow-wrap:anywhere]">{item.title}</p>
+                  <span className="max-w-[45%] shrink-0 text-right text-[11px] leading-4 text-muted-foreground [overflow-wrap:anywhere]">{item.model}</span>
                   {item.active ? <Spinner aria-label={statusLabel} className="mt-0.5 size-3.5 shrink-0" /> : null}
                 </div>
-                <p className="mt-2 text-[11px] text-muted-foreground [overflow-wrap:anywhere]">{item.model} · {item.channel}</p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button type="button" variant="ghost" disabled={busy} aria-label={item.channel} aria-description={t("task.restore")} onClick={() => onSelect(item)} className="pointer-events-auto relative mt-1.5 h-auto w-full min-w-0 cursor-pointer justify-start rounded-sm p-0 text-left text-[11px] font-normal leading-4 text-muted-foreground hover:bg-transparent hover:text-muted-foreground focus-visible:ring-inset">
+                      <span className="block min-w-0 flex-1 truncate">{item.channel}</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="break-all">{item.channel}</TooltipContent>
+                </Tooltip>
                 <div className="mt-1.5 flex items-center justify-between gap-1">
                   <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-                    <span className={item.status === "failed" ? "text-destructive" : "text-muted-foreground"}>{statusLabel}</span>
-                    <time className="text-muted-foreground" dateTime={item.timestamp}>{new Date(item.timestamp).toLocaleString(i18n.language)}</time>
+                    <span className={`inline-flex max-w-full shrink-0 items-center gap-1 font-medium ${statusColor}`}>
+                      <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${item.status === "cancelled" ? "border border-current" : "bg-current"}`} />
+                      <span className="min-w-0 [overflow-wrap:anywhere]">{statusLabel}</span>
+                    </span>
+                    <time className="tabular-nums text-muted-foreground [overflow-wrap:anywhere]" dateTime={item.timestamp} aria-label={fullTimestamp}>{compactTimestamp}</time>
                   </div>
                   <div className="pointer-events-auto relative flex shrink-0 items-center gap-1">
                     {(item.jobID || item.runID) && onOpenExecution ? <HistoryAction label={t("jobs:details")} name={item.title} onClick={() => onOpenExecution(item)}><ArrowRightIcon /></HistoryAction> : null}
