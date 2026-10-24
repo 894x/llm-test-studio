@@ -6,7 +6,7 @@
   "dimension": "cache",
   "enabled": true,
   "default": false,
-  "severity": "normal",
+  "severity": "critical",
   "execution_mode": "automatic",
   "definitions": {
     "openai-chat": {

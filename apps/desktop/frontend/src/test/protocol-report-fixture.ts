@@ -13,7 +13,7 @@ export function protocolReportFixture(status: VerificationStatus = "passed"): Fo
     entry_id: reportID(4), target_kind: "suite", target_id: reportID(3), name: "Snapshot suite", key: "snapshot-suite", protocol: "openai-chat", seed: 12,
     warmup_count: 0, settings: {}, parameters: { content_length: 4000 }, load: { mode: "single", concurrency: 1, request_count: 1, rate_per_second: 0, duration_ms: 0, request_timeout_ms: 30000 },
     status: "completed", conclusion: { passed: status === "passed", verdict: status, issues: [] }, verification: summary, sla: {}, metrics: {}, timeline: [], distributions: [],
-    cases: [{ case_id: reportID(6), revision: 2, key: "reject-parameter", name: "Reject invalid parameter", protocol: "openai-chat", verification: summary, metrics: { e2e_ms: { value: 32, samples: 1, unit: "ms" } }, summary_result: { ...request, id: reportID(11), request_id: undefined }, request_results: [request] }],
+    cases: [{ case_id: reportID(6), revision: 2, key: "reject-parameter", name: "Reject invalid parameter", protocol: "openai-chat", severity: "critical", verification: summary, metrics: { e2e_ms: { value: 32, samples: 1, unit: "ms" } }, summary_result: { ...request, id: reportID(11), request_id: undefined }, request_results: [request] }],
   }
   return { schema_version: 1, source: "run", report: {
     id: reportID(1), run_id: reportID(2), protocol: "openai-chat", run_status: "completed", generated_at: "2026-09-09T14:00:00Z",

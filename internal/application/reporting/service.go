@@ -151,6 +151,7 @@ type CaseDetail struct {
 	Key            string                        `json:"key"`
 	Name           string                        `json:"name"`
 	Protocol       domain.Protocol               `json:"protocol"`
+	Severity       domain.CaseSeverity           `json:"severity"`
 	Verification   domain.VerificationSummary    `json:"verification"`
 	Metrics        map[string]domain.MetricValue `json:"metrics"`
 	SummaryResult  *domain.Result                `json:"summary_result,omitempty"`
@@ -287,7 +288,8 @@ func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([
 				Revision: ref.Revision,
 				Key:      definition.Key,
 				Name:     definition.Name,
-				Protocol: report.Protocol, Verification: domain.SummarizeVerification(requests), Metrics: aggregateMetrics(requests),
+				Protocol: report.Protocol, Severity: definition.Severity,
+				Verification: domain.SummarizeVerification(requests), Metrics: aggregateMetrics(requests),
 				SummaryResult:  summary,
 				RequestResults: requests,
 			})

@@ -1,5 +1,5 @@
 import { isProtocolRunSettings, type ProtocolRunSettings } from "@/features/protocols/types"
-import { isJSONValue, isUUID, type CatalogProtocol, type CatalogPlanParameterValue } from "@/features/catalog/data"
+import { isJSONValue, isUUID, type CatalogCaseSeverity, type CatalogProtocol, type CatalogPlanParameterValue } from "@/features/catalog/data"
 import { isProtocol } from "@/features/catalog/protocols"
 import type { AssertionResult, ProtocolObservation, Verification, VerificationSummary } from "@/features/protocols/types"
 import { DesktopDataError } from "@/app/data-error"
@@ -53,6 +53,7 @@ export type ReportDistribution = Readonly<Record<string, unknown>>
 export type ReportEntryStatus = "completed" | "failed" | "cancelled" | "not_started"
 export interface ReportCaseDetail {
   case_id: string; revision: number; key: string; name: string; protocol: CatalogProtocol
+  severity: CatalogCaseSeverity
   verification: VerificationSummary; metrics: Record<string, ReportMetric>
   summary_result?: ReportResult; request_results: ReportResult[]
 }
@@ -195,9 +196,10 @@ function parseEntry(value: unknown): ReportEntryDetail {
 function parseCase(value: unknown): ReportCaseDetail {
   if (!isRecord(value) || !isUUID(value.case_id) || !isPositiveInteger(value.revision) ||
     !isNonBlank(value.key) || !isNonBlank(value.name) || !isProtocol(value.protocol) ||
+    (value.severity !== "critical" && value.severity !== "normal") ||
     !isRecord(value.metrics) || !Array.isArray(value.request_results) || "case_type" in value) throw invalidReport()
   return { case_id: value.case_id, revision: value.revision, key: value.key, name: value.name,
-    protocol: value.protocol, verification: parseSummary(value.verification), metrics: parseMetricMap(value.metrics),
+    protocol: value.protocol, severity: value.severity, verification: parseSummary(value.verification), metrics: parseMetricMap(value.metrics),
     ...(value.summary_result === undefined ? {} : { summary_result: parseResult(value.summary_result) }),
     request_results: value.request_results.map(parseResult) }
 }

@@ -198,6 +198,12 @@
   "protocolDesign": {
     "caseTable": "Cases in execution entry",
     "caseName": "Case name",
+    "severity": "Severity",
+    "severityLevel": {
+      "critical": "Must pass",
+      "normal": "Tolerable"
+    },
+    "severityHint": "Case importance, independent of this run's verification outcome.",
     "verification": "Verification",
     "summary": "Executions",
     "verdict": {

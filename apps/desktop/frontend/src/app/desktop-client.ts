@@ -978,15 +978,24 @@ function fixtureDiagnosticsSnapshot(): DesktopDiagnosticsSnapshot {
 
 function fixtureReportDetail(summary: ReportSnapshot["reports"][number]): ReportDetail {
  const verification = {status:summary.passed ? "passed" as const : "failed" as const,passed:summary.passed_case_count,failed:summary.failed_case_count,observed:summary.observed_case_count,indeterminate:0}
+ const entryID = "10000000-0000-4000-8000-000000000003"
+ const results = [
+  {id:"10000000-0000-4000-8000-000000000011",request_id:"fixture-critical-request",entry_id:entryID,case_id:"10000000-0000-4000-8000-000000000005",execution_status:"completed" as const,verification:{status:"passed" as const,assertions:[]},metrics:{e2e_ms:120},observation:{protocol:"openai-chat" as const,http_status:200,response:{},metrics:{e2e_ms:120},artifacts:[],exchanges:[],issues:[]}},
+  {id:"10000000-0000-4000-8000-000000000012",request_id:"fixture-normal-request",entry_id:entryID,case_id:"10000000-0000-4000-8000-000000000006",execution_status:"completed" as const,verification:{status:summary.passed ? "passed" as const : "failed" as const,assertions:[]},metrics:{e2e_ms:180},observation:{protocol:"openai-chat" as const,http_status:200,response:{},metrics:{e2e_ms:180},artifacts:[],exchanges:[],issues:[]}},
+ ]
+ const cases = [
+  {case_id:results[0].case_id,revision:1,key:"fixture-critical",name:"核心协议契约",protocol:"openai-chat" as const,severity:"critical" as const,verification:{status:"passed" as const,passed:1,failed:0,observed:0,indeterminate:0},metrics:{e2e_ms:{value:120,samples:1,unit:"ms"}},summary_result:results[0],request_results:[results[0]]},
+  {case_id:results[1].case_id,revision:1,key:"fixture-normal",name:"输出稳定性观察",protocol:"openai-chat" as const,severity:"normal" as const,verification:{status:summary.passed ? "passed" as const : "failed" as const,passed:summary.passed ? 1 : 0,failed:summary.passed ? 0 : 1,observed:0,indeterminate:0},metrics:{e2e_ms:{value:180,samples:1,unit:"ms"}},summary_result:results[1],request_results:[results[1]]},
+ ]
  return {
   schema_version:1,source:"run",
   report:{id:summary.id,run_id:summary.run_id!,run_status:summary.run_status,generated_at:summary.generated_at,protocol:"openai-chat",
    model:{id:"10000000-0000-4000-8000-000000000001",name:summary.model_name},channel:{id:"10000000-0000-4000-8000-000000000002",name:summary.channel_name},
    execution_origin:null,environment:{os:"windows",arch:"amd64",region:"local",network_egress:"direct",app_version:"fixture",engine_version:"go-core"},
-   conclusion:{passed:summary.passed,verdict:summary.verdict,issues:[]},sla:{},metrics:{},case_results:[]},
-  request_results:[],entries:[{entry_id:"10000000-0000-4000-8000-000000000003",target_kind:"suite",target_id:"10000000-0000-4000-8000-000000000004",key:"fixture-suite",name:"Fixture suite",protocol:"openai-chat",parameters:{},seed:1,warmup_count:0,settings:{},
+   conclusion:{passed:summary.passed,verdict:summary.verdict,issues:[]},sla:{},metrics:{},case_results:results},
+  request_results:results,entries:[{entry_id:entryID,target_kind:"suite",target_id:"10000000-0000-4000-8000-000000000004",key:"fixture-suite",name:"Fixture suite",protocol:"openai-chat",parameters:{},seed:1,warmup_count:0,settings:{},
    load:{mode:"single",concurrency:1,request_count:1,rate_per_second:0,duration_ms:0,request_timeout_ms:60000},status:summary.run_status,
-   conclusion:{passed:summary.passed,verdict:summary.verdict,issues:[]},verification,sla:{},metrics:{},timeline:[],distributions:[],cases:[]}],unassigned_request_results:[]}
+   conclusion:{passed:summary.passed,verdict:summary.verdict,issues:[]},verification,sla:{},metrics:{},timeline:[],distributions:[],cases}],unassigned_request_results:[]}
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

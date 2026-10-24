@@ -47,6 +47,12 @@
 | SSE delta/reasoning/content/tool_calls/final usage | CHAT, OPENAPI | chunk stream；reasoning 先于 content | 文本与工具增量 | DONE 后无数据；finish 后无 content | 完整终止、ID/model 一致、usage 存在 | both / T1 | 文本流、工具流 | `k31.must.stream_*`；工具流由 tool Case 非流式，stream 工具组合 deferred | 文本完整 | T0 static | partial |
 | HTTP 400/401/404/429/5xx | ERRORS | `error.message` required，type/code optional | 各错误类型 | 速率与额度依赖账户 | 负向 Case 400 + 非空 message | both / T2/T3 | 参数 400 已覆盖；401/404/429/5xx 独立环境 | `k31.*` 参数拒绝；其余 deferred | 参数错误完整 | T0 static | deferred |
 
+## Case 分级
+
+- `critical`（必过项，76 个）：基础协议与响应完整性、核心多模态/推理/工具/Structured Output 能力，以及官方明确的固定值、依赖和 HTTP 400 拒绝契约。负向 Case 的“应拒绝”本身就是必须满足的协议行为，不因预期响应为错误而降级。
+- `normal`（可容忍项，17 个）：合法边界、可选增强和依赖缓存状态的命中观测，可独立评估；包括 `tool_name_one_char`、`tool_name_128_chars`、`prediction_string`、`prediction_text_array`、`prompt_cache_key`、`safety_identifier`、`cache_prefix_hit`、`cache_ttl_1h_hit`、`logprobs_enabled`、`prompt_cache_options_mode`、`prompt_cache_options_ttl_1h`、`prompt_cache_options_ttl_5m`、`top_logprobs_lower_bound`、`top_logprobs_upper_bound`、`stop_one_item_32_bytes`、`stop_five_items`、`max_completion_minimal`（均含 `k31.` 前缀）。
+- 等级描述 Case 的重要性，与 T1/T2/T3 执行成本层级及本次 passed/failed/observed 结果相互独立；“可容忍”不会放宽断言，也不会自动改写整体报告结论。
+
 ## 汇总与限制
 
 - 设计采用等价类、固定值测试、数值/字节/数量边界、依赖决策表和顺序工作流。

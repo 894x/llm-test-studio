@@ -55,8 +55,8 @@ func TestGeneratorAndDetailKeepRepeatedSuiteEntriesIndependentAndOrdered(t *test
 	}
 	for index, suite := range detail.Entries {
 		if suite.EntryID != run.Snapshot().Entries[index].EntryID || len(suite.Cases) != 1 ||
-			suite.Cases[0].Protocol != "openai-chat" || len(suite.Cases[0].RequestResults) != 1 ||
-			suite.Cases[0].SummaryResult == nil {
+			suite.Cases[0].Protocol != "openai-chat" || suite.Cases[0].Severity != domain.CaseSeverityCritical ||
+			len(suite.Cases[0].RequestResults) != 1 || suite.Cases[0].SummaryResult == nil {
 			t.Fatalf("detail suite %d = %#v", index, suite)
 		}
 	}

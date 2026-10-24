@@ -29,11 +29,20 @@ describe("current protocol report contract", () => {
     expect(() => parseReportDetail(source)).toThrow(/execution_origin/)
   })
   it("keeps observed execution separate from a pass and preserves snapshot parameters", () => {
-    const detail = parseReportDetail(protocolReportFixture("not_applicable"))
+    const source = protocolReportFixture("not_applicable")
+    source.entries[0].cases[0].severity = "normal"
+    const detail = parseReportDetail(source)
     if (detail.source !== "run") throw new Error("run expected")
     expect(detail.entries[0].verification).toEqual({ status: "not_applicable", passed: 0, failed: 0, observed: 1, indeterminate: 0 })
     expect(detail.entries[0].parameters).toEqual({ content_length: 4000 })
+    expect(detail.entries[0].cases[0].severity).toBe("normal")
     expect(detail.entries[0].cases[0].request_results[0].observation?.http_status).toBe(400)
+  })
+  it.each([undefined, "urgent"])("rejects a missing or unknown case severity %s", severity => {
+    const source = protocolReportFixture() as unknown as { entries: { cases: Record<string, unknown>[] }[] }
+    if (severity === undefined) delete source.entries[0].cases[0].severity
+    else source.entries[0].cases[0].severity = severity
+    expect(() => parseReportDetail(source)).toThrow()
   })
   it.each([2, 3, 4])("rejects unsupported report schema %s without mutating it", schema_version => {
     const source = { ...protocolReportFixture(), schema_version }; const before = structuredClone(source)

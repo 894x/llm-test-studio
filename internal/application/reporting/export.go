@@ -132,10 +132,11 @@ type htmlEntryReport struct {
 }
 
 type htmlCaseReport struct {
-	Index   int
-	Detail  CaseDetail
-	Status  string
-	Results []resultRow
+	Index    int
+	Detail   CaseDetail
+	Severity string
+	Status   string
+	Results  []resultRow
 }
 
 type quickHTMLReport struct {
@@ -153,7 +154,7 @@ type htmlLabels struct {
 	Title, QuickTitle, Conclusion, Plan, Run, Report, Phase                        string
 	CoreMetrics, RequestDetails, RequestSamples, SuccessRate, RequestRate          string
 	Passed, Failed, StatusPassed, StatusFailed, Samples, Footer, QuickFooter       string
-	Suite, Entry, Cases, Case, Type, Revision, Unassigned                          string
+	Suite, Entry, Cases, Case, Type, Revision, Severity, Unassigned                string
 }
 
 type namedMetric struct {
@@ -223,7 +224,7 @@ func htmlEntryReports(suites []EntryDetail, locale string) []htmlEntryReport {
 				status = localizedVerdict(string(testCase.SummaryResult.Verification.Status), locale)
 			}
 			cases = append(cases, htmlCaseReport{
-				Index: caseIndex + 1, Detail: testCase, Status: status,
+				Index: caseIndex + 1, Detail: testCase, Severity: localizedCaseSeverity(testCase.Severity, locale), Status: status,
 				Results: resultRows(testCase.RequestResults),
 			})
 		}
@@ -272,7 +273,7 @@ func exportHTMLLabels(locale string) htmlLabels {
 			Plan: "Plan", Run: "Run", Report: "Report", Phase: "Phase", CoreMetrics: "Core metrics", RequestDetails: "Request details",
 			RequestSamples: "Request samples", SuccessRate: "Success rate", RequestRate: "Request rate", Passed: "All requests passed", Failed: "Performance test failed", StatusPassed: "passed", StatusFailed: "failed",
 			Samples: "samples", Footer: "All values are derived from the sealed Go Core report document.", QuickFooter: "Generated from the archived Go Core quick performance report.",
-			Suite: "Suite", Entry: "Entry", Cases: "Cases", Case: "Case", Type: "Type", Revision: "Revision", Unassigned: "Unassigned request results",
+			Suite: "Suite", Entry: "Entry", Cases: "Cases", Case: "Case", Type: "Type", Revision: "Revision", Severity: "Severity", Unassigned: "Unassigned request results",
 		}
 	}
 	return htmlLabels{
@@ -281,8 +282,21 @@ func exportHTMLLabels(locale string) htmlLabels {
 		Plan: "计划", Run: "运行", Report: "报告", Phase: "阶段", CoreMetrics: "核心指标", RequestDetails: "请求明细",
 		RequestSamples: "请求样本", SuccessRate: "成功率", RequestRate: "请求速率", Passed: "全部请求成功", Failed: "性能测试未通过", StatusPassed: "通过", StatusFailed: "失败",
 		Samples: "个样本", Footer: "所有数值均来自 Go Core 封存的报告文档。", QuickFooter: "由 Go Core 归档的快速性能报告生成。",
-		Suite: "Suite", Entry: "执行项", Cases: "用例", Case: "用例", Type: "类型", Revision: "版本", Unassigned: "未归属的请求结果",
+		Suite: "Suite", Entry: "执行项", Cases: "用例", Case: "用例", Type: "类型", Revision: "版本", Severity: "等级", Unassigned: "未归属的请求结果",
 	}
+}
+
+func localizedCaseSeverity(severity domain.CaseSeverity, locale string) string {
+	if locale == "en-US" {
+		if severity == domain.CaseSeverityNormal {
+			return "Tolerable"
+		}
+		return "Must pass"
+	}
+	if severity == domain.CaseSeverityNormal {
+		return "容忍项"
+	}
+	return "必过项"
 }
 
 func localizedVerdict(verdict, locale string) string {
@@ -447,7 +461,7 @@ func formatNumber(value float64) string {
 var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype html>
 <html lang="{{.Language}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LLM Test Studio Report {{.Detail.Report.ID}}</title><style>
-:root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}h3{margin:22px 0 10px}h4{margin:16px 0 8px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}.suite{margin-top:30px;border:1px solid #d9e2ef;border-radius:14px;padding:22px}.case{margin-top:18px;border-top:1px solid #e6eaf0;padding-top:2px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}.issues{color:#b42318}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}.suite,tr{break-inside:avoid}}
+:root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}h3{margin:22px 0 10px}h4{margin:16px 0 8px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}.suite{margin-top:30px;border:1px solid #d9e2ef;border-radius:14px;padding:22px}.case{margin-top:18px;border-top:1px solid #e6eaf0;padding-top:2px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}.issues{color:#b42318}.severity{display:inline-block;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600}.severity-critical{color:#b42318;background:#fde7ea}.severity-normal{color:#36536f;background:#e8eef5}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}.suite,tr{break-inside:avoid}}
 </style></head><body><div class="watermark">{{.Watermark}}</div><main>
 <h1>{{.Labels.Title}}</h1><p class="muted">{{.Detail.Report.Model.Name}} · {{.Detail.Report.Channel.Name}} · {{.GeneratedUTC}}</p>
 <h2 class="{{if .Detail.Report.Conclusion.Passed}}pass{{else}}fail{{end}}">{{.Labels.Conclusion}}: {{.Conclusion}}</h2>
@@ -469,7 +483,7 @@ var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype h
 <div class="scroll"><table><thead><tr><th>{{$.Labels.Request}}</th><th>{{$.Labels.Status}}</th><th>E2E ms</th><th>{{$.Labels.Input}}</th><th>{{$.Labels.Output}}</th><th>{{$.Labels.Error}}</th></tr></thead><tbody>{{range .Performance.Samples}}<tr><td>{{.RequestIndex}}</td><td>{{if .Success}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2EMS}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.ErrorCode}}</td></tr>{{end}}</tbody></table></div>
 {{else}}<h3>{{$.Labels.Cases}} ({{len .Cases}})</h3>{{end}}
 {{range .Cases}}<section class="case" data-case-id="{{.Detail.CaseID}}"><h4>{{$.Labels.Case}} {{.Index}}: {{.Detail.Name}} [{{.Detail.Key}}]</h4>
-<p class="muted">{{$.Labels.Type}} {{.Detail.Protocol}} v{{.Detail.Revision}} · {{$.Labels.Revision}} {{.Detail.Revision}} · {{$.Labels.Status}} {{.Status}}</p>
+<p class="muted">{{$.Labels.Type}} {{.Detail.Protocol}} v{{.Detail.Revision}} · {{$.Labels.Revision}} {{.Detail.Revision}} · {{$.Labels.Severity}} <span class="severity severity-{{.Detail.Severity}}">{{.Severity}}</span> · {{$.Labels.Status}} {{.Status}}</p>
 <h4>{{$.Labels.RequestDetails}} ({{len .Results}})</h4><div class="scroll"><table><thead><tr><th>{{$.Labels.Request}}</th><th>{{$.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{$.Labels.TTFTAny}} ms</th><th>{{$.Labels.TTFTVisible}} ms</th><th>{{$.Labels.TTST}} ms</th><th>{{$.Labels.ObservedICL}} ms</th><th>{{$.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{$.Labels.Queue}} ms</th><th>{{$.Labels.Input}}</th><th>{{$.Labels.Output}}</th><th>{{$.Labels.Error}}</th></tr></thead><tbody>{{range .Results}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
 </section>{{end}}
 {{if .Unassigned}}<section class="suite"><h2>{{.Labels.Unassigned}} ({{len .Unassigned}})</h2><div class="scroll"><table><thead><tr><th>{{.Labels.Request}}</th><th>{{.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{.Labels.TTFTAny}} ms</th><th>{{.Labels.TTFTVisible}} ms</th><th>{{.Labels.TTST}} ms</th><th>{{.Labels.ObservedICL}} ms</th><th>{{.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{.Labels.Queue}} ms</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Unassigned}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
@@ -541,11 +555,19 @@ func drawReportImage(detail Detail, watermark string) image.Image {
 	for index, line := range formalLines {
 		scale := 2
 		ink := color.RGBA{56, 67, 84, 255}
+		y := 270 + index*26
 		if strings.HasPrefix(line, "SUITE ") {
 			scale = 3
 			ink = color.RGBA{23, 32, 51, 255}
 		}
-		drawBitmapText(canvas, 80, 270+index*26, scale, line, ink)
+		if strings.HasPrefix(line, "SEVERITY CRITICAL") {
+			fillRect(canvas, 72, y-4, 80+len(line)*6*scale+8, y+18, color.RGBA{253, 231, 234, 255})
+			ink = color.RGBA{180, 35, 24, 255}
+		} else if strings.HasPrefix(line, "SEVERITY NORMAL") {
+			fillRect(canvas, 72, y-4, 80+len(line)*6*scale+8, y+18, color.RGBA{232, 238, 245, 255})
+			ink = color.RGBA{54, 83, 111, 255}
+		}
+		drawBitmapText(canvas, 80, y, scale, line, ink)
 	}
 	drawWatermark(canvas, watermark)
 	return canvas
@@ -575,7 +597,8 @@ func formalReportImageLines(detail Detail) []string {
 			}
 			lines = append(lines,
 				fmt.Sprintf("CASE %d %s [%s]", caseIndex+1, testCase.Name, testCase.Key),
-				fmt.Sprintf("CASE ID %s  TYPE %s V%d  REVISION %d  STATUS %s", testCase.CaseID, testCase.Protocol, testCase.Revision, testCase.Revision, caseStatus),
+				fmt.Sprintf("CASE ID %s  TYPE %s V%d  REVISION %d", testCase.CaseID, testCase.Protocol, testCase.Revision, testCase.Revision),
+				fmt.Sprintf("SEVERITY %s  STATUS %s", strings.ToUpper(string(testCase.Severity)), caseStatus),
 				fmt.Sprintf("REQUEST RESULTS %d", len(testCase.RequestResults)),
 			)
 			rows := resultRows(testCase.RequestResults)
