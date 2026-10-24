@@ -7,7 +7,7 @@ import SquareIcon from "lucide-react/dist/esm/icons/square.mjs"
 import SquarePenIcon from "lucide-react/dist/esm/icons/square-pen.mjs"
 import ArrowRightIcon from "lucide-react/dist/esm/icons/arrow-right.mjs"
 import type { QuickPerformancePhase } from "./data"
-import type { ReactNode } from "react"
+import { Fragment, type ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -32,6 +32,8 @@ export interface QuickTestHistoryItem {
   succeeded?: number
   failed?: number
   inFlight?: number
+  observed?: number
+  indeterminate?: number
   detail?: string
   error?: string
   reportID?: string
@@ -59,14 +61,23 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
           const Icon = item.mode === "performance" ? GaugeIcon : FlaskConicalIcon
           const percentage = item.planned && item.completed !== undefined
             ? Math.min(100, 100 * item.completed / item.planned) : undefined
-          const hasPerformanceCounts = item.mode === "performance" && item.planned !== undefined && item.planned > 0 &&
-            item.succeeded !== undefined && item.failed !== undefined && item.inFlight !== undefined
-          const segments = hasPerformanceCounts ? (() => {
+          const hasOutcomeCounts = item.planned !== undefined && item.planned > 0 &&
+            item.succeeded !== undefined && item.failed !== undefined
+          const segments = hasOutcomeCounts ? (() => {
             const planned = item.planned!
-            const succeeded = Math.min(planned, item.succeeded!)
-            const failed = Math.min(planned - succeeded, item.failed!)
-            const inFlight = Math.min(planned - succeeded - failed, item.inFlight!)
-            return { planned, succeeded, failed, inFlight }
+            const outcomes = [
+              { key: "succeeded", count: item.succeeded!, text: `${t(item.mode === "functional" ? "common:status.passed" : "desktop:quick-test_succeeded")} ${item.succeeded}`, color: "bg-outcome-pass" },
+              { key: "failed", count: item.failed!, text: `${t("desktop:quick-test_failed")} ${item.failed}`, color: "bg-outcome-fail" },
+              ...(item.observed ? [{ key: "observed", count: item.observed, text: t("runs:table.observed", { count: item.observed }), color: "bg-outcome-review" }] : []),
+              ...(item.indeterminate ? [{ key: "indeterminate", count: item.indeterminate, text: t("runs:table.indeterminate", { count: item.indeterminate }), color: "bg-outcome-review" }] : []),
+              ...(item.inFlight !== undefined ? [{ key: "inFlight", count: item.inFlight, text: `${t("desktop:quick-test_in_flight")} ${item.inFlight}`, color: "bg-primary" }] : []),
+            ]
+            let remaining = planned
+            return outcomes.map(outcome => {
+              const count = Math.min(remaining, Math.max(0, outcome.count))
+              remaining -= count
+              return { ...outcome, width: 100 * count / planned }
+            })
           })() : undefined
           return (
             <li key={item.id} data-selected={item.id === selectedID} className="group relative min-w-0 rounded-md p-3 transition-colors hover:bg-surface-hover data-[selected=true]:bg-surface-active">
@@ -99,23 +110,19 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
                       {segments ? (
                         <div
                           role="progressbar"
-                          aria-label={`${t("performance.progressAria")} ${item.title}`}
+                          aria-label={`${t("task.progress")} ${item.title}`}
                           aria-valuemin={0}
                           aria-valuemax={100}
                           aria-valuenow={percentage}
-                          aria-valuetext={`${item.completed ?? 0} / ${segments.planned}; ${t("workspace.performanceCounts", { succeeded: item.succeeded, failed: item.failed, in_flight: item.inFlight })}`}
+                          aria-valuetext={`${item.completed ?? 0} / ${item.planned}; ${segments.map(segment => segment.text).join(" · ")}`}
                           className="flex h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted"
                         >
-                          {([
-                            [t("desktop:quick-test_succeeded"), segments.succeeded, "bg-outcome-pass"],
-                            [t("desktop:quick-test_failed"), segments.failed, "bg-outcome-fail"],
-                            [t("desktop:quick-test_in_flight"), segments.inFlight, "bg-primary"],
-                          ] as const).map(([label, count, color]) => (
+                          {segments.map(segment => (
                             <span
-                              key={label}
+                              key={segment.key}
                               aria-hidden="true"
-                              className={`h-full shrink-0 ${color} transition-[width] duration-200`}
-                              style={{ width: `${100 * count / segments.planned}%` }}
+                              className={`h-full shrink-0 ${segment.color} transition-[width] duration-200`}
+                              style={{ width: `${segment.width}%` }}
                             />
                           ))}
                         </div>
@@ -126,11 +133,10 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
                     </div>
                     {segments ? (
                       <p className="flex flex-wrap items-center gap-x-2 text-[11px] tabular-nums text-muted-foreground">
-                        <span className="inline-flex items-center gap-1"><span aria-hidden="true" className="size-1.5 rounded-full bg-outcome-pass" />{t("desktop:quick-test_succeeded")} {item.succeeded}</span>
-                        <span className="sr-only">{" · "}</span>
-                        <span className="inline-flex items-center gap-1"><span aria-hidden="true" className="size-1.5 rounded-full bg-outcome-fail" />{t("desktop:quick-test_failed")} {item.failed}</span>
-                        <span className="sr-only">{" · "}</span>
-                        <span className="inline-flex items-center gap-1"><span aria-hidden="true" className="size-1.5 rounded-full bg-primary" />{t("desktop:quick-test_in_flight")} {item.inFlight}</span>
+                        {segments.map((segment, index) => <Fragment key={segment.key}>
+                          {index > 0 ? <span className="sr-only">{" · "}</span> : null}
+                          <span className="inline-flex items-center gap-1"><span aria-hidden="true" className={`size-1.5 rounded-full ${segment.color}`} />{segment.text}</span>
+                        </Fragment>)}
                       </p>
                     ) : item.detail ? <p className="text-[11px] tabular-nums text-muted-foreground [overflow-wrap:anywhere]">{item.detail}</p> : null}
                   </div>

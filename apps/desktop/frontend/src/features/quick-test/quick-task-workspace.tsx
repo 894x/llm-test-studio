@@ -234,6 +234,7 @@ export function QuickTaskWorkspace({
           ? tj("awaitingSync", { status: tj(`statuses.${confirmation.status}`), revision: confirmation.revision })
           : tj("awaitingConfirmation") : undefined,
         active: !status || !isJobTerminal(status), completed: run?.completed, planned: run?.planned,
+        succeeded: run?.passed, failed: run?.failed, observed: run?.observed, indeterminate: run?.indeterminate,
         detail: run ? t("task.observed", run) : undefined,
         error: observed.execution?.failure ? t(`common:errorCode.${observed.execution.failure.error_code}`, { defaultValue: observed.execution.failure.error_code }) : undefined,
         reportID: run?.report_id ?? reports.reports.find(report => run && report.run_id === run.id)?.id,
@@ -246,6 +247,7 @@ export function QuickTaskWorkspace({
       timestamp: run.started_at,
       status: run.conclusion === "none" ? (run.status === "starting" ? "queued" : run.status) : run.conclusion,
       active: isRunActive(run.status), completed: run.completed, planned: run.planned,
+      succeeded: run.passed, failed: run.failed, observed: run.observed, indeterminate: run.indeterminate,
       detail: t("task.observed", run),
       error: run.error_code ? t(`common:errorCode.${run.error_code}`, { defaultValue: run.error_code }) : undefined,
       reportID: run.report_id ?? reports.reports.find(report => report.run_id === run.id)?.id,
