@@ -1,0 +1,122 @@
+{
+  "schema_version": 2,
+  "id": "810b20bd-11aa-509c-b5b8-d703cced55b6",
+  "key": "k31.json_schema_complex",
+  "name": "K3.1 Pro · 结构化输出 · 嵌套数组与 anyOf",
+  "dimension": "structured-output",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "小林今年 28 岁，标签为工程师和跑者。提取信息。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048,
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "person_profile",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "person": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "age": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "age"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "contact": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "person",
+                  "tags",
+                  "contact"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "choices",
+          "source": "response",
+          "pointer": "/choices",
+          "operator": "non_empty"
+        },
+        {
+          "id": "json",
+          "source": "text",
+          "operator": "json_valid"
+        },
+        {
+          "id": "person",
+          "source": "text",
+          "pointer": "/person",
+          "operator": "type",
+          "value": "object",
+          "transform": "json"
+        },
+        {
+          "id": "tags",
+          "source": "text",
+          "pointer": "/tags",
+          "operator": "type",
+          "value": "array",
+          "transform": "json"
+        }
+      ]
+    }
+  }
+}

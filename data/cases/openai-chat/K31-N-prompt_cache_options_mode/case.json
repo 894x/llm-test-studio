@@ -1,0 +1,51 @@
+{
+  "schema_version": 2,
+  "id": "123a37b7-1a8d-5b13-a8bf-9a272447116c",
+  "key": "k31.prompt_cache_options_mode",
+  "name": "K3.1 Pro · 缓存 · mode=implicit",
+  "dimension": "cache",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答 OK。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048,
+          "prompt_cache_options": {
+            "mode": "implicit"
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "choices",
+          "source": "response",
+          "pointer": "/choices",
+          "operator": "non_empty"
+        }
+      ]
+    }
+  }
+}

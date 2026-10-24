@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "key": "kimi-k3.1-pro-highspeed.connectivity",
+  "name": "Kimi K3.1 Pro Highspeed 连通性套件",
+  "protocol": "openai-chat",
+  "description": "单条非流式请求，检查响应与 usage；运行时绑定对应模型和凭据。",
+  "cases": [
+    {
+      "case_id": "21e8433f-a410-571e-95d4-e0c9625b7cd0"
+    }
+  ],
+  "inputs": [
+    {
+      "key": "prompt",
+      "label": "提示词",
+      "type": "string",
+      "default": "说你好",
+      "bindings": [
+        {
+          "case_id": "21e8433f-a410-571e-95d4-e0c9625b7cd0",
+          "input": "prompt"
+        }
+      ]
+    }
+  ]
+}

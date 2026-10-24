@@ -1,0 +1,83 @@
+{
+  "schema_version": 2,
+  "id": "b6a75649-7ac6-59e2-9546-74641968f034",
+  "key": "k31.must.tool_call",
+  "name": "K3.1 Pro · 工具调用 · Tool Call 能力",
+  "dimension": "tools",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "查询北京天气。"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "description": "查询天气",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ]
+                }
+              }
+            }
+          ],
+          "tool_choice": "required",
+          "max_tokens": 200
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices/0/message/tool_calls"
+        },
+        {
+          "id": "r6",
+          "source": "response",
+          "pointer": "/choices/0/message/tool_calls",
+          "each": [
+            {
+              "id": "r3",
+              "source": "item",
+              "operator": "non_empty",
+              "pointer": "/function/name",
+              "transform": "trim"
+            },
+            {
+              "id": "r4",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/function/name",
+              "value": "get_weather"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "id": "6d166cde-f26a-5585-9e68-8ef6f11c4deb",
+  "key": "k31.stop_one_item_32_bytes",
+  "name": "K3.1 Pro · Stop · 单字符串 32 字节边界",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答：你好"
+            }
+          ],
+          "stop": "12345678901234567890123456789012",
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
+    }
+  }
+}

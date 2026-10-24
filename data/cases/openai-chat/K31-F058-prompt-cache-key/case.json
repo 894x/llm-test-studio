@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "id": "b8756649-e147-5ffb-96e8-79391cb4510f",
+  "key": "k31.prompt_cache_key",
+  "name": "K3.1 Pro · 缓存键 · prompt_cache_key 字符串应接受",
+  "dimension": "cache",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答：你好"
+            }
+          ],
+          "prompt_cache_key": "k3-boundary-session-001",
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
+    }
+  }
+}

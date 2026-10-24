@@ -1,0 +1,41 @@
+{
+  "schema_version": 2,
+  "id": "7db2c266-6593-5eff-958b-98c3845d3193",
+  "key": "k31.param_omit_sampling",
+  "name": "K3.1 Pro · 参数约束 · 不传采样参数（应接受）",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "说你好"
+            }
+          ],
+          "max_tokens": 50
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
+    }
+  }
+}

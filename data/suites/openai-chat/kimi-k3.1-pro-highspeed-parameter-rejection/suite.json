@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "key": "kimi-k3.1-pro-highspeed.parameter-rejection",
+  "name": "Kimi K3.1 Pro Highspeed 参数拒绝套件",
+  "protocol": "openai-chat",
+  "description": "官方契约规定的 HTTP 400 参数与依赖边界。",
+  "cases": [
+    {
+      "case_id": "110dfb9f-396a-5e16-a63c-fa06102d9efa"
+    },
+    {
+      "case_id": "f4a76415-ca63-5e09-9cdf-7a08339d3d28"
+    },
+    {
+      "case_id": "7af4f7b8-8329-5ebd-bffd-0c0970268fd5"
+    },
+    {
+      "case_id": "2612eeb5-416e-56de-9a8e-918d16a7dffd"
+    },
+    {
+      "case_id": "3ca881ce-0822-537c-89ff-aa1edd976735"
+    },
+    {
+      "case_id": "d08ed194-d902-5209-bf27-2c4db7bfc655"
+    },
+    {
+      "case_id": "bb4c3f83-caad-5cc0-bf68-6dfe987948cf"
+    },
+    {
+      "case_id": "316062aa-2071-5ead-a7bd-e0d4b100ea9c"
+    },
+    {
+      "case_id": "af4e4e30-ac6c-50a0-9100-520544e302f3"
+    },
+    {
+      "case_id": "0613b4be-9594-5230-8b70-68199c412ddc"
+    },
+    {
+      "case_id": "72e0e016-f475-543d-97ca-b96b1217af45"
+    },
+    {
+      "case_id": "3c63fa5b-da4a-5c51-ba9a-c760099056c9"
+    },
+    {
+      "case_id": "eb976983-9f81-5ff6-b84f-dfbe93429924"
+    },
+    {
+      "case_id": "72957bb7-aa7f-5e8d-ba23-d5aef360846b"
+    },
+    {
+      "case_id": "6b5512fc-010f-5339-9be5-1daa6843167d"
+    },
+    {
+      "case_id": "bfb4539e-2299-5b86-9eb7-37cca0f25013"
+    },
+    {
+      "case_id": "5678e58f-2bb0-5f5c-81c5-913b16ef8dcb"
+    },
+    {
+      "case_id": "54077426-cec0-55ca-aa3b-5d0bef2bcbfd"
+    },
+    {
+      "case_id": "2bd36e23-c551-5881-b240-347226b5b582"
+    },
+    {
+      "case_id": "b3be7097-ef96-5175-9843-30dee0e3c6e3"
+    },
+    {
+      "case_id": "26223297-164a-5b44-999b-944418b76969"
+    },
+    {
+      "case_id": "5d01538d-65ef-55ac-a78d-b2f4c49fe110"
+    },
+    {
+      "case_id": "38c64ea5-7165-55fc-982a-eee93021c8c3"
+    },
+    {
+      "case_id": "b46c29b0-7c5f-5585-858e-65ce2a502a65"
+    },
+    {
+      "case_id": "2cd81129-8ec5-59ce-ad45-f257120ab364"
+    },
+    {
+      "case_id": "906ee024-b141-503c-9cb2-5d9a098317a4"
+    },
+    {
+      "case_id": "5d9e0e67-e01e-5676-827e-3882b271c719"
+    },
+    {
+      "case_id": "6a97657a-4eb2-5bdf-910c-0ba968635b74"
+    },
+    {
+      "case_id": "2e725c3d-6e78-5f28-b627-4508eb3046ab"
+    },
+    {
+      "case_id": "a47d39c0-75ce-5679-b7ca-d33ac4d8738b"
+    },
+    {
+      "case_id": "8341f462-d583-56dc-98dc-e4f01af19c17"
+    },
+    {
+      "case_id": "d2268150-1e3f-5de2-828f-d86fd0629476"
+    }
+  ],
+  "inputs": []
+}

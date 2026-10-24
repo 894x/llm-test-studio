@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "id": "d08ed194-d902-5209-bf27-2c4db7bfc655",
+  "key": "k31.max_completion_over_model_limit",
+  "name": "K3.1 Pro · 输出长度 · max_completion_tokens=1048577 应拒绝",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "你好"
+            }
+          ],
+          "max_completion_tokens": 1048577
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

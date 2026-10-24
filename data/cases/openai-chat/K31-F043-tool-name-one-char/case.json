@@ -1,0 +1,77 @@
+{
+  "schema_version": 2,
+  "id": "8e33b708-06de-5b41-9814-dc3849d222c1",
+  "key": "k31.tool_name_one_char",
+  "name": "K3.1 Pro · 工具定义 · 函数名 1 字符下边界",
+  "dimension": "tools",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "必须调用工具 a。"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "a",
+                "description": "返回固定值",
+                "parameters": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          ],
+          "tool_choice": "required",
+          "reasoning_effort": "low",
+          "max_completion_tokens": 4096
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices/0/message/tool_calls"
+        },
+        {
+          "id": "r6",
+          "source": "response",
+          "pointer": "/choices/0/message/tool_calls",
+          "each": [
+            {
+              "id": "r3",
+              "source": "item",
+              "operator": "non_empty",
+              "pointer": "/function/name",
+              "transform": "trim"
+            },
+            {
+              "id": "r4",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/function/name",
+              "value": "a"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

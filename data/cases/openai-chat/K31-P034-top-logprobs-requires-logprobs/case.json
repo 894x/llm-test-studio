@@ -1,0 +1,43 @@
+{
+  "schema_version": 2,
+  "id": "906ee024-b141-503c-9cb2-5d9a098317a4",
+  "key": "k31.top_logprobs_requires_logprobs",
+  "name": "K3.1 Pro · Logprobs · top_logprobs 缺少 logprobs=true 应拒绝",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "你好"
+            }
+          ],
+          "top_logprobs": 1,
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

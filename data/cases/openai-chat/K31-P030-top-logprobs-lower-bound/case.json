@@ -1,0 +1,43 @@
+{
+  "schema_version": 2,
+  "id": "acdcd5ed-8e7c-5bb8-a8d3-7f02436ba732",
+  "key": "k31.top_logprobs_lower_bound",
+  "name": "K3.1 Pro · Logprobs · top_logprobs=0 下边界",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答：A"
+            }
+          ],
+          "logprobs": true,
+          "top_logprobs": 0,
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
+    }
+  }
+}

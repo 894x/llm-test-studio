@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "id": "eb976983-9f81-5ff6-b84f-dfbe93429924",
+  "key": "k31.prediction_invalid_type",
+  "name": "K3.1 Pro · Predicted Output · 非法 type 应拒绝",
+  "dimension": "workflow",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "你好"
+            }
+          ],
+          "prediction": {
+            "type": "file",
+            "content": "你好"
+          },
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

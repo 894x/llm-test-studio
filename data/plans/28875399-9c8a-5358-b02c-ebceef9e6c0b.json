@@ -1,0 +1,50 @@
+{
+  "file_schema_version": 1,
+  "id": "28875399-9c8a-5358-b02c-ebceef9e6c0b",
+  "revision": 1,
+  "created_at": "2026-10-25T00:00:00Z",
+  "updated_at": "2026-10-25T00:00:00Z",
+  "name": "Kimi K3.1 Pro 基础与参数回归计划",
+  "protocol": "openai-chat",
+  "seed": 894,
+  "entries": [
+    {
+      "entry_id": "fbde2db3-e920-5c18-8726-a249b184f8ea",
+      "target_kind": "suite",
+      "target_id": "6b54ac67-1ff6-5238-a228-b8ef139285c2",
+      "parameters": {},
+      "load": {
+        "mode": "fixed_concurrency",
+        "concurrency": 1,
+        "request_count": 1,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {}
+      },
+      "warmup_count": 0,
+      "settings": {}
+    },
+    {
+      "entry_id": "e5e69f9e-0e0c-50b6-98ae-b5fbca3a7ac5",
+      "target_kind": "suite",
+      "target_id": "6bcb49f0-6b39-560c-a3bb-260f3062652d",
+      "parameters": {},
+      "load": {
+        "mode": "fixed_concurrency",
+        "concurrency": 1,
+        "request_count": 1,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {}
+      },
+      "warmup_count": 0,
+      "settings": {}
+    }
+  ]
+}

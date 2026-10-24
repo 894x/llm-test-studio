@@ -1,0 +1,49 @@
+{
+  "schema_version": 2,
+  "id": "3ca881ce-0822-537c-89ff-aa1edd976735",
+  "key": "k31.json_schema_non_object",
+  "name": "K3.1 Pro · 结构化输出 · json_schema.schema 非对象应拒绝",
+  "dimension": "structured-output",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "返回 JSON"
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "bad_schema",
+              "schema": "not-an-object"
+            }
+          },
+          "max_completion_tokens": 64
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

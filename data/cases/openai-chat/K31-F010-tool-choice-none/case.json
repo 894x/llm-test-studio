@@ -1,0 +1,86 @@
+{
+  "schema_version": 2,
+  "id": "45a761f3-5675-51f6-846d-78136760adfc",
+  "key": "k31.must.tool_choice_none",
+  "name": "K3.1 Pro · 工具调用 · tool_choice=none",
+  "dimension": "tools",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "请直接用文本回复：你好。"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "description": "查询天气",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ]
+                }
+              }
+            }
+          ],
+          "tool_choice": "none",
+          "max_tokens": 200
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        },
+        {
+          "id": "r7",
+          "any": [
+            {
+              "id": "r5",
+              "source": "response",
+              "operator": "not_exists",
+              "pointer": "/choices/0/message/tool_calls"
+            },
+            {
+              "id": "r6",
+              "source": "response",
+              "operator": "length_equals",
+              "pointer": "/choices/0/message/tool_calls",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

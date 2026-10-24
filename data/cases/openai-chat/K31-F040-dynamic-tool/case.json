@@ -1,0 +1,86 @@
+{
+  "schema_version": 2,
+  "id": "43fb321f-2736-5843-8b9d-d8f96af0690f",
+  "key": "k31.dynamic_tool",
+  "name": "K3.1 Pro · 动态工具 · system tools 消息可调用",
+  "dimension": "tools",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "必须使用 calculate 工具计算 23*47。"
+            },
+            {
+              "role": "system",
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "calculate",
+                    "description": "计算算术表达式",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "expression": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "expression"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "tool_choice": "required",
+          "max_completion_tokens": 128
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices/0/message/tool_calls"
+        },
+        {
+          "id": "r6",
+          "source": "response",
+          "pointer": "/choices/0/message/tool_calls",
+          "each": [
+            {
+              "id": "r3",
+              "source": "item",
+              "operator": "non_empty",
+              "pointer": "/function/name",
+              "transform": "trim"
+            },
+            {
+              "id": "r4",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/function/name",
+              "value": "calculate"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

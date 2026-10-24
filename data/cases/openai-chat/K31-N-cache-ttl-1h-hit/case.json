@@ -1,0 +1,107 @@
+{
+  "schema_version": 2,
+  "id": "06b5929b-65e9-56fd-959a-3c8e66e7c925",
+  "key": "k31.cache_ttl_1h_hit",
+  "name": "K3.1 Pro · 缓存 · 1h 重复长前缀命中",
+  "dimension": "cache",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "system",
+              "content": {
+                "$generate": "repeat",
+                "text": "K31_CACHE_1H_STATIC_BLOCK: alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. ",
+                "count": 128
+              }
+            },
+            {
+              "role": "user",
+              "content": "第一次仅输出 CACHE_READY。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 128,
+          "prompt_cache_key": "k31-prefix-cache-1h-eval-001",
+          "prompt_cache_options": {
+            "mode": "implicit",
+            "ttl": "1h"
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "status_0",
+          "source": "requests",
+          "pointer": "/0/http_status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "status_1",
+          "source": "requests",
+          "pointer": "/1/http_status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "cache_hit",
+          "source": "requests",
+          "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+          "operator": "gt",
+          "value": 0
+        },
+        {
+          "id": "cache_bound",
+          "source": "requests",
+          "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+          "operator": "lte",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/1/response/usage/prompt_tokens"
+          }
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "step-1",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "system",
+                    "content": {
+                      "$generate": "repeat",
+                      "text": "K31_CACHE_1H_STATIC_BLOCK: alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. ",
+                      "count": 128
+                    }
+                  },
+                  {
+                    "role": "user",
+                    "content": "第二次仅输出 CACHE_HIT。"
+                  }
+                ],
+                "reasoning_effort": "low",
+                "max_completion_tokens": 128,
+                "prompt_cache_key": "k31-prefix-cache-1h-eval-001",
+                "prompt_cache_options": {
+                  "mode": "implicit",
+                  "ttl": "1h"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

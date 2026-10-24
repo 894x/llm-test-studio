@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "key": "kimi-k3.1-pro-highspeed.extended",
+  "name": "Kimi K3.1 Pro Highspeed 扩展与高成本套件",
+  "protocol": "openai-chat",
+  "description": "多模态、缓存工作流和最大输出预算；需显式选择并授权成本。",
+  "cases": [
+    {
+      "case_id": "a2a962dc-1c58-518c-b6cf-d324d39324e5"
+    },
+    {
+      "case_id": "b8756649-e147-5ffb-96e8-79391cb4510f"
+    },
+    {
+      "case_id": "ff13a4bb-172c-5ccf-801d-45a3e6f07981"
+    },
+    {
+      "case_id": "081b554f-dfc9-5b7f-a739-4614aec0fd71"
+    },
+    {
+      "case_id": "a61aee6a-4587-55e1-8aab-c30f24460e2e"
+    },
+    {
+      "case_id": "a375b0dc-0b46-5c02-81f6-c81968705ad2"
+    },
+    {
+      "case_id": "307e3cd9-ee95-5449-91a3-47fa9380a84a"
+    },
+    {
+      "case_id": "c9887ab8-c528-51e4-8ae2-0bcb7949f407"
+    },
+    {
+      "case_id": "61536328-32d8-5dfa-8bb9-3a8d53f2f050"
+    },
+    {
+      "case_id": "dfb578da-90f2-50bb-9c62-467e79babc24"
+    },
+    {
+      "case_id": "d74cf9a1-07ca-53f1-b2c2-928bcbe38f14"
+    },
+    {
+      "case_id": "f257eb4f-111d-54d9-814f-62f5fa45f49f"
+    },
+    {
+      "case_id": "53420ca7-9621-5196-acc4-76703c9a3018"
+    },
+    {
+      "case_id": "123a37b7-1a8d-5b13-a8bf-9a272447116c"
+    },
+    {
+      "case_id": "a40b9f4c-59e4-510f-b793-8e904c2c8693"
+    },
+    {
+      "case_id": "985f9642-30e3-5b74-b667-2f2c54ced469"
+    },
+    {
+      "case_id": "2e725c3d-6e78-5f28-b627-4508eb3046ab"
+    },
+    {
+      "case_id": "a47d39c0-75ce-5679-b7ca-d33ac4d8738b"
+    },
+    {
+      "case_id": "8341f462-d583-56dc-98dc-e4f01af19c17"
+    },
+    {
+      "case_id": "f7c58c0b-d366-59eb-a0dc-c88d0718d917"
+    },
+    {
+      "case_id": "659b1a21-9f93-55f7-abc8-10427f929e23"
+    },
+    {
+      "case_id": "06b5929b-65e9-56fd-959a-3c8e66e7c925"
+    }
+  ],
+  "inputs": []
+}

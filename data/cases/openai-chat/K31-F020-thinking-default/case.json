@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "id": "06db479b-b8ae-5f66-b89f-ea2f2e37c8e9",
+  "key": "k31.must.thinking_default",
+  "name": "K3.1 Pro · 思考 · 默认行为（K3.1 Pro 始终开启）",
+  "dimension": "reasoning",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "1+1 等于几？为什么？"
+            }
+          ],
+          "max_tokens": 200
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        }
+      ]
+    }
+  }
+}

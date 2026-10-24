@@ -1,0 +1,43 @@
+{
+  "schema_version": 2,
+  "id": "110dfb9f-396a-5e16-a63c-fa06102d9efa",
+  "key": "k31.frequency_penalty_above_fixed",
+  "name": "K3.1 Pro · 固定采样 · frequency_penalty=0.1 应拒绝",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "你好"
+            }
+          ],
+          "frequency_penalty": 0.1,
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

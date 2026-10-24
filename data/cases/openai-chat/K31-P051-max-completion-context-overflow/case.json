@@ -1,0 +1,47 @@
+{
+  "schema_version": 2,
+  "id": "a2a962dc-1c58-518c-b6cf-d324d39324e5",
+  "key": "k31.max_completion_context_overflow",
+  "name": "K3.1 Pro · 输出长度 · 最大输出预算 1048576 自动调低并继续",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "你好"
+            }
+          ],
+          "max_completion_tokens": 1048576
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "choices",
+          "source": "response",
+          "pointer": "/choices",
+          "operator": "non_empty"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "schema_version": 2,
+  "id": "130a43ff-1d8e-56af-88c4-68a3ad669f39",
+  "key": "k31.tool_strict_false",
+  "name": "K3.1 Pro · 工具定义 · strict=false",
+  "dimension": "tools",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "查询北京天气。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048,
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "description": "查询城市天气",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ],
+                  "additionalProperties": false
+                },
+                "strict": false
+              }
+            }
+          ],
+          "tool_choice": "required"
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "choices",
+          "source": "response",
+          "pointer": "/choices",
+          "operator": "non_empty"
+        },
+        {
+          "id": "tool_calls",
+          "source": "response",
+          "pointer": "/choices/0/message/tool_calls",
+          "operator": "non_empty"
+        },
+        {
+          "id": "arguments",
+          "source": "response",
+          "pointer": "/choices/0/message/tool_calls/0/function/arguments",
+          "operator": "json_valid"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "file_schema_version": 1,
+  "id": "143d4b0a-ef37-54d8-b537-fe3d2a2574c5",
+  "revision": 1,
+  "created_at": "2026-10-25T00:00:00Z",
+  "updated_at": "2026-10-25T00:00:00Z",
+  "name": "Kimi K3.1 Pro 连通性计划",
+  "protocol": "openai-chat",
+  "seed": 894,
+  "entries": [
+    {
+      "entry_id": "9bff8f3c-1a02-5d56-a040-665f6027125d",
+      "target_kind": "suite",
+      "target_id": "a2e94034-c45e-56d1-8f6a-0ec407fe158d",
+      "parameters": {},
+      "load": {
+        "mode": "fixed_concurrency",
+        "concurrency": 1,
+        "request_count": 1,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {}
+      },
+      "warmup_count": 0,
+      "settings": {}
+    }
+  ]
+}
