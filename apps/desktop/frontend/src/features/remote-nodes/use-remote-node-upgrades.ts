@@ -121,7 +121,7 @@ export function useRemoteNodeUpgrades(client: RemoteUpgradeClient, nodes: Remote
     const command = start ?? previous.command
     const operationID = start?.operation_id ?? previous.view?.operation_id ?? command?.operation_id
     if (!operationID) return
-    if (kind === "recover" && (!previous.view?.restorable || previous.view.resume_attempted || isUpgradeTerminal(previous.view))) return
+    if (kind === "recover" && (!previous.view?.confirmed || previous.view.resume_attempted || isUpgradeTerminal(previous.view))) return
     const session = generation.current
     readSequence.current.set(node.id, (readSequence.current.get(node.id) ?? 0) + 1)
     update(node.id, current => ({ ...current, command: start ?? current.command, view: start ? null : current.view,

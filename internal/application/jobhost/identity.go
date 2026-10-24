@@ -13,11 +13,13 @@ type Identity struct {
 	Policy         Policy
 }
 
-// Identity returns immutable, non-secret admission identity and resource policy.
+// Identity returns non-secret admission identity and the current resource policy.
 func (host *Host) Identity() Identity {
 	if host == nil {
 		return Identity{}
 	}
+	host.mu.Lock()
+	defer host.mu.Unlock()
 	return Identity{
 		Target: host.target, InstallationID: host.installationID,
 		EngineBuildID: host.buildID, Origin: host.origin, Policy: host.policy,

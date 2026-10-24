@@ -1207,6 +1207,7 @@ function installBinding(
     RetryRemoteNodeUpgrade: vi.fn(), RecoverRemoteNodeUpgrade: vi.fn(),
     SaveRemoteNode: vi.fn(async (_command?: unknown) => undefined),
     RefreshRemoteNode: vi.fn(async (_command?: unknown) => undefined),
+    SetRemoteNodeTaskConcurrency: vi.fn(async (_command?: unknown) => undefined),
     ConfirmRemoteNodeHostKey: vi.fn(async (_command?: unknown) => undefined),
     SelectDefaultExecution: vi.fn(async (_command?: unknown) => undefined),
     RetryRemoteInstallation: vi.fn(async (_command?: unknown) => undefined),

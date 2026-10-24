@@ -40,6 +40,7 @@ function fixture(nodes: RemoteNode[] = [node()]) {
     getRemoteNodes: vi.fn(async () => structuredClone(snapshot)),
     saveRemoteNode: vi.fn<RemoteNodesClient["saveRemoteNode"]>(async () => undefined),
     refreshRemoteNode: vi.fn<RemoteNodesClient["refreshRemoteNode"]>(async () => undefined),
+    setRemoteNodeTaskConcurrency: vi.fn<RemoteNodesClient["setRemoteNodeTaskConcurrency"]>(async () => undefined),
     confirmRemoteNodeHostKey: vi.fn<RemoteNodesClient["confirmRemoteNodeHostKey"]>(async () => undefined),
     selectDefaultExecution: vi.fn<RemoteNodesClient["selectDefaultExecution"]>(async () => undefined),
     retryRemoteInstallation: vi.fn<RemoteNodesClient["retryRemoteInstallation"]>(async () => undefined),
@@ -68,6 +69,48 @@ async function open(user: ReturnType<typeof userEvent.setup>) {
 afterEach(() => vi.useRealTimers())
 
 describe("RemoteNodesMenu", () => {
+  it("applies shared task slots and rereads the authoritative runner limit", async () => {
+    const user = userEvent.setup()
+    const f = fixture()
+    f.client.setRemoteNodeTaskConcurrency.mockImplementation(async command => {
+      const current = f.get()
+      f.set({ ...current, nodes: current.nodes.map(node => ({ ...node,
+        runner: { ...node.runner!, max_active_jobs: command.max_active_jobs } })) })
+    })
+    show(f.client)
+    await open(user)
+    const input = screen.getByRole("spinbutton", { name: "同时运行任务数" })
+    expect(input).toHaveValue(4)
+    await user.clear(input)
+    await user.type(input, "8")
+    await user.click(screen.getByRole("button", { name: "应用" }))
+    await waitFor(() => expect(f.client.setRemoteNodeTaskConcurrency).toHaveBeenCalledExactlyOnceWith({
+      id: NODE_ID, expected_revision: 3, expected_max_active_jobs: 4, max_active_jobs: 8,
+    }))
+    await waitFor(() => expect(screen.getByRole("spinbutton", { name: "同时运行任务数" })).toHaveValue(8))
+    expect(screen.getByRole("button", { name: "应用" })).toBeDisabled()
+  })
+
+  it("rejects task slot boundaries and preserves the draft on an unsupported runner", async () => {
+    const user = userEvent.setup()
+    const f = fixture()
+    f.client.setRemoteNodeTaskConcurrency.mockRejectedValue(new DesktopClientError("remote_node_upgrade_required"))
+    show(f.client)
+    await open(user)
+    const input = screen.getByRole("spinbutton", { name: "同时运行任务数" })
+    for (const invalid of ["0", "129", "1.5"]) {
+      fireEvent.change(input, { target: { value: invalid } })
+      expect(screen.getByRole("button", { name: "应用" })).toBeDisabled()
+    }
+    fireEvent.change(input, { target: { value: "1" } })
+    expect(screen.getByText("当前有 2 个任务在运行，请等待任务结束后再调低。")).toBeVisible()
+    fireEvent.change(input, { target: { value: "8" } })
+    await user.click(screen.getByRole("button", { name: "应用" }))
+    await screen.findByText("请升级或重新安装 Runner 后再使用此节点。")
+    expect(screen.getByRole("spinbutton", { name: "同时运行任务数" })).toHaveValue(8)
+    expect(f.client.setRemoteNodeTaskConcurrency).toHaveBeenCalledTimes(1)
+  })
+
   it.each(["offline", "disabled"] as const)("keeps a %s default and only changes it by explicit selection", async status => {
     const user = userEvent.setup()
     const f = fixture([node({ status, eligible: false, enabled: status !== "disabled" })])

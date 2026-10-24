@@ -104,6 +104,7 @@ function remoteNodeMocks() {
   return {
     getRemoteNodes: vi.fn(async () => structuredClone(EMPTY_REMOTE_NODES)),
     saveRemoteNode: vi.fn(async () => undefined), refreshRemoteNode: vi.fn(async () => undefined),
+    setRemoteNodeTaskConcurrency: vi.fn(async () => undefined),
     confirmRemoteNodeHostKey: vi.fn(async () => undefined), selectDefaultExecution: vi.fn(async () => undefined),
     retryRemoteInstallation: vi.fn(async () => undefined), removeRemoteNode: vi.fn(async () => undefined),
     startRemoteNodeUpgrade: vi.fn(), getRemoteNodeUpgrade: vi.fn(async () => null),

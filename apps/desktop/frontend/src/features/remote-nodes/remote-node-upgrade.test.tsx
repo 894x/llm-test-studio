@@ -17,6 +17,7 @@ function fixture(nodes: RemoteNode[] = [remoteNodeFixture()]) {
     getRemoteNodes: vi.fn(async () => structuredClone(snapshot)),
     saveRemoteNode: vi.fn<RemoteNodesClient["saveRemoteNode"]>(),
     refreshRemoteNode: vi.fn<RemoteNodesClient["refreshRemoteNode"]>(),
+    setRemoteNodeTaskConcurrency: vi.fn<RemoteNodesClient["setRemoteNodeTaskConcurrency"]>(),
     confirmRemoteNodeHostKey: vi.fn<RemoteNodesClient["confirmRemoteNodeHostKey"]>(),
     selectDefaultExecution: vi.fn<RemoteNodesClient["selectDefaultExecution"]>(async command => { snapshot.default = command.location }),
     retryRemoteInstallation: vi.fn<RemoteNodesClient["retryRemoteInstallation"]>(),
@@ -44,6 +45,20 @@ const nodeRegion = () => screen.getByRole("region", { name: "Upgrade test node" 
 afterEach(() => vi.useRealTimers())
 
 describe("explicit Runner upgrades", () => {
+  it("can recover a confirmed partial backup before restore permission exists", async () => {
+    const user = userEvent.setup()
+    const view = remoteUpgradeFixture({ stage: "backing_up", confirmed: true, restorable: false,
+      resume_attempted: false, error_code: "runner_upgrade_required" })
+    const f = fixture([remoteNodeFixture({ upgrade: view })])
+    show(f.client)
+    await open(user)
+    await user.click(within(nodeRegion()).getByRole("button", { name: "恢复升级前状态" }))
+    await waitFor(() => expect(f.client.recoverRemoteNodeUpgrade).toHaveBeenCalledTimes(1))
+    expect(f.client.recoverRemoteNodeUpgrade).toHaveBeenCalledWith({
+      id: REMOTE_CONFIGURATION_ID, expected_revision: 3, operation_id: UPGRADE_OPERATION_ID,
+    })
+  })
+
   it("accepts the actual compatible build and starts exactly one operation only after a click", async () => {
     const user = userEvent.setup()
     const f = fixture()

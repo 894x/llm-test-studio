@@ -140,9 +140,13 @@ func Run(ctx context.Context, options Options) (runErr error) {
 	if err != nil {
 		return err
 	}
+	scheduling, err := jobhost.NewScheduling(host, schedulingStore{state: state, config: config})
+	if err != nil {
+		return err
+	}
 	hash, _ := hex.DecodeString(config.TokenSHA256)
 	handler, err := runnerhttp.New(runnerhttp.Dependencies{
-		Host: host, Maintenance: maintenance, Repository: readView, TokenSHA256: [32]byte(hash),
+		Host: host, Maintenance: maintenance, Scheduling: scheduling, Repository: readView, TokenSHA256: [32]byte(hash),
 		Capabilities: capabilities(),
 		Content:      &contentStore{state: state, guard: guard, host: host},
 	})

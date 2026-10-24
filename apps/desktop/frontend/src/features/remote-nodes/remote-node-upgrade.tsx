@@ -102,7 +102,7 @@ export function RemoteNodeUpgrade({ node, controller, disabled }: {
           disabled={disabled || pending || operation.conflict || (!view && tasksBusy)} onClick={() => controller.retry(node)}>
           {pending ? <Spinner /> : <RefreshCwIcon />}{t("upgrade.retry")}
         </Button>
-        {view?.restorable && !view.resume_attempted && !terminal && <Button variant="outline" size="sm"
+        {view?.confirmed && !view.resume_attempted && !terminal && <Button variant="outline" size="sm"
           disabled={disabled || pending || operation.conflict} onClick={() => controller.recover(node)}>
           <RotateCcwIcon />{t("upgrade.recover")}
         </Button>}

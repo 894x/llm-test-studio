@@ -22,12 +22,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 import { RemoteNodeEditor } from "./remote-node-editor"
 import { RemoteNodeUpgrade } from "./remote-node-upgrade"
+import { RemoteNodeScheduling } from "./remote-node-scheduling"
 import { observedUpgradeRunner, useRemoteNodeUpgrades } from "./use-remote-node-upgrades"
 import type { RemoteNode, RemoteNodeDraft, RemoteNodesSnapshot, RemoteRunner } from "./data"
 
 export type RemoteNodesClient = Pick<DesktopClient, "getRemoteNodes" | "saveRemoteNode" | "refreshRemoteNode" |
   "confirmRemoteNodeHostKey" | "selectDefaultExecution" | "retryRemoteInstallation" | "removeRemoteNode" |
-  "startRemoteNodeUpgrade" | "getRemoteNodeUpgrade" | "retryRemoteNodeUpgrade" | "recoverRemoteNodeUpgrade">
+  "startRemoteNodeUpgrade" | "getRemoteNodeUpgrade" | "retryRemoteNodeUpgrade" | "recoverRemoteNodeUpgrade" |
+  "setRemoteNodeTaskConcurrency">
 
 const POLL_INTERVAL = 1500
 const MAX_POLLS = 40
@@ -287,6 +289,11 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
                   </div>
                 </div>
                 <NodeDetails node={node} runner={observedUpgradeRunner(node, upgrades.get(node).view)} />
+                {node.runner && <RemoteNodeScheduling key={`${node.id}:${node.runner.max_active_jobs}`}
+                  node={node} runner={node.runner} disabled={unavailable || node.checking || !node.eligible || upgrades.locked(node)}
+                  saving={busy === `scheduling:${node.id}`} onSave={value => {
+                    if (!upgrades.lockedNow(node)) void command(`scheduling:${node.id}`, () => client.setRemoteNodeTaskConcurrency(value))
+                  }} />}
                 {node.proposed_host_key && <Alert>
                   <p className="font-medium">{t(node.status === "host_changed" ? "hostChanged" : "hostUnverified")}</p>
                   <p className="mt-1">{t("verifyFingerprint")}</p>

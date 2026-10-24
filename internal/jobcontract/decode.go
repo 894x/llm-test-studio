@@ -26,6 +26,7 @@ const (
 	scopeRun
 	scopeCommand
 	scopeMaintenanceCommand
+	scopeTaskConcurrencyCommand
 	scopeMaintenanceRecord
 	scopeBoolean
 )
@@ -159,6 +160,8 @@ func envelopeFields(scope documentScope) []string {
 		return []string{"contract", "command_id", "job_id", "kind", "expected_revision"}
 	case scopeMaintenanceCommand:
 		return []string{"contract", "operation_id", "action"}
+	case scopeTaskConcurrencyCommand:
+		return []string{"contract", "node_id", "node_installation_id", "expected_max_active_jobs", "max_active_jobs"}
 	case scopeMaintenanceRecord:
 		return []string{"contract", "node_installation_id", "operation_id", "paused", "changed_at"}
 	case scopeRoot:

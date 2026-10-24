@@ -49,6 +49,7 @@ export type RemoteNodeDraft = {
   passphrase: string; remove_passphrase: boolean
 }
 export type RemoteNodeAction = { id: string; expected_revision: number }
+export type RemoteNodeTaskConcurrencyCommand = RemoteNodeAction & { expected_max_active_jobs: number; max_active_jobs: number }
 export type HostKeyConfirmation = RemoteNodeAction & { key: RemoteHostKey }
 export type DefaultExecutionCommand = { expected_revision: number; location: ExecutionLocation }
 

@@ -3,7 +3,7 @@ import { parseStartupProgress, READY_STARTUP, type StartupProgress } from "./sta
 import { DesktopDataError } from "@/app/data-error"
 import { EMPTY_REMOTE_NODES, parseRemoteNodes, parseRemoteNodeUpgrade, parseNullableRemoteNodeUpgrade,
   type StartRemoteNodeUpgradeCommand, type RemoteNodeUpgradeAction, type RemoteNodeUpgradeView, type RemoteNodesSnapshot, type RemoteNodeDraft,
-  type RemoteNodeAction, type HostKeyConfirmation, type DefaultExecutionCommand } from "@/features/remote-nodes/data"
+  type RemoteNodeAction, type RemoteNodeTaskConcurrencyCommand, type HostKeyConfirmation, type DefaultExecutionCommand } from "@/features/remote-nodes/data"
 import { parseQuickTaskDetail, type QuickTaskDetail, type RememberQuickTaskCredentialCommand } from "@/features/quick-test/task-draft"
 import { translateDesktop as tx } from "@/i18n/runtime"
 import { type WorkspaceSnapshot } from "@/features/runs/data"
@@ -164,6 +164,7 @@ export interface DesktopClient extends CatalogActions {
   getRemoteNodes(): Promise<RemoteNodesSnapshot>
   saveRemoteNode(command: RemoteNodeDraft): Promise<void>
   refreshRemoteNode(command: RemoteNodeAction): Promise<void>
+  setRemoteNodeTaskConcurrency(command: RemoteNodeTaskConcurrencyCommand): Promise<void>
   confirmRemoteNodeHostKey(command: HostKeyConfirmation): Promise<void>
   selectDefaultExecution(command: DefaultExecutionCommand): Promise<void>
   retryRemoteInstallation(command: RemoteNodeAction): Promise<void>
@@ -251,6 +252,7 @@ type WailsDesktopBinding = {
   RecoverRemoteNodeUpgrade(command: RemoteNodeUpgradeAction): Promise<unknown>
   SaveRemoteNode(command: RemoteNodeDraft): Promise<unknown>
   RefreshRemoteNode(command: RemoteNodeAction): Promise<unknown>
+  SetRemoteNodeTaskConcurrency(command: RemoteNodeTaskConcurrencyCommand): Promise<unknown>
   ConfirmRemoteNodeHostKey(command: HostKeyConfirmation): Promise<unknown>
   SelectDefaultExecution(command: DefaultExecutionCommand): Promise<unknown>
   RetryRemoteInstallation(command: RemoteNodeAction): Promise<unknown>
@@ -314,7 +316,7 @@ type FrontendDiagnostic = {
 
 const REQUIRED_WAILS_BINDING_METHODS = [
   "CreateLocalFileSelection", "ReleaseLocalFileSelection",
-  "GetRemoteNodes", "SaveRemoteNode", "RefreshRemoteNode", "ConfirmRemoteNodeHostKey", "SelectDefaultExecution",
+  "GetRemoteNodes", "SaveRemoteNode", "RefreshRemoteNode", "SetRemoteNodeTaskConcurrency", "ConfirmRemoteNodeHostKey", "SelectDefaultExecution",
   "RetryRemoteInstallation", "RemoveRemoteNode",
   "StartRemoteNodeUpgrade", "GetRemoteNodeUpgrade", "RetryRemoteNodeUpgrade", "RecoverRemoteNodeUpgrade",
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
@@ -374,6 +376,7 @@ export function createFixtureClient(
     async getRemoteNodes() { return structuredClone(EMPTY_REMOTE_NODES) },
     async saveRemoteNode() { throw new DesktopClientError("remote_nodes_unavailable") },
     async refreshRemoteNode() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async setRemoteNodeTaskConcurrency() { throw new DesktopClientError("remote_nodes_unavailable") },
     async confirmRemoteNodeHostKey() { throw new DesktopClientError("remote_nodes_unavailable") },
     async selectDefaultExecution() { throw new DesktopClientError("remote_nodes_unavailable") },
     async retryRemoteInstallation() { throw new DesktopClientError("remote_nodes_unavailable") },
@@ -592,6 +595,7 @@ function createLazyFixtureClient(): DesktopClient {
     getRemoteNodes: async () => (await client).getRemoteNodes(),
     saveRemoteNode: async command => (await client).saveRemoteNode(command),
     refreshRemoteNode: async command => (await client).refreshRemoteNode(command),
+    setRemoteNodeTaskConcurrency: async command => (await client).setRemoteNodeTaskConcurrency(command),
     confirmRemoteNodeHostKey: async command => (await client).confirmRemoteNodeHostKey(command),
     selectDefaultExecution: async command => (await client).selectDefaultExecution(command),
     retryRemoteInstallation: async command => (await client).retryRemoteInstallation(command),
@@ -723,6 +727,7 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
     getRemoteNodes: singleFlightRead(() => callBinding(() => binding.GetRemoteNodes(), parseRemoteNodes)),
     saveRemoteNode: async command => callBinding(() => binding.SaveRemoteNode(command), parseVoid),
     refreshRemoteNode: async command => callBinding(() => binding.RefreshRemoteNode(command), parseVoid),
+    setRemoteNodeTaskConcurrency: async command => callBinding(() => binding.SetRemoteNodeTaskConcurrency(command), parseVoid),
     confirmRemoteNodeHostKey: async command => callBinding(() => binding.ConfirmRemoteNodeHostKey(command), parseVoid),
     selectDefaultExecution: async command => callBinding(() => binding.SelectDefaultExecution(command), parseVoid),
     retryRemoteInstallation: async command => callBinding(() => binding.RetryRemoteInstallation(command), parseVoid),

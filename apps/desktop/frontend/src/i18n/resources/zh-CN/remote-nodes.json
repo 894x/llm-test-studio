@@ -159,6 +159,14 @@
     "confirm": "确认升级",
     "cancel": "取消"
   },
+  "scheduling": {
+    "label": "同时运行任务数",
+    "help": "1–128 个，整个节点共享。保存后立即生效并持久保留；任务内部的请求并发仍受总预算限制。",
+    "apply": "应用",
+    "saving": "正在应用…",
+    "invalid": "请输入 1–128 之间的整数。",
+    "busy": "当前有 {{active}} 个任务在运行，请等待任务结束后再调低。"
+  },
   "errors": {
     "remote_node_identity_conflict": "升级操作或 Runner 身份与预期不一致。已锁住此节点，请先读取状态再继续。",
     "remote_nodes_unavailable": "远程节点管理暂不可用，请重新打开桌面应用后重试。",

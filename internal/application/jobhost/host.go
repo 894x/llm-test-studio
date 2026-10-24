@@ -99,6 +99,7 @@ type jobControl struct {
 }
 
 type Status struct {
+	MaxActiveJobs          uint32 `json:"-"`
 	Ready                  bool   `json:"ready"`
 	Healthy                bool   `json:"healthy"`
 	Active                 uint32 `json:"active"`
@@ -324,7 +325,8 @@ func (host *Host) Status() Status {
 func (host *Host) statusLocked() Status {
 	healthy := host.available() == nil
 	return Status{
-		Ready: healthy && host.maintenanceID == "", Healthy: healthy,
+		MaxActiveJobs: host.policy.MaxActiveJobs,
+		Ready:         healthy && host.maintenanceID == "", Healthy: healthy,
 		Active: host.active, Queued: uint32(len(host.queue)), Pending: uint32(len(host.controls)),
 		MaintenanceOperationID: host.maintenanceID,
 	}

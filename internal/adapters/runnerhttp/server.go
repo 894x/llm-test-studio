@@ -40,6 +40,7 @@ type ReadRepository interface {
 type Dependencies struct {
 	Host         *jobhost.Host
 	Maintenance  *jobhost.Maintenance
+	Scheduling   *jobhost.Scheduling
 	Repository   ReadRepository
 	TokenSHA256  [32]byte
 	Capabilities jobcontract.RunnerCapabilities
@@ -53,6 +54,7 @@ type ContentStore interface {
 type Handler struct {
 	host          *jobhost.Host
 	maintenance   *jobhost.Maintenance
+	scheduling    *jobhost.Scheduling
 	repository    ReadRepository
 	tokenHash     [32]byte
 	info          jobcontract.RunnerInfo
@@ -80,6 +82,9 @@ func New(dependencies Dependencies) (*Handler, error) {
 	if invalid || !dependencies.Maintenance.Owns(dependencies.Host) {
 		return nil, ErrInvalid
 	}
+	if dependencies.Scheduling != nil && !dependencies.Scheduling.Owns(dependencies.Host) {
+		return nil, ErrInvalid
+	}
 	identity := dependencies.Host.Identity()
 	if identity.Target.Kind != jobcontract.TargetRemote {
 		return nil, ErrInvalid
@@ -99,12 +104,15 @@ func New(dependencies Dependencies) (*Handler, error) {
 		if feature == "assets" {
 			return nil, ErrInvalid
 		}
-		if feature != jobcontract.FeatureContentUpload {
+		if feature != jobcontract.FeatureContentUpload && feature != jobcontract.FeatureTaskConcurrency {
 			features = append(features, feature)
 		}
 	}
 	if content != nil {
 		features = append(features, jobcontract.FeatureContentUpload)
+	}
+	if dependencies.Scheduling != nil {
+		features = append(features, jobcontract.FeatureTaskConcurrency)
 	}
 	slices.Sort(features)
 	dependencies.Capabilities.Features = features
@@ -126,11 +134,13 @@ func New(dependencies Dependencies) (*Handler, error) {
 	handler := &Handler{
 		host: dependencies.Host, repository: dependencies.Repository, tokenHash: dependencies.TokenSHA256,
 		maintenance: dependencies.Maintenance,
+		scheduling:  dependencies.Scheduling,
 		content:     content,
 		info:        info.Clone(), mux: http.NewServeMux(),
 	}
 	handler.mux.HandleFunc("GET /runner", handler.runner)
 	handler.mux.HandleFunc("POST /runner/maintenance", handler.maintain)
+	handler.mux.HandleFunc("POST /runner/task-concurrency", handler.configureTaskConcurrency)
 	handler.mux.HandleFunc("POST /jobs", handler.submit)
 	handler.mux.HandleFunc("GET /jobs", handler.jobs)
 	handler.mux.HandleFunc("GET /jobs/{job_id}", handler.job)
@@ -224,6 +234,7 @@ func (handler *Handler) runner(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	info, status := handler.info.Clone(), handler.host.Status()
+	info.Budget.MaxActiveJobs = status.MaxActiveJobs
 	info.Ready, info.Active, info.Queued = status.Ready, status.Active, status.Queued
 	info.Healthy, info.Pending = status.Healthy, status.Pending
 	info.MaintenanceOperationID = status.MaintenanceOperationID

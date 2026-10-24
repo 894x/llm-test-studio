@@ -159,6 +159,14 @@
     "confirm": "Confirm upgrade",
     "cancel": "Cancel"
   },
+  "scheduling": {
+    "label": "Concurrent tasks",
+    "help": "1–128 tasks, shared by the entire node. Changes apply immediately and persist. Request concurrency within tasks still shares the node's total budget.",
+    "apply": "Apply",
+    "saving": "Applying…",
+    "invalid": "Enter an integer from 1 to 128.",
+    "busy": "{{active}} tasks are running. Wait for tasks to finish before lowering this limit."
+  },
   "errors": {
     "remote_node_identity_conflict": "The upgrade identity differs from the expected operation or Runner. This node is locked; read its state before proceeding.",
     "remote_nodes_unavailable": "Remote node management is unavailable. Reopen the desktop application and try again.",

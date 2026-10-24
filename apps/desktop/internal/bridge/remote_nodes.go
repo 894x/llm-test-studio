@@ -84,6 +84,25 @@ type RemoteNodeAction struct {
 	ExpectedRevision uint64 `json:"expected_revision"`
 }
 
+type RemoteNodeTaskConcurrencyCommand struct {
+	ID                    string `json:"id"`
+	ExpectedRevision      uint64 `json:"expected_revision"`
+	ExpectedMaxActiveJobs uint32 `json:"expected_max_active_jobs"`
+	MaxActiveJobs         uint32 `json:"max_active_jobs"`
+}
+
+func (app *DesktopApp) SetRemoteNodeTaskConcurrency(command RemoteNodeTaskConcurrencyCommand) error {
+	lease, err := app.acquire(desktopRequirements{remoteNodes: true})
+	if err != nil {
+		return app.safeBindingError(err)
+	}
+	defer lease.release()
+	return app.safeBindingError(lease.remoteNodes.SetTaskConcurrency(lease.ctx, remotenodes.TaskConcurrencyCommand{
+		ID: command.ID, ExpectedRevision: command.ExpectedRevision,
+		ExpectedMaxActiveJobs: command.ExpectedMaxActiveJobs, MaxActiveJobs: command.MaxActiveJobs,
+	}))
+}
+
 type RemoteNodeHostKeyConfirmation struct {
 	ID               string              `json:"id"`
 	ExpectedRevision uint64              `json:"expected_revision"`

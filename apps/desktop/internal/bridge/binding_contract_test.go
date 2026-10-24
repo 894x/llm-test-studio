@@ -62,6 +62,7 @@ func TestDesktopBindingMethodSetSurvivesPackageMove(t *testing.T) {
 		"SaveRemoteNode",
 		"SaveReportExport",
 		"SelectDefaultExecution",
+		"SetRemoteNodeTaskConcurrency",
 		"StartRemoteNodeUpgrade",
 		"UpdateChannel",
 		"UpdateChannelModel",
