@@ -30,9 +30,13 @@ type PreparationDependencies struct {
 	CaseTypes            *casetypes.Registry
 	Credentials          CredentialStore
 	QuickTaskCredentials credentials.Store
-	Clock                Clock
-	MetaFactory          MetaFactory
-	Environment          EnvironmentProvider
+	// MissingRun declares the repository adapter's private not-found sentinel
+	// so a quick task whose draft references a deleted source run can start
+	// from the submitted form values instead of failing.
+	MissingRun  error
+	Clock       Clock
+	MetaFactory MetaFactory
+	Environment EnvironmentProvider
 }
 
 // Preparer resolves all catalog references before input crosses a host boundary.
@@ -42,6 +46,7 @@ type Preparer struct {
 	caseTypes            *casetypes.Registry
 	credentials          CredentialStore
 	quickTaskCredentials credentials.Store
+	missingRun           error
 	clock                Clock
 	metaFactory          MetaFactory
 	environment          EnvironmentProvider
@@ -70,6 +75,7 @@ func NewPreparer(dependencies PreparationDependencies) (*Preparer, error) {
 		repository: dependencies.Repository, quickTasks: dependencies.QuickTasks,
 		caseTypes: caseTypes, credentials: dependencies.Credentials,
 		quickTaskCredentials: dependencies.QuickTaskCredentials,
+		missingRun:           dependencies.MissingRun,
 		clock:                dependencies.Clock, metaFactory: factory, environment: dependencies.Environment,
 	}, nil
 }

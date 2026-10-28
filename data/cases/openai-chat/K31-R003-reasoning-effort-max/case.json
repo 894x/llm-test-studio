@@ -1,0 +1,36 @@
+{
+  "schema_version": 2,
+  "id": "57eabcdc-7644-5895-b831-653ad9397521",
+  "key": "k31.reasoning_effort_max",
+  "name": "K3.1 Pro · 推理强度 · reasoning_effort=max",
+  "dimension": "reasoning-parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "说明 1+1=2。"
+            }
+          ],
+          "reasoning_effort": "max",
+          "max_completion_tokens": 128
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        }
+      ]
+    }
+  }
+}

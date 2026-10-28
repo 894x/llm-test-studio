@@ -1,0 +1,58 @@
+{
+  "schema_version": 2,
+  "id": "23acafdd-37b6-523b-b0a7-f03636cb576f",
+  "key": "k31.dynamic_tool_with_content",
+  "name": "K3.1 Pro · 动态工具 · tools 消息同时携带 content 应拒绝",
+  "dimension": "tools",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "非法共存",
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "calculate",
+                    "description": "计算",
+                    "parameters": {
+                      "type": "object"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": "计算 1+1"
+            }
+          ],
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

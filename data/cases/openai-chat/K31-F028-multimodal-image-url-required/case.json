@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "id": "61536328-32d8-5dfa-8bb9-3a8d53f2f050",
+  "key": "k31.must.multimodal_image_url_required",
+  "name": "K3.1 Pro · 多模态字段 · type=image_url 时 image_url 必填",
+  "dimension": "multimodal",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "image_url"
+                }
+              ]
+            }
+          ],
+          "max_tokens": 16
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

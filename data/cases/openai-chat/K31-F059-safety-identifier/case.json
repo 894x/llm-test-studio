@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "id": "2a3861cc-c569-5bda-a6fa-e3141c6e84b1",
+  "key": "k31.safety_identifier",
+  "name": "K3.1 Pro · 安全标识 · safety_identifier 字符串应接受",
+  "dimension": "safety",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答：你好"
+            }
+          ],
+          "safety_identifier": "sha256:8f5f3b8c7e6d4a21",
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
+    }
+  }
+}

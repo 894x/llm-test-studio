@@ -1,0 +1,47 @@
+{
+  "schema_version": 2,
+  "id": "a47d39c0-75ce-5679-b7ca-d33ac4d8738b",
+  "key": "k31.prompt_cache_options_ttl_invalid",
+  "name": "K3.1 Pro · 缓存 · 非法 TTL 应拒绝",
+  "dimension": "cache",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答 OK。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048,
+          "prompt_cache_options": {
+            "mode": "implicit",
+            "ttl": "2h"
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "pointer": "/error/message",
+          "operator": "non_empty",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

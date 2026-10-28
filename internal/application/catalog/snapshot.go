@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 
 	"github.com/894x/llm-test-studio/internal/casetypes"
@@ -136,10 +137,10 @@ func (service *Service) buildSnapshot(
 			return Snapshot{}, err
 		}
 		if err := model.Validate(); err != nil {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: invalid model %q: %v", ErrCorrupt, model.ID, err)
 		}
 		if _, duplicate := modelByID[model.ID]; duplicate {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: duplicate model %q", ErrCorrupt, model.ID)
 		}
 		modelByID[model.ID] = model
 	}
@@ -149,10 +150,10 @@ func (service *Service) buildSnapshot(
 			return Snapshot{}, err
 		}
 		if err := channel.Validate(); err != nil {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: invalid channel %q: %v", ErrCorrupt, channel.ID, err)
 		}
 		if _, duplicate := channelByID[channel.ID]; duplicate {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: duplicate channel %q", ErrCorrupt, channel.ID)
 		}
 		channelByID[channel.ID] = channel
 	}
@@ -162,10 +163,10 @@ func (service *Service) buildSnapshot(
 			return Snapshot{}, err
 		}
 		if err := testCase.Validate(); err != nil {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: invalid test case %q: %v", ErrCorrupt, testCase.ID, err)
 		}
 		if _, duplicate := testCaseByID[testCase.ID]; duplicate {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: duplicate test case %q", ErrCorrupt, testCase.ID)
 		}
 		testCaseByID[testCase.ID] = testCase
 	}
@@ -178,25 +179,25 @@ func (service *Service) buildSnapshot(
 			return Snapshot{}, err
 		}
 		if err := mapping.Validate(); err != nil {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: invalid channel mapping %q: %v", ErrCorrupt, mapping.ID, err)
 		}
 		if _, duplicate := mappingIDs[mapping.ID]; duplicate {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: duplicate channel mapping %q", ErrCorrupt, mapping.ID)
 		}
 		mappingIDs[mapping.ID] = struct{}{}
 		_, channelFound := channelByID[mapping.ChannelID]
 		model, modelFound := modelByID[mapping.ModelID]
 		if !channelFound || !modelFound {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: channel mapping %q references missing channel %q or model %q", ErrCorrupt, mapping.ID, mapping.ChannelID, mapping.ModelID)
 		}
 		for _, value := range mapping.Protocols {
 			if !model.SupportsProtocol(value) {
-				return Snapshot{}, ErrCorrupt
+				return Snapshot{}, fmt.Errorf("%w: channel mapping %q uses protocol %q unsupported by model %q", ErrCorrupt, mapping.ID, value, mapping.ModelID)
 			}
 		}
 		binding := mapping.ChannelID + "\x00" + mapping.ModelID
 		if _, duplicate := mappingByBinding[binding]; duplicate {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: duplicate mapping binding for channel %q and model %q", ErrCorrupt, mapping.ChannelID, mapping.ModelID)
 		}
 		mappingByBinding[binding] = mapping
 		modelCountByChannel[mapping.ChannelID]++
@@ -208,10 +209,10 @@ func (service *Service) buildSnapshot(
 			return Snapshot{}, err
 		}
 		if err := suite.Validate(); err != nil {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: invalid suite %q: %v", ErrCorrupt, suite.ID, err)
 		}
 		if _, duplicate := suiteByID[suite.ID]; duplicate {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: duplicate suite %q", ErrCorrupt, suite.ID)
 		}
 		suiteByID[suite.ID] = suite
 	}
@@ -221,10 +222,10 @@ func (service *Service) buildSnapshot(
 			return Snapshot{}, err
 		}
 		if err := plan.Validate(); err != nil {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: invalid plan %q: %v", ErrCorrupt, plan.ID, err)
 		}
 		if _, duplicate := planIDs[plan.ID]; duplicate {
-			return Snapshot{}, ErrCorrupt
+			return Snapshot{}, fmt.Errorf("%w: duplicate plan %q", ErrCorrupt, plan.ID)
 		}
 		planIDs[plan.ID] = struct{}{}
 

@@ -1,0 +1,47 @@
+{
+  "schema_version": 2,
+  "id": "f257eb4f-111d-54d9-814f-62f5fa45f49f",
+  "key": "k31.must.video_url_object_url_required",
+  "name": "K3.1 Pro · 多模态字段 · video_url 对象内 url 必填",
+  "dimension": "multimodal",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "video_url",
+                  "video_url": {}
+                }
+              ]
+            }
+          ],
+          "max_tokens": 16
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

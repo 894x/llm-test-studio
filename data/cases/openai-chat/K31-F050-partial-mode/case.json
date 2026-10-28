@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "id": "ea2c3505-1140-55cd-a2e2-1bfabb39aa8d",
+  "key": "k31.partial_mode",
+  "name": "K3.1 Pro · Partial Mode · assistant 前缀续写",
+  "dimension": "workflow",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "用一句话说明接口兼容的重要性。"
+            },
+            {
+              "role": "assistant",
+              "content": "结论：",
+              "partial": true
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 512
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

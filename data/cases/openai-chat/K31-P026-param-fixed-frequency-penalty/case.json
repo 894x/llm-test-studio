@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "id": "d043b039-20b1-576b-9254-8190984aad6b",
+  "key": "k31.param_fixed_frequency_penalty",
+  "name": "K3.1 Pro · 参数约束 · frequency_penalty=0（官方固定值，应接受）",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答：你好"
+            }
+          ],
+          "frequency_penalty": 0,
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "schema_version": 2,
+  "id": "8494305a-4e92-5eff-8337-9f87d6848b6b",
+  "key": "k31.must.json_object",
+  "name": "K3.1 Pro · 结构化输出 · JSON Object",
+  "dimension": "structured-output",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "返回包含 name 和 age 的 JSON 对象，name 为小林，age 为 28。"
+            }
+          ],
+          "response_format": {
+            "type": "json_object"
+          },
+          "max_tokens": 200
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        },
+        {
+          "id": "r5",
+          "source": "text",
+          "operator": "type",
+          "value": "object",
+          "transform": "json"
+        },
+        {
+          "id": "r6",
+          "source": "text",
+          "operator": "contains",
+          "value": "name",
+          "transform": "json"
+        },
+        {
+          "id": "r7",
+          "source": "text",
+          "operator": "contains",
+          "value": "age",
+          "transform": "json"
+        }
+      ]
+    }
+  }
+}

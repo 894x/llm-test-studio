@@ -151,6 +151,7 @@ type CaseDetail struct {
 	Key            string                        `json:"key"`
 	Name           string                        `json:"name"`
 	Protocol       domain.Protocol               `json:"protocol"`
+	Severity       domain.CaseSeverity           `json:"severity"`
 	Verification   domain.VerificationSummary    `json:"verification"`
 	Metrics        map[string]domain.MetricValue `json:"metrics"`
 	SummaryResult  *domain.Result                `json:"summary_result,omitempty"`
@@ -287,7 +288,8 @@ func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([
 				Revision: ref.Revision,
 				Key:      definition.Key,
 				Name:     definition.Name,
-				Protocol: report.Protocol, Verification: domain.SummarizeVerification(requests), Metrics: aggregateMetrics(requests),
+				Protocol: report.Protocol, Severity: definition.Severity,
+				Verification: domain.SummarizeVerification(requests), Metrics: aggregateMetrics(requests),
 				SummaryResult:  summary,
 				RequestResults: requests,
 			})
@@ -442,9 +444,9 @@ func (projection ReportProjection) validate() error {
 	if projection.IssueCount < 0 || projection.CaseCount < 0 || projection.FailedCaseCount < 0 || projection.AttachmentCount < 0 {
 		return errors.New("report projection counts must be non-negative")
 	}
-	if projection.FailedCaseCount > projection.CaseCount {
-		return errors.New("report projection failed case count exceeds case count")
-	}
+	// Cancelled and failed runs keep request-level verdicts for cases that
+	// never reached a case-level summary, so failed verdicts may exceed the
+	// summarized case count.
 	if projection.Passed && projection.FailedCaseCount != 0 {
 		return errors.New("passing report projection contains failed cases")
 	}

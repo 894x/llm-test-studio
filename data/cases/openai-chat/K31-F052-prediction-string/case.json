@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "id": "b806398c-1ae6-55a2-bd7d-d2fa67a2a898",
+  "key": "k31.prediction_string",
+  "name": "K3.1 Pro · Predicted Output · content 字符串",
+  "dimension": "workflow",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "原样输出 Hello, world!"
+            }
+          ],
+          "prediction": {
+            "type": "content",
+            "content": "Hello, world!"
+          },
+          "max_completion_tokens": 64
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
+    }
+  }
+}

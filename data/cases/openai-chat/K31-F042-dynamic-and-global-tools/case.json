@@ -1,0 +1,84 @@
+{
+  "schema_version": 2,
+  "id": "aac91d3b-9fab-5df3-965b-cf995e2d2c5c",
+  "key": "k31.dynamic_and_global_tools",
+  "name": "K3.1 Pro · 动态工具 · 与顶层全局工具并存",
+  "dimension": "tools",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "必须使用 dynamic_calculate 工具计算 23*47。"
+            },
+            {
+              "role": "system",
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "dynamic_calculate",
+                    "description": "计算算术表达式",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "expression": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "expression"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "global_lookup",
+                "description": "查询固定信息",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "query"
+                  ]
+                }
+              }
+            }
+          ],
+          "max_completion_tokens": 128
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
+    }
+  }
+}

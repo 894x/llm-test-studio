@@ -17,6 +17,7 @@ import type { ProtocolObservation, AssertionResult, ProtocolColumn, Verification
 import { desktopLocale } from "@/i18n/runtime"
 import type { ReportCaseDetail, ReportEntryDetail, ReportResult } from "./data"
 import { copyReportTextToClipboard } from "./report-clipboard"
+import { CaseSeverityBadge } from "./case-severity-badge"
 
 const PAGE_SIZE = 50
 const DETAIL_PAGE_SIZE = 20
@@ -45,7 +46,7 @@ export function EntryCaseTable({
     const contentWidth = counts.reduce((total, count) => total + 18 + String(count).length * 7, 0)
     return Math.max(width, 20 + contentWidth + Math.max(0, counts.length - 1) * 8)
   }, 96)
-  const minimumTableWidth = 280 + 80 + columnWidths.reduce((total, width) => total + width, 0) + summaryWidth
+  const minimumTableWidth = 280 + 88 + 80 + columnWidths.reduce((total, width) => total + width, 0) + summaryWidth
   const visible = paginate ? entry.cases.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : entry.cases
 
   useEffect(() => {
@@ -73,12 +74,14 @@ export function EntryCaseTable({
         style={paginate ? { minWidth: minimumTableWidth } : undefined}>
         {paginate ? <colgroup>
           <col />
+          <col style={{ width: 88 }} />
           <col style={{ width: 80 }} />
           {columns.map((column, index) => <col key={column.id} style={{ width: columnWidths[index] }} />)}
           <col style={{ width: summaryWidth }} />
         </colgroup> : null}
         <TableHeader><TableRow className="hover:bg-transparent">
           <TableHead className="h-8 pl-3 text-[11px]">{t("protocolDesign.caseName")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{t("protocolDesign.severity")}</TableHead>
           <TableHead className="h-8 text-[11px]">{t("protocolDesign.verification")}</TableHead>
           {columns.map(column => <TableHead key={column.id} className="h-8 text-[11px]">{columnLabel(column, t)}</TableHead>)}
           <TableHead className="h-8 pr-3 text-[11px]">{t("protocolDesign.summary")}</TableHead>
@@ -108,16 +111,17 @@ export function EntryCaseTable({
                 </Button></TooltipTrigger>
                 <TooltipContent className="whitespace-normal [overflow-wrap:anywhere]">{caseItem.name}</TooltipContent>
               </Tooltip></TooltipProvider></TableCell>
+              <TableCell className="py-1"><CaseSeverityBadge severity={caseItem.severity} /></TableCell>
               <TableCell className="py-1"><VerificationBadge status={caseItem.verification.status} /></TableCell>
               {columns.map(column => <TableCell key={column.id} className="py-1 text-xs tabular-nums">{caseColumn(caseItem, column)}</TableCell>)}
               <TableCell className="py-1 pr-3 text-[11px]"><VerificationCounts summary={caseItem.verification} compact={paginate} /></TableCell>
             </TableRow>
-            {open ? <TableRow id={detailID} className="hover:bg-transparent"><TableCell colSpan={columns.length + 3} className="bg-muted/20 p-3">
+            {open ? <TableRow id={detailID} className="hover:bg-transparent"><TableCell colSpan={columns.length + 4} className="bg-muted/20 p-3">
               <div className="mb-2 break-all font-mono text-[10px] text-muted-foreground">{caseItem.key} · {caseItem.case_id}</div>
               <ExecutionDetails results={caseItem.request_results} paginate={paginate} />
             </TableCell></TableRow> : null}
           </Fragment>
-        }) : <TableRow><TableCell colSpan={columns.length + 3} className="py-6 text-center text-xs text-muted-foreground">{t("hierarchy.noRecordedCases")}</TableCell></TableRow>}</TableBody>
+        }) : <TableRow><TableCell colSpan={columns.length + 4} className="py-6 text-center text-xs text-muted-foreground">{t("hierarchy.noRecordedCases")}</TableCell></TableRow>}</TableBody>
       </Table>
     </div>
     {paginate ? <ResultPagination page={page} count={entry.cases.length} size={PAGE_SIZE} onPage={setPage} /> : null}

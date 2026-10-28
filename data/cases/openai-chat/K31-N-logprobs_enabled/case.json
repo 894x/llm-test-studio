@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "id": "a2de0339-09ee-52f1-9e6c-4bdc26566fa7",
+  "key": "k31.logprobs_enabled",
+  "name": "K3.1 Pro · Logprobs · logprobs=true 返回候选信息",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答字母 A。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048,
+          "logprobs": true,
+          "top_logprobs": 3
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "choices",
+          "source": "response",
+          "pointer": "/choices",
+          "operator": "non_empty"
+        },
+        {
+          "id": "logprobs",
+          "source": "response",
+          "pointer": "/choices/0/message/logprobs",
+          "operator": "exists"
+        }
+      ]
+    }
+  }
+}

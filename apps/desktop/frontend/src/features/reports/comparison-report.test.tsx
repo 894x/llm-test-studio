@@ -142,9 +142,10 @@ describe("channel comparison reports", () => {
     expect(screen.queryByText("Case 59")).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "HTML" }))
     await waitFor(() => expect(save).toHaveBeenCalledOnce())
+    await waitFor(() => expect(screen.getByRole("button", { name: "PNG" })).toBeEnabled())
     await user.click(screen.getByRole("button", { name: "折叠渠道：渠道 B" }))
     visualExport.mockImplementationOnce(async element => {
-      expect(element.querySelectorAll("thead th")).toHaveLength(8)
+      expect(element.querySelectorAll("thead th")).toHaveLength(9)
       expect(element).toHaveTextContent("Case 59")
       return { filename: "comparison.png", mediaType: "image/png", blob: new Blob(["png"]) }
     })

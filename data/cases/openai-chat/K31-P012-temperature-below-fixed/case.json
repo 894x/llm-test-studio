@@ -1,0 +1,43 @@
+{
+  "schema_version": 2,
+  "id": "26223297-164a-5b44-999b-944418b76969",
+  "key": "k31.temperature_below_fixed",
+  "name": "K3.1 Pro · 固定采样 · temperature=0.99 应拒绝",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "你好"
+            }
+          ],
+          "temperature": 0.99,
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

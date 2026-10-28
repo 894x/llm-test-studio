@@ -7,6 +7,7 @@ import type { ComparisonChannelResult, ComparisonSummary } from "@/features/comp
 import type { FormalReportDetail, ReportCaseDetail, ReportEntryDetail, ReportSnapshot } from "./data"
 import { EntryCaseTable, ExecutionDetails, VerificationBadge } from "./entry-case-table"
 import { channelVerdict } from "./report-list-items"
+import { CaseSeverityBadge } from "./case-severity-badge"
 
 export type ChannelReports = Record<string, { reportID: string; detail?: FormalReportDetail; error?: boolean }>
 const PAGE_SIZE = 50
@@ -86,9 +87,10 @@ function ComparisonCaseTable({ channels, entries, loaded, paginate }: {
           {channels.map(channel => {
             const result = row.results.get(channel.channel_id)
             return <TableCell key={channel.channel_id} className="py-1">
-              {result ? <Button variant="ghost" size="sm" className="h-auto min-h-7 max-w-full whitespace-normal"
+              {result ? <Button variant="ghost" size="sm" className="h-auto min-h-7 max-w-full flex-wrap whitespace-normal"
                 aria-expanded={expanded === id} aria-label={t("comparison.caseDetails", { channel: channel.channel_name, name: row.name })}
                 onClick={() => setExpanded(previous => previous === id ? "" : id)}>
+                <CaseSeverityBadge severity={result.severity} />
                 <VerificationBadge status={result.verification.status} />
               </Button> : <span className="text-muted-foreground">{t(loaded[channel.channel_id]?.error ? "comparison.unavailable" : loaded[channel.channel_id]?.detail ? "comparison.noResult" : "comparison.pending")}</span>}
             </TableCell>

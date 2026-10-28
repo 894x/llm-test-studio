@@ -1,0 +1,31 @@
+{
+  "file_schema_version": 1,
+  "id": "f1931c35-bb66-55e2-af3e-99c034af36e9",
+  "revision": 1,
+  "created_at": "2026-10-25T00:00:00Z",
+  "updated_at": "2026-10-25T00:00:00Z",
+  "name": "Kimi K3.1 Pro Highspeed 扩展高成本计划",
+  "protocol": "openai-chat",
+  "seed": 894,
+  "entries": [
+    {
+      "entry_id": "1295332c-af1f-5752-9ef4-1c6a0881f4b6",
+      "target_kind": "suite",
+      "target_id": "2ff75486-00d3-51e3-a6a9-a19da8490977",
+      "parameters": {},
+      "load": {
+        "mode": "fixed_concurrency",
+        "concurrency": 1,
+        "request_count": 1,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {}
+      },
+      "warmup_count": 0,
+      "settings": {}
+    }
+  ]
+}

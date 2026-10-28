@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "id": "d39bec78-6b80-53a8-8ac9-17a587b7c0ec",
+  "key": "k31.response_format_text",
+  "name": "K3.1 Pro · 结构化输出 · 显式 text 默认格式",
+  "dimension": "structured-output",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答 OK。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048,
+          "response_format": {
+            "type": "text"
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "choices",
+          "source": "response",
+          "pointer": "/choices",
+          "operator": "non_empty"
+        },
+        {
+          "id": "text",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

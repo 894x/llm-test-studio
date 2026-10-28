@@ -1,0 +1,88 @@
+{
+  "schema_version": 2,
+  "id": "bff335ed-1a2e-50e9-851d-a15bb6e1d2ee",
+  "key": "k31.must.usage_stream",
+  "name": "K3.1 Pro · 协议 · Usage 流式",
+  "dimension": "protocol",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "说你好"
+            }
+          ],
+          "max_tokens": 50,
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "stream.completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "r4",
+          "source": "metrics",
+          "operator": "gte",
+          "pointer": "/stream_frames",
+          "value": 2
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices/0/finish_reason"
+        },
+        {
+          "id": "r6",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "r9",
+          "any": [
+            {
+              "id": "r7",
+              "source": "text",
+              "operator": "non_empty",
+              "transform": "trim"
+            },
+            {
+              "id": "r8",
+              "source": "response",
+              "operator": "non_empty",
+              "pointer": "/choices/0/message/reasoning_content",
+              "transform": "trim"
+            }
+          ]
+        },
+        {
+          "id": "r10",
+          "source": "usage",
+          "operator": "type",
+          "value": "object"
+        }
+      ]
+    }
+  }
+}

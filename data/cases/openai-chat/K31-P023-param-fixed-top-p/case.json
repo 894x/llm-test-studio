@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "id": "76caff5e-3f38-5d3b-aa1c-e9a289a6af25",
+  "key": "k31.param_fixed_top_p",
+  "name": "K3.1 Pro · 参数约束 · top_p=0.95（官方固定值，应接受）",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答：你好"
+            }
+          ],
+          "top_p": 0.95,
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
+    }
+  }
+}

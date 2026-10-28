@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "id": "46891bce-6e13-585f-9e6b-536c73a27a2a",
+  "key": "k31.stop_five_items",
+  "name": "K3.1 Pro · Stop · 5 个字符串上边界",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答：你好"
+            }
+          ],
+          "stop": [
+            "stop-a",
+            "stop-b",
+            "stop-c",
+            "stop-d",
+            "stop-e"
+          ],
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
+    }
+  }
+}

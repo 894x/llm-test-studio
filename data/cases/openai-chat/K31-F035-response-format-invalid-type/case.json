@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "id": "5678e58f-2bb0-5f5c-81c5-913b16ef8dcb",
+  "key": "k31.response_format_invalid_type",
+  "name": "K3.1 Pro · 结构化输出 · response_format 非法枚举应拒绝",
+  "dimension": "structured-output",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "返回 JSON"
+            }
+          ],
+          "response_format": {
+            "type": "yaml"
+          },
+          "max_completion_tokens": 64
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

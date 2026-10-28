@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "id": "21e8433f-a410-571e-95d4-e0c9625b7cd0",
+  "key": "k31.must.usage_non_stream",
+  "name": "K3.1 Pro · 协议 · Usage 非流式",
+  "dimension": "protocol",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {
+        "prompt": {
+          "type": "string",
+          "default": "说你好"
+        }
+      },
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": {
+                "$input": "prompt"
+              }
+            }
+          ],
+          "max_tokens": 50
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "usage",
+          "operator": "gte",
+          "pointer": "/prompt_tokens",
+          "value": 1
+        },
+        {
+          "id": "r5",
+          "source": "usage",
+          "operator": "type",
+          "value": "object"
+        }
+      ]
+    }
+  }
+}

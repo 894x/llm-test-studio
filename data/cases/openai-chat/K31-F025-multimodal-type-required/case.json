@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "id": "307e3cd9-ee95-5449-91a3-47fa9380a84a",
+  "key": "k31.must.multimodal_type_required",
+  "name": "K3.1 Pro · 多模态字段 · type 必填",
+  "dimension": "multimodal",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "text": "缺少 type"
+                }
+              ]
+            }
+          ],
+          "max_tokens": 16
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

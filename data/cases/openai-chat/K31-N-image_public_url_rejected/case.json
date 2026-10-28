@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "id": "f7c58c0b-d366-59eb-a0dc-c88d0718d917",
+  "key": "k31.image_public_url_rejected",
+  "name": "K3.1 Pro · 多模态图像 · 公网 URL 应拒绝",
+  "dimension": "multimodal",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "https://example.com/image.png"
+                  }
+                },
+                {
+                  "type": "text",
+                  "text": "描述图片"
+                }
+              ]
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "pointer": "/error/message",
+          "operator": "non_empty",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

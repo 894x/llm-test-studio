@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "id": "9bdedd7d-ffeb-525b-8ece-5f02d387f1ea",
+  "key": "k31.stop_runtime_truncation",
+  "name": "K3.1 Pro · Stop · 运行时输出应在 stop 序列处截断",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "仅逐字输出 AAABBBCCC，不要空格、换行或解释。"
+            }
+          ],
+          "stop": [
+            "BBB"
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 4096
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "contains",
+          "value": "AAA"
+        },
+        {
+          "id": "r5",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "BBB"
+        },
+        {
+          "id": "r6",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/choices/0/finish_reason",
+          "value": "stop"
+        }
+      ]
+    }
+  }
+}

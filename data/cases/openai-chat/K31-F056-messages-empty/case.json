@@ -1,0 +1,37 @@
+{
+  "schema_version": 2,
+  "id": "316062aa-2071-5ead-a7bd-e0d4b100ea9c",
+  "key": "k31.messages_empty",
+  "name": "K3.1 Pro · 消息 · 空 messages 应拒绝",
+  "dimension": "messages",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [],
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

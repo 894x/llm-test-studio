@@ -198,6 +198,12 @@
   "protocolDesign": {
     "caseTable": "执行项用例结果",
     "caseName": "用例名称",
+    "severity": "等级",
+    "severityLevel": {
+      "critical": "必过项",
+      "normal": "容忍项"
+    },
+    "severityHint": "用例重要性等级，不代替本次验证结果。",
     "verification": "验证结果",
     "summary": "执行汇总",
     "verdict": {

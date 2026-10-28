@@ -90,6 +90,45 @@ func TestDetailAndExportsUseTheSameSealedReportAndRequestResults(t *testing.T) {
 	}
 }
 
+func TestFormalExportsPresentCaseSeverity(t *testing.T) {
+	detail := exportFixture(t)
+	for _, test := range []struct {
+		severity domain.CaseSeverity
+		locale   string
+		label    string
+	}{
+		{domain.CaseSeverityCritical, "zh-CN", "必过项"},
+		{domain.CaseSeverityNormal, "zh-CN", "容忍项"},
+		{domain.CaseSeverityCritical, "en-US", "Must pass"},
+		{domain.CaseSeverityNormal, "en-US", "Tolerable"},
+	} {
+		t.Run(test.locale+"/"+string(test.severity), func(t *testing.T) {
+			detail.Entries[0].Cases[0].Severity = test.severity
+			contents, err := renderHTML(detail, "severity-export", test.locale)
+			if err != nil {
+				t.Fatal(err)
+			}
+			html := string(contents)
+			for _, want := range []string{`class="severity severity-` + string(test.severity) + `"`, ">" + test.label + "</span>"} {
+				if !strings.Contains(html, want) {
+					t.Fatalf("HTML export omits severity %q: %s", want, html)
+				}
+			}
+			jsonContents, err := renderJSON(detail, "severity-export")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(jsonContents), `"severity": "`+string(test.severity)+`"`) {
+				t.Fatalf("JSON export omits severity %s", test.severity)
+			}
+			imageText := strings.Join(formalReportImageLines(detail), "\n")
+			if !strings.Contains(imageText, "SEVERITY "+strings.ToUpper(string(test.severity))+"  STATUS") {
+				t.Fatalf("PNG/PDF presentation omits severity %s:\n%s", test.severity, imageText)
+			}
+		})
+	}
+}
+
 func TestFormalHTMLAndPNGPresentationKeepRepeatedSuitesOrderedAndIsolated(t *testing.T) {
 	detail := repeatedSuiteExportFixture(t)
 	first := detail.Entries[0]

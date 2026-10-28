@@ -1,0 +1,71 @@
+{
+  "schema_version": 2,
+  "id": "775ae7b8-f550-554f-a4a6-fdf26bfacb58",
+  "key": "k31.json_schema_strict_false",
+  "name": "K3.1 Pro · 结构化输出 · strict=false 保证合法 JSON",
+  "dimension": "structured-output",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "提取：小林今年 28 岁。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048,
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "person_loose",
+              "strict": false,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "choices",
+          "source": "response",
+          "pointer": "/choices",
+          "operator": "non_empty"
+        },
+        {
+          "id": "json",
+          "source": "text",
+          "operator": "json_valid"
+        }
+      ]
+    }
+  }
+}

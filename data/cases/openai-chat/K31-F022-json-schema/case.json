@@ -1,0 +1,91 @@
+{
+  "schema_version": 2,
+  "id": "e4afd535-118b-542e-ab60-b3f4fb078fa4",
+  "key": "k31.must.json_schema",
+  "name": "K3.1 Pro · 结构化输出 · JSON Schema",
+  "dimension": "structured-output",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "小林今年 28 岁。提取姓名和年龄。"
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "person",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "age": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "name",
+                  "age"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "max_tokens": 200
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        },
+        {
+          "id": "r5",
+          "source": "text",
+          "operator": "type",
+          "value": "object",
+          "transform": "json"
+        },
+        {
+          "id": "r6",
+          "source": "text",
+          "operator": "contains",
+          "value": "name",
+          "transform": "json"
+        },
+        {
+          "id": "r7",
+          "source": "text",
+          "operator": "contains",
+          "value": "age",
+          "transform": "json"
+        }
+      ]
+    }
+  }
+}

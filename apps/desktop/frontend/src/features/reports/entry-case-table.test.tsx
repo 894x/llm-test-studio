@@ -120,10 +120,12 @@ it("shows distinct measured HTTP observations without counting warmup", () => {
     warmup_count: 1, settings: {}, parameters: {}, status: "completed", verification,
     load: { mode: "single", concurrency: 1, request_count: 3, rate_per_second: 0, duration_ms: 0, request_timeout_ms: 1000 },
     conclusion: { passed: false, verdict: "observed", issues: [] }, sla: {}, metrics: {}, timeline: [], distributions: [],
-    cases: [{ case_id: "case", revision: 1, key: "case", name: "Observed statuses", protocol: "openai-chat", verification, metrics: {}, request_results: results }],
+    cases: [{ case_id: "case", revision: 1, key: "case", name: "Observed statuses", protocol: "openai-chat", severity: "normal", verification, metrics: {}, request_results: results }],
   }
   render(<I18nextProvider i18n={createAppI18n("zh-CN")}><EntryCaseTable entry={entry} /></I18nextProvider>)
   expect(screen.getByText("400 / 200")).toBeInTheDocument()
   expect(screen.queryByText("503")).not.toBeInTheDocument()
   expect(screen.getByRole("columnheader", { name: "输出 Token" })).toBeInTheDocument()
+  expect(screen.getByRole("columnheader", { name: "等级" })).toBeInTheDocument()
+  expect(screen.getByText("容忍项")).toHaveClass("bg-info-soft", "text-info-strong")
 })

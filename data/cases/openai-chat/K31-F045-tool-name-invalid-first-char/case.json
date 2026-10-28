@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "id": "38c64ea5-7165-55fc-982a-eee93021c8c3",
+  "key": "k31.tool_name_invalid_first_char",
+  "name": "K3.1 Pro · 工具定义 · 函数名数字开头应拒绝",
+  "dimension": "tools",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "调用工具"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "1tool",
+                "description": "非法名称",
+                "parameters": {
+                  "type": "object"
+                }
+              }
+            }
+          ],
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

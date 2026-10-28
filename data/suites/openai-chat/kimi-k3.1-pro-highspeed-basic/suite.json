@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "key": "kimi-k3.1-pro-highspeed.basic",
+  "name": "Kimi K3.1 Pro Highspeed 基本功能套件",
+  "protocol": "openai-chat",
+  "description": "低成本预期成功场景，不含多模态、缓存和近 1M 输出预算。",
+  "cases": [
+    {
+      "case_id": "18d14fd4-f880-5fc0-827e-53290f5433c3"
+    },
+    {
+      "case_id": "8494305a-4e92-5eff-8337-9f87d6848b6b"
+    },
+    {
+      "case_id": "e4afd535-118b-542e-ab60-b3f4fb078fa4"
+    },
+    {
+      "case_id": "95d15f44-7ae4-5249-ac82-7923ab29f039"
+    },
+    {
+      "case_id": "06db479b-b8ae-5f66-b89f-ea2f2e37c8e9"
+    },
+    {
+      "case_id": "b6a75649-7ac6-59e2-9546-74641968f034"
+    },
+    {
+      "case_id": "5fa30a73-408e-5192-ae13-ea27463dd7c3"
+    },
+    {
+      "case_id": "bc2b3a63-35b3-5638-a22e-fcb48d08254d"
+    },
+    {
+      "case_id": "45a761f3-5675-51f6-846d-78136760adfc"
+    },
+    {
+      "case_id": "dc737346-28d0-5c0b-a9d0-759a2d60f686"
+    },
+    {
+      "case_id": "21e8433f-a410-571e-95d4-e0c9625b7cd0"
+    },
+    {
+      "case_id": "bff335ed-1a2e-50e9-851d-a15bb6e1d2ee"
+    },
+    {
+      "case_id": "7db2c266-6593-5eff-958b-98c3845d3193"
+    },
+    {
+      "case_id": "ea2c3505-1140-55cd-a2e2-1bfabb39aa8d"
+    },
+    {
+      "case_id": "b806398c-1ae6-55a2-bd7d-d2fa67a2a898"
+    },
+    {
+      "case_id": "f7a5130f-5fb0-5a3b-bf5e-a93af5ee0f92"
+    },
+    {
+      "case_id": "711b0114-e694-5bce-8459-470f9ab54139"
+    },
+    {
+      "case_id": "17d2bb69-1b6b-5c42-add1-5e72afa22fd4"
+    },
+    {
+      "case_id": "57eabcdc-7644-5895-b831-653ad9397521"
+    },
+    {
+      "case_id": "2a3861cc-c569-5bda-a6fa-e3141c6e84b1"
+    },
+    {
+      "case_id": "46891bce-6e13-585f-9e6b-536c73a27a2a"
+    },
+    {
+      "case_id": "6d166cde-f26a-5585-9e68-8ef6f11c4deb"
+    },
+    {
+      "case_id": "d59930f6-4b76-5744-a530-c13b07d49fa3"
+    },
+    {
+      "case_id": "8e33b708-06de-5b41-9814-dc3849d222c1"
+    },
+    {
+      "case_id": "acdcd5ed-8e7c-5bb8-a8d3-7f02436ba732"
+    },
+    {
+      "case_id": "c7a0ee0a-5fd2-5cb2-8542-77c08f569dbd"
+    },
+    {
+      "case_id": "5305647f-6b4c-5ce5-8ac7-4094b0ebc17b"
+    },
+    {
+      "case_id": "76caff5e-3f38-5d3b-aa1c-e9a289a6af25"
+    },
+    {
+      "case_id": "9ca25181-566b-5b4a-b466-7b8a98b6c525"
+    },
+    {
+      "case_id": "dc471237-85e8-52e7-b953-fddf2bfa9366"
+    },
+    {
+      "case_id": "d043b039-20b1-576b-9254-8190984aad6b"
+    },
+    {
+      "case_id": "9bdedd7d-ffeb-525b-8ece-5f02d387f1ea"
+    },
+    {
+      "case_id": "d39bec78-6b80-53a8-8ac9-17a587b7c0ec"
+    },
+    {
+      "case_id": "74025f8f-adf7-5576-84e8-8dd71a09c3c5"
+    },
+    {
+      "case_id": "a2de0339-09ee-52f1-9e6c-4bdc26566fa7"
+    },
+    {
+      "case_id": "52fdf949-c19e-5d5a-bef9-ad7d2972030a"
+    },
+    {
+      "case_id": "130a43ff-1d8e-56af-88c4-68a3ad669f39"
+    },
+    {
+      "case_id": "810b20bd-11aa-509c-b5b8-d703cced55b6"
+    },
+    {
+      "case_id": "775ae7b8-f550-554f-a4a6-fdf26bfacb58"
+    }
+  ],
+  "inputs": []
+}

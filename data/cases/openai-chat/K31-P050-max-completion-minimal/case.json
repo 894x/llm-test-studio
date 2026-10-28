@@ -1,0 +1,41 @@
+{
+  "schema_version": 2,
+  "id": "18d14fd4-f880-5fc0-827e-53290f5433c3",
+  "key": "k31.max_completion_minimal",
+  "name": "K3.1 Pro · 输出长度 · max_completion_tokens=1 最小代表值",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "你好"
+            }
+          ],
+          "max_completion_tokens": 1
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
+    }
+  }
+}
