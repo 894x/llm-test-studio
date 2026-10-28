@@ -249,7 +249,6 @@ func TestSnapshotRejectsInvalidConclusionAndCountRelationships(t *testing.T) {
 		{"passing failed run", func(value *ReportProjection) { value.RunStatus = domain.RunFailed }},
 		{"passing cancelled run", func(value *ReportProjection) { value.RunStatus = domain.RunCancelled }},
 		{"passing with failed case", func(value *ReportProjection) { value.FailedCaseCount = 1 }},
-		{"more failures than cases", func(value *ReportProjection) { value.Passed = false; value.FailedCaseCount = value.CaseCount + 1 }},
 		{"negative issues", func(value *ReportProjection) { value.IssueCount = -1 }},
 		{"negative cases", func(value *ReportProjection) { value.CaseCount = -1 }},
 		{"negative failed cases", func(value *ReportProjection) { value.FailedCaseCount = -1 }},
@@ -282,6 +281,25 @@ func TestSnapshotAllowsFailedAndCancelledNonPassingReports(t *testing.T) {
 		if snapshot.Reports[0].Passed {
 			t.Fatalf("status %q unexpectedly passed", status)
 		}
+	}
+}
+
+func TestSnapshotKeepsCancelledRunWithUnsummarizedRequestFailures(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 12, 0, 0, 0, time.UTC)
+	projection := validProjection(now)
+	projection.RunStatus = domain.RunCancelled
+	projection.Passed = false
+	projection.Verdict = "cancelled"
+	projection.CaseCount = 0
+	projection.FailedCaseCount = 64
+	projection.IssueCount = 0
+
+	snapshot, err := New(&fakeCatalog{projections: []ReportProjection{projection}}).Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v, want the cancelled projection to load", err)
+	}
+	if snapshot.Reports[0].CaseCount != 0 || snapshot.Reports[0].FailedCaseCount != 64 {
+		t.Fatalf("summary = %#v, want the cancelled request verdicts preserved", snapshot.Reports[0])
 	}
 }
 

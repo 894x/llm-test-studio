@@ -2,6 +2,7 @@ package runs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/url"
@@ -216,17 +217,27 @@ func (service *Preparer) BuildQuickTask(
 	return prepared, lease, nil
 }
 
+func (service *Preparer) isMissingRun(err error) bool {
+	return service.missingRun != nil && errors.Is(err, service.missingRun)
+}
+
 func (service *Preparer) quickTaskDefinitions(
 	ctx context.Context,
 	command QuickTaskCommand,
 ) (domain.Suite, []domain.TestCase, error) {
 	if command.SourceRunID != "" {
 		snapshot, err := service.quickTaskSnapshot(ctx, command.SourceRunID)
-		if err != nil {
+		switch {
+		case err == nil:
+			if snapshot.Entries[0].Suite.ID != command.SuiteID {
+				return domain.Suite{}, nil, fmt.Errorf("%w: source quick task uses a different Suite", ErrNotRunnable)
+			}
+		case service.isMissingRun(err):
+			// A persisted draft can reference a source run that no longer
+			// exists, for example after the operational database was replaced;
+			// the new task then starts from the submitted form values.
+		default:
 			return domain.Suite{}, nil, err
-		}
-		if snapshot.Entries[0].Suite.ID != command.SuiteID {
-			return domain.Suite{}, nil, fmt.Errorf("%w: source quick task uses a different Suite", ErrNotRunnable)
 		}
 	}
 	suite, err := service.quickTasks.GetSuite(ctx, command.SuiteID)
