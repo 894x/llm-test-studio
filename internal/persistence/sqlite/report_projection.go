@@ -105,6 +105,8 @@ const reportGeneratedAtSortKeySQL = `
 
 // Materialize the bounded ID window before accessing report JSON. No result,
 // evidence, artifact, revision-history or authored-catalog reads occur here.
+// Case counters use sealed case summaries; report.verification counts requests,
+// which can outnumber summaries or exist before cancellation seals any case.
 const reportProjectionQuery = `
 WITH latest_reports AS MATERIALIZED (
  SELECT id FROM reports
@@ -136,10 +138,14 @@ SELECT report.id, report.run_id, report.generated_at,
  json_extract(report.document_json, '$.conclusion.verdict'),
  json_array_length(report.document_json, '$.conclusion.issues'),
  json_array_length(report.document_json, '$.case_results'),
- json_extract(report.document_json, '$.verification.failed'),
+ (SELECT count(*) FROM json_each(report.document_json, '$.case_results') AS result
+  WHERE json_extract(result.value, '$.verification.status') = 'failed'),
  json_array_length(report.document_json, '$.attachments'),
- json_extract(report.document_json, '$.verification.passed'),
- json_extract(report.document_json, '$.verification.observed'),
- json_extract(report.document_json, '$.verification.indeterminate')
+ (SELECT count(*) FROM json_each(report.document_json, '$.case_results') AS result
+  WHERE json_extract(result.value, '$.verification.status') = 'passed'),
+ (SELECT count(*) FROM json_each(report.document_json, '$.case_results') AS result
+  WHERE json_extract(result.value, '$.verification.status') = 'not_applicable'),
+ (SELECT count(*) FROM json_each(report.document_json, '$.case_results') AS result
+  WHERE json_extract(result.value, '$.verification.status') = 'indeterminate')
 FROM latest_reports AS latest JOIN reports AS report ON report.id = latest.id
 `

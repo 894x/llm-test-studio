@@ -12,9 +12,103 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/domain"
 	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 var _ reporting.Catalog = (*persistence.Repository)(nil)
+
+func TestReportProjectionsCountCaseSummariesInsteadOfRequests(t *testing.T) {
+	for _, status := range []testspec.VerdictStatus{
+		testspec.VerdictPassed, testspec.VerdictFailed, testspec.VerdictNotApplicable, testspec.VerdictIndeterminate,
+	} {
+		for _, cancelled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/cancelled=%t", status, cancelled), func(t *testing.T) {
+				ctx := context.Background()
+				repository := openRepository(t)
+				defer repository.Close()
+				fixture := newRepositoryFixture(t)
+				createRunGraph(t, repository, fixture)
+				run := transitionRun(t, repository, fixture.run, domain.RunStarting, domain.RunRunning)
+				request := fixture.result
+				request.EvidenceIDs = []string{}
+				request.Verification = testspec.Verdict{Status: status, Assertions: []testspec.AssertionResult{}}
+				for index := range 3 {
+					request.EntityMeta = entityMeta(fmt.Sprintf("87000000-0000-4000-8000-%012d", index+1), 1)
+					request.RequestID = fmt.Sprintf("request-%d", index)
+					if err := repository.AppendResults(ctx, request); err != nil {
+						t.Fatal(err)
+					}
+				}
+				terminal := domain.RunCancelled
+				if !cancelled {
+					summary := request
+					summary.EntityMeta = fixture.result.EntityMeta
+					summary.RequestID = ""
+					marker := domain.Result{
+						EntityMeta: entityMeta("87000000-0000-4000-8000-000000000004", 1),
+						RunID:      run.Meta().ID, EntryID: request.EntryID, EntryStatus: domain.EntryExecutionCompleted,
+					}
+					if err := repository.AppendResults(ctx, summary, marker); err != nil {
+						t.Fatal(err)
+					}
+					terminal = domain.RunCompleted
+				}
+				run = transitionRun(t, repository, run, terminal)
+				generator, err := reporting.NewGenerator(reporting.GeneratorDependencies{
+					Repository: repository, Clock: multiEntryReportClock{now: repositoryEpoch.Add(time.Hour)},
+					IDFactory: func(time.Time) (string, error) { return fixture.report.ID, nil },
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := generator.Generate(ctx, run.Meta().ID); err != nil {
+					t.Fatal(err)
+				}
+				before, err := repository.GetReport(ctx, fixture.report.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				snapshot, err := reporting.New(repository).Snapshot(ctx)
+				if err != nil || len(snapshot.Reports) != 1 {
+					t.Fatalf("Snapshot() = %+v, %v", snapshot, err)
+				}
+				got := snapshot.Reports[0]
+				wantCount := uint64(1)
+				if cancelled {
+					wantCount = 0
+				}
+				counts := map[testspec.VerdictStatus]uint64{
+					testspec.VerdictPassed: got.PassedCaseCount, testspec.VerdictFailed: got.FailedCaseCount,
+					testspec.VerdictNotApplicable: got.ObservedCaseCount, testspec.VerdictIndeterminate: got.IndeterminateCaseCount,
+				}
+				if got.CaseCount != wantCount || got.RunStatus != terminal || got.Verdict != before.Conclusion.Verdict {
+					t.Fatalf("summary = %+v", got)
+				}
+				for verdict, count := range counts {
+					want := uint64(0)
+					if verdict == status {
+						want = wantCount
+					}
+					if count != want {
+						t.Fatalf("%s count = %d, want %d", verdict, count, want)
+					}
+				}
+				if got.VerifiedCaseCount != got.PassedCaseCount+got.FailedCaseCount {
+					t.Fatalf("verified case count = %d", got.VerifiedCaseCount)
+				}
+				after, err := repository.GetReport(ctx, fixture.report.ID)
+				beforeJSON, _ := json.Marshal(before)
+				afterJSON, _ := json.Marshal(after)
+				if err != nil || string(beforeJSON) != string(afterJSON) {
+					t.Fatalf("summary read changed archived report: %v", err)
+				}
+				if before.Verification.Passed+before.Verification.Failed+before.Verification.Observed+before.Verification.Indeterminate != 3 {
+					t.Fatalf("request verification was not preserved: %+v", before.Verification)
+				}
+			})
+		}
+	}
+}
 
 func TestReportProjectionsAcceptRunFailureHistory(t *testing.T) {
 	for _, test := range []struct {
