@@ -113,13 +113,16 @@ type Dependencies struct {
 	CaseTypes            *casetypes.Registry
 	Credentials          CredentialStore
 	QuickTaskCredentials credentials.Store
-	Executor             Executor
-	Clock                Clock
-	MetaFactory          MetaFactory
-	Environment          EnvironmentProvider
-	Reporter             ReportGenerator
-	ReportError          func(error)
-	ReportDiagnostic     func(Diagnostic)
+	// MissingRun declares the repository adapter's private not-found sentinel;
+	// see PreparationDependencies.MissingRun.
+	MissingRun        error
+	Executor          Executor
+	Clock             Clock
+	MetaFactory       MetaFactory
+	Environment       EnvironmentProvider
+	Reporter          ReportGenerator
+	ReportError       func(error)
+	ReportDiagnostic  func(Diagnostic)
 }
 
 type Service struct {
@@ -132,7 +135,8 @@ func New(dependencies Dependencies) (*Service, error) {
 	preparer, err := NewPreparer(PreparationDependencies{
 		Repository: dependencies.Repository, QuickTasks: dependencies.QuickTasks,
 		CaseTypes: dependencies.CaseTypes, Credentials: dependencies.Credentials,
-		QuickTaskCredentials: dependencies.QuickTaskCredentials, Clock: dependencies.Clock,
+		QuickTaskCredentials: dependencies.QuickTaskCredentials,
+		MissingRun:           dependencies.MissingRun, Clock: dependencies.Clock,
 		MetaFactory: dependencies.MetaFactory, Environment: dependencies.Environment,
 	})
 	if err != nil {

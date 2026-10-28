@@ -3,6 +3,7 @@ package runs_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -12,6 +13,15 @@ import (
 )
 
 type readOnlyPreparationRepository struct{ delegate *fakeRepository }
+
+type missingRunPreparationRepository struct {
+	readOnlyPreparationRepository
+	missing error
+}
+
+func (repository missingRunPreparationRepository) GetRun(context.Context, string) (domain.Run, error) {
+	return domain.Run{}, repository.missing
+}
 
 func (repository readOnlyPreparationRepository) GetPlan(ctx context.Context, id string) (domain.Plan, error) {
 	return repository.delegate.GetPlan(ctx, id)
@@ -127,7 +137,55 @@ func TestPreparerBuildsQuickTaskWithoutCreatingRunOrKeyringEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Test(context.Background(), ref); err == nil {
-		t.Fatal("transient preparation wrote a keyring entry")
+		if err := store.Test(context.Background(), ref); err == nil {
+			t.Fatal("transient preparation wrote a keyring entry")
+		}
+}
+
+func TestPreparerDegradesQuickTaskWithMissingSourceRun(t *testing.T) {
+	fixture := newRunFixture(t)
+	repository := &fakeRepository{fixture: fixture}
+	store := credentials.NewMemoryStore()
+	suite := quickTaskSuite(fixture)
+	missingRun := errors.New("repository record not found")
+	command := runs.QuickTaskCommand{
+		SuiteID: suite.ID, Seed: 4, RequestTimeoutSeconds: 1,
+		Model: "temporary-model", BaseURL: "http://example.test/v1", APIKey: "transient-secret",
+		SourceRunID: "99999999-9999-4999-8999-999999999999",
+		Inputs:      map[string]json.RawMessage{"prompt": json.RawMessage(`"frozen prompt"`)},
+	}
+
+	declared, err := runs.NewPreparer(runs.PreparationDependencies{
+		Repository: missingRunPreparationRepository{readOnlyPreparationRepository{delegate: repository}, missingRun},
+		QuickTasks: quickTaskCatalog{suite: suite}, Credentials: store,
+		MissingRun:  missingRun,
+		Clock:       &stepClock{next: fixture.now},
+		Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(declared.Close)
+	prepared, lease, err := declared.BuildQuickTask(context.Background(), command)
+	if err != nil {
+		t.Fatalf("BuildQuickTask(missing source) error = %v, want a fresh start", err)
+	}
+	_ = lease.Close()
+	if prepared.Meta.ID == "" || prepared.Snapshot.QuickTask == nil {
+		t.Fatalf("prepared = %#v, want a standalone quick task", prepared)
+	}
+
+	undeclared, err := runs.NewPreparer(runs.PreparationDependencies{
+		Repository: missingRunPreparationRepository{readOnlyPreparationRepository{delegate: repository}, missingRun},
+		QuickTasks: quickTaskCatalog{suite: suite}, Credentials: store,
+		Clock:       &stepClock{next: fixture.now},
+		Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(undeclared.Close)
+	if _, _, err := undeclared.BuildQuickTask(context.Background(), command); err == nil {
+		t.Fatal("BuildQuickTask(missing source) error = nil, want the repository error without a declared sentinel")
 	}
 }

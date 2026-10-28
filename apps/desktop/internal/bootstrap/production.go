@@ -242,6 +242,7 @@ func NewInitializer(options Options) bridge.Initializer {
 		runService, err := runs.New(runs.Dependencies{
 			QuickTaskCredentials: quickTaskCredentials,
 			Repository:           runtimeRepository,
+			MissingRun:          sqlite.ErrNotFound,
 			QuickTasks:           catalogRepository,
 			CaseTypes:            caseTypes,
 			Credentials:          credentialStore,
