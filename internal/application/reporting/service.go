@@ -444,9 +444,9 @@ func (projection ReportProjection) validate() error {
 	if projection.IssueCount < 0 || projection.CaseCount < 0 || projection.FailedCaseCount < 0 || projection.AttachmentCount < 0 {
 		return errors.New("report projection counts must be non-negative")
 	}
-	if projection.FailedCaseCount > projection.CaseCount {
-		return errors.New("report projection failed case count exceeds case count")
-	}
+	// Cancelled and failed runs keep request-level verdicts for cases that
+	// never reached a case-level summary, so failed verdicts may exceed the
+	// summarized case count.
 	if projection.Passed && projection.FailedCaseCount != 0 {
 		return errors.New("passing report projection contains failed cases")
 	}
