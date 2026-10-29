@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { protocolReportFixture, reportID } from "@/test/protocol-report-fixture"
-import { parseReportDetail } from "./data"
+import { parseReportDetail, parseReportSnapshot } from "./data"
 import type { ExecutionOrigin } from "./execution-origin"
 
 describe("current protocol report contract", () => {
@@ -64,5 +64,28 @@ describe("current protocol report contract", () => {
     const value = protocolReportFixture(); Object.assign(value.request_results[0].observation!, { api_key: "hidden" })
     const detail = parseReportDetail(value)
     expect(JSON.stringify(detail)).not.toContain("hidden")
+  })
+})
+
+describe("cancelled report summaries", () => {
+  const cancelledSummary = {
+    id: reportID(1), source: "run", run_id: reportID(2),
+    generated_at: "2026-10-29T03:00:00Z", run_status: "cancelled",
+    plan_name: "Regression", model_name: "gpt-test", channel_name: "primary",
+    passed: false, verdict: "cancelled", issue_count: 0,
+    case_count: 0, failed_case_count: 64,
+    passed_case_count: 0, verified_case_count: 64, observed_case_count: 0, indeterminate_case_count: 0,
+    attachment_count: 0,
+  }
+
+  it("keeps a cancelled run whose request verdicts exceed the summarized case count", () => {
+    const snapshot = parseReportSnapshot({ schema_version: 1, reports: [cancelledSummary] })
+    expect(snapshot.reports[0].case_count).toBe(0)
+    expect(snapshot.reports[0].failed_case_count).toBe(64)
+  })
+
+  it("still rejects a passing summary that contains failed cases", () => {
+    const passing = { ...cancelledSummary, passed: true, run_status: "completed", verdict: "pass" }
+    expect(() => parseReportSnapshot({ schema_version: 1, reports: [passing] })).toThrow()
   })
 })

@@ -534,6 +534,8 @@ func httpReadBoundaryRequest(
 	}
 	request.Header.Set("Authorization", "Bearer "+nodeToken)
 	request.Header.Set(jobcontract.ContractHeader, "1")
+	// Byte-boundary assertions compare exact identity bytes, size, and digest.
+	request.Header.Set("Accept-Encoding", "identity")
 	if byteRange != "" {
 		request.Header.Set("Range", byteRange)
 	}
