@@ -1,8 +1,9 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "bd551b6e-481a-5f33-8b2e-c9b9a7eb7595",
   "key": "must.tool_call",
   "name": "工具调用 · Tool Call 能力",
+  "description": "目的：用北京天气请求检查模型是否生成工具调用。前提：模型和渠道支持所选协议的工具定义；用例声明 get_weather，但不会实际查询天气。通过：Chat 检查 get_weather 调用；Responses 检查调用数量、函数名、call_id 和可解析的参数；Messages 检查至少一个工具调用及基础协议响应。范围：各协议断言不同，不执行工具、不验证实际天气，也不覆盖工具结果回传后的多轮流程。",
   "dimension": "tools",
   "enabled": true,
   "default": false,

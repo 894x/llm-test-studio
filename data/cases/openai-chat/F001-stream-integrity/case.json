@@ -1,8 +1,9 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "7df57c19-7d18-566a-998e-86342b7cee32",
   "key": "must.stream_integrity",
   "name": "协议 · Stream 完整性",
+  "description": "目的：检查一次短文本流能否按所选协议正常结束。前提：模型和渠道支持该协议的流式请求。通过：HTTP 200、流完成、内容及协议检查满足定义；Chat 还检查结束原因、帧数、标识一致性和结束后的异常内容。范围：不同协议的断言范围不同；本用例不证明长流稳定性、断网恢复或持续负载能力。",
   "dimension": "protocol",
   "enabled": true,
   "default": false,

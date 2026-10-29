@@ -22,6 +22,7 @@ func CoreCapabilities() jobcontract.RunnerCapabilities {
 			"time_slices", "normal_workload", "random_input",
 			jobcontract.FeaturePerformanceAffinity,
 			jobcontract.FeatureFunctionalProgress,
+			jobcontract.FeatureCaseDescriptions,
 		},
 	}
 }

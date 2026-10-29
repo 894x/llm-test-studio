@@ -240,6 +240,7 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   }
   const [key, setKey] = useState(item?.key ?? "")
   const [name, setName] = useState(item?.name ?? "")
+  const [description, setDescription] = useState(item?.description ?? "")
   const [dimension, setDimension] = useState(item?.dimension ?? "compatibility")
   const [enabled, setEnabled] = useState(item?.enabled ?? true)
   return <FormShell pending={pending} label={tx("desktop:catalog_save_case")} formTitle={formTitle} onSubmit={async () => {
@@ -257,6 +258,7 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
     }
     const command = {
       key: safeCatalogKey(key, tx("desktop:catalog_case_key")), name: required(name, tx("desktop:catalog_case_name")),
+      ...(description.trim() ? { description: description.trim() } : {}),
       dimension: required(dimension, tx("desktop:catalog_dimension")), enabled,
       default: item?.default ?? false, severity: item?.severity ?? "normal" as const,
       execution_mode: item?.execution_mode ?? "automatic" as const, definitions,
@@ -265,6 +267,7 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
     onSaved()
   }}>
     <div className="grid min-w-0 grid-cols-2 gap-3"><TextField label={tx("desktop:catalog_case_key")} value={key} onChange={setKey} disabled={!!item} /><TextField label={tx("desktop:catalog_case_name")} value={name} onChange={setName} /></div>
+    <TextAreaField label={t("editor.fields.caseDescription")} value={description} onChange={setDescription} monospace={false} description={t("editor.fields.caseDescriptionHint")} placeholder={t("editor.fields.descriptionTemplate")} />
     <Field><FieldLabel>{t("protocolDesign.supportedProtocols")}</FieldLabel><FieldDescription>{t("protocolDesign.supportedProtocolsHint")}</FieldDescription>
       <div className="grid grid-cols-2 gap-2">{protocolOptions.map(([value, label]) => <CheckField key={value} label={label} checked={!!drafts[value as CatalogProtocol]} onChange={checked => toggleProtocol(value as CatalogProtocol, checked)} />)}</div>
     </Field>
@@ -300,8 +303,8 @@ function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved
     <TextField label={tx("desktop:catalog_suite_key")} value={key} onChange={setKey} disabled={!!item} />
     <TextField label={tx("desktop:catalog_suite_name")} value={name} onChange={setName} />
     <SelectField label={t("common.protocol")} value={protocol} options={protocolOptions} disabled={!!item} onChange={value => { setProtocol(value as CatalogProtocol); setSelected(new Set()) }} />
-    <TextField label={t("protocolDesign.description")} value={description} onChange={setDescription} />
-    <ChoiceList multiColumn label={tx("desktop:catalog_included_cases")} values={availableCases.map(value => ({ id: value.id, label: value.name }))} selected={selected} onChange={setSelected} />
+    <TextAreaField label={t("protocolDesign.description")} value={description} onChange={setDescription} monospace={false} description={t("editor.fields.suiteDescriptionHint")} placeholder={t("editor.fields.descriptionTemplate")} />
+    <ChoiceList multiColumn label={tx("desktop:catalog_included_cases")} values={availableCases.map(value => ({ id: value.id, label: value.name, description: value.description?.trim() || t("cases.noCaseDescription") }))} selected={selected} onChange={setSelected} />
     <TextAreaField label={t("protocolDesign.mapping")} value={inputs} onChange={setInputs} description={t("protocolDesign.mappingHint")} />
   </FormShell>
 }
@@ -332,6 +335,14 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
     ...catalog.test_cases.filter(value => !!value.definitions[protocol]).map(value => [`case:${value.id}`, `${t("editor.noun.case")} · ${value.name}`] as [string, string]),
     ...catalog.suites.filter(value => value.protocol === protocol).map(value => [`suite:${value.id}`, `${t("editor.noun.suite")} · ${value.name}`] as [string, string]),
   ]
+  const targetDescription = (entry: EntryDraft) => {
+    if (entry.target_kind === "case") {
+      const testCase = catalog.test_cases.find(value => value.id === entry.target_id && !!value.definitions[protocol])
+      return testCase ? t("plans.caseDescription", { description: testCase.description?.trim() || t("cases.noCaseDescription") }) : undefined
+    }
+    const suite = entry.target_kind === "suite" ? catalog.suites.find(value => value.id === entry.target_id && value.protocol === protocol) : undefined
+    return suite ? t("plans.suiteDescription", { description: suite.description.trim() || t("cases.noSuiteDescription") }) : undefined
+  }
   const update = (index: number, patch: Partial<EntryDraft>) => setEntries(current => current.map((entry, i) => i === index ? { ...entry, ...patch } : entry))
   const move = (index: number, offset: number) => {
     setEntries(current => { const next = [...current]; [next[index], next[index + offset]] = [next[index + offset], next[index]]; return next })
@@ -399,7 +410,7 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
             setFieldErrors:action => update(index,{fieldErrors: typeof action === "function" ? action(entry.fieldErrors) : action}),
             validate:() => performanceProfileFromForm(entry.performanceForm),
           }} /> : <>
-            <SelectField label={t("protocolDesign.target")} value={entry.target_id ? `${entry.target_kind}:${entry.target_id}` : ""} options={targets} onChange={value => {
+            <SelectField label={t("protocolDesign.target")} value={entry.target_id ? `${entry.target_kind}:${entry.target_id}` : ""} options={targets} description={targetDescription(entry)} onChange={value => {
               const [kind,id] = value.split(":"); update(index,{target_kind:kind as "case" | "suite",target_id:id})
             }} />
         <div className="@container min-w-0 space-y-3">
@@ -483,33 +494,39 @@ function OptionalNumberField({ label, value, onChange }: { label: string; value?
   return <Field className="block"><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Input id={id} aria-label={label} type="number" min={1} value={value ?? ""} onChange={event => onChange(event.target.value === "" ? undefined : Number(event.target.value))} /></FieldContent></Field>
 }
 
-function TextAreaField({ fieldKey, label, value, onChange, description }: { fieldKey?: string; label: string; value: string; onChange: (value: string) => void; description?: string }) {
+function TextAreaField({ fieldKey, label, value, onChange, description, placeholder, monospace = true }: { fieldKey?: string; label: string; value: string; onChange: (value: string) => void; description?: string; placeholder?: string; monospace?: boolean }) {
   const key = fieldKey ?? label
   const validation = useCatalogValidation(key, [], label)
   const id = catalogFieldID(key)
   const errorID = `${id}-error`
-  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Textarea id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} className="min-h-24 font-mono text-xs" value={value} onChange={(e) => { validation.clear(); onChange(e.target.value) }} />{description ? <FieldDescription>{description}</FieldDescription> : null}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
+  const descriptionID = `${id}-description`
+  const describedBy = [description ? descriptionID : "", validation.invalid ? errorID : ""].filter(Boolean).join(" ") || undefined
+  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Textarea id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={describedBy} className={monospace ? "min-h-24 font-mono text-xs" : "min-h-28 text-xs leading-5"} value={value} placeholder={placeholder} onChange={(e) => { validation.clear(); onChange(e.target.value) }} />{description ? <FieldDescription id={descriptionID}>{description}</FieldDescription> : null}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
-function SelectField({ fieldKey, label, value, options, onChange, disabled = false }: { fieldKey?: string; label: string; value: string; options: readonly (readonly [string,string])[]; onChange: (value: string) => void; disabled?: boolean }) {
+function SelectField({ fieldKey, label, value, options, onChange, description, disabled = false }: { fieldKey?: string; label: string; value: string; options: readonly (readonly [string,string])[]; onChange: (value: string) => void; description?: string; disabled?: boolean }) {
   const key = fieldKey ?? label
   const validation = useCatalogValidation(key, [], label)
   const id = catalogFieldID(key)
   const errorID = `${id}-error`
-  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><SearchableSelect value={value} onValueChange={(next) => { validation.clear(); onChange(next) }} disabled={disabled} id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} className="w-full" options={[...options.map(([optionID, text]) => ({value: optionID, label: text}))]} />{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
+  const descriptionID = `${id}-description`
+  const describedBy = [description ? descriptionID : "", validation.invalid ? errorID : ""].filter(Boolean).join(" ") || undefined
+  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><SearchableSelect value={value} onValueChange={(next) => { validation.clear(); onChange(next) }} disabled={disabled} id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={describedBy} className="w-full" options={[...options.map(([optionID, text]) => ({value: optionID, label: text}))]} />{description ? <FieldDescription id={descriptionID} className="whitespace-pre-wrap [overflow-wrap:anywhere]">{description}</FieldDescription> : null}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
-function CheckField({ fieldKey, label, checked, onChange, clearFields = [], controlID, disabled }: { fieldKey?: string; label: string; checked: boolean; onChange: (value: boolean) => void; clearFields?: string[]; controlID?: string; disabled?: boolean }) {
+function CheckField({ fieldKey, label, checked, onChange, clearFields = [], controlID, disabled, description }: { fieldKey?: string; label: string; checked: boolean; onChange: (value: boolean) => void; clearFields?: string[]; controlID?: string; disabled?: boolean; description?: string }) {
   const key = fieldKey ?? label
   const validation = useCatalogValidation(key, clearFields, label)
   const id = controlID ?? `${catalogFieldID(key)}-check`
   const errorID = `${id}-error`
-  return <Field data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><Checkbox id={id} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} checked={checked} disabled={disabled} onCheckedChange={(value) => { validation.clear(); onChange(value === true) }} /><FieldContent><FieldLabel htmlFor={id}>{label}</FieldLabel>{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
+  const descriptionID = `${id}-description`
+  const describedBy = [description ? descriptionID : "", validation.invalid ? errorID : ""].filter(Boolean).join(" ") || undefined
+  return <Field data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><Checkbox id={id} aria-invalid={validation.invalid || undefined} aria-describedby={describedBy} checked={checked} disabled={disabled} onCheckedChange={(value) => { validation.clear(); onChange(value === true) }} /><FieldContent><FieldLabel htmlFor={id}>{label}</FieldLabel>{description ? <FieldDescription id={descriptionID} className="whitespace-pre-wrap [overflow-wrap:anywhere]">{description}</FieldDescription> : null}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
-function ChoiceList({ fieldKey, label, values, selected, onChange, clearFields = [], multiColumn = false }: { multiColumn?: boolean; fieldKey?: string; label: string; values: {id:string;label:string}[]; selected: Set<string>; onChange: (value: Set<string>) => void; clearFields?: string[] }) {
+function ChoiceList({ fieldKey, label, values, selected, onChange, clearFields = [], multiColumn = false }: { multiColumn?: boolean; fieldKey?: string; label: string; values: {id:string;label:string;description?:string}[]; selected: Set<string>; onChange: (value: Set<string>) => void; clearFields?: string[] }) {
   const { t: tx } = useTranslation()
   const key = fieldKey ?? label
   const validation = useCatalogValidation(key, clearFields, label)
   const errorID = `${catalogFieldID(key)}-error`
-  return <fieldset className="space-y-2 rounded-lg border p-3 [&>legend]:mb-0" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-key={key} data-field-name={label}><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? <div className={multiColumn ? "grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-x-4 gap-y-2 [&>[data-slot=field]]:min-w-0 [&_[data-slot=field-label]]:[overflow-wrap:anywhere]" : "space-y-2"}>{values.map(value => <CheckField key={value.id} fieldKey={`${key}.${value.id}`} controlID={`${catalogFieldID(key)}-${encodeURIComponent(value.id)}-check`} label={value.label} checked={selected.has(value.id)} onChange={(checked) => { validation.clear(); const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />)}</div> : <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription>}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</fieldset>
+  return <fieldset className="space-y-2 rounded-lg border p-3 [&>legend]:mb-0" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-key={key} data-field-name={label}><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? <div className={multiColumn ? "grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-x-4 gap-y-2 [&>[data-slot=field]]:min-w-0 [&_[data-slot=field-label]]:[overflow-wrap:anywhere]" : "space-y-2"}>{values.map(value => <CheckField key={value.id} fieldKey={`${key}.${value.id}`} controlID={`${catalogFieldID(key)}-${encodeURIComponent(value.id)}-check`} label={value.label} description={value.description} checked={selected.has(value.id)} onChange={(checked) => { validation.clear(); const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />)}</div> : <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription>}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</fieldset>
 }
 
 class FormValidationError extends Error {

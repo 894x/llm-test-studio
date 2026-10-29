@@ -3,7 +3,7 @@
   "key": "anthropic-messages.connectivity",
   "name": "Anthropic Messages 连通性测试",
   "protocol": "anthropic-messages",
-  "description": "使用同一组 Case 的原生协议配置。",
+  "description": "目的：用一次短文本请求检查 Anthropic Messages 基础连通性。前提：已配置支持该协议的模型、渠道和凭据。通过：非流式 Usage 用例返回 HTTP 200、message 类型、结束原因及非空文本，并满足输入、输出用量断言。范围：仅含一个非流式用例，不覆盖流式、工具、图像、分词校准、精确计费或持续性能。",
   "cases": [
     {
       "case_id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96"

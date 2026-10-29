@@ -18,13 +18,16 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-const CurrentFilesystemSchemaVersion = 2
+const CurrentFilesystemSchemaVersion = 3
+
+const legacyFilesystemSchemaVersion = 2
 
 type shareableFilesystemCase struct {
 	SchemaVersion int                        `json:"schema_version"`
 	ID            string                     `json:"id"`
 	Key           string                     `json:"key"`
 	Name          string                     `json:"name"`
+	Description   string                     `json:"description,omitempty"`
 	Dimension     string                     `json:"dimension"`
 	Enabled       bool                       `json:"enabled"`
 	Default       bool                       `json:"default"`
@@ -37,6 +40,7 @@ type convertedCase struct {
 	SemanticSHA256 string
 	Key            string
 	Name           string
+	Description    string
 	Dimension      string
 	Enabled        bool
 	Default        bool
@@ -46,7 +50,7 @@ type convertedCase struct {
 	ID             string
 }
 
-// DecodeFilesystemCase accepts the current shareable case document only.
+// DecodeFilesystemCase accepts schema 2 and schema 3 shareable Case documents.
 func DecodeFilesystemCase(sourcePath string, raw []byte) (domain.TestCase, error) {
 	candidate, err := convertFilesystemCase(sourcePath, raw)
 	if err != nil {
@@ -78,12 +82,7 @@ func EncodeFilesystemCase(testCase domain.TestCase) ([]byte, error) {
 	if err := casetypes.MustBuiltinRegistry().ValidateDefinitions(testCase.Definitions); err != nil {
 		return nil, err
 	}
-	payload := shareableFilesystemCase{
-		SchemaVersion: CurrentFilesystemSchemaVersion, ID: testCase.ID,
-		Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
-		Enabled: testCase.Enabled, Default: testCase.Default,
-		Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode, Definitions: testCase.Definitions,
-	}
+	payload := filesystemPayload(testCase)
 	return json.MarshalIndent(payload, "", "  ")
 }
 
@@ -93,14 +92,34 @@ func convertFilesystemCase(sourcePath string, raw []byte) (convertedCase, error)
 	}
 	var payload shareableFilesystemCase
 	if err := decodeStrictJSON(raw, &payload); err != nil {
-		return convertedCase{}, fmt.Errorf("invalid filesystem Case; use schema_version 2 with id and definitions: %w", err)
+		return convertedCase{}, fmt.Errorf(
+			"invalid filesystem Case; use schema_version 2 with id and definitions, or schema_version 3 with description: %w",
+			err,
+		)
 	}
-	if payload.SchemaVersion != CurrentFilesystemSchemaVersion {
-		return convertedCase{}, errors.New("unsupported filesystem case format; explicitly upgrade to schema_version 2 with id and protocol-keyed definitions")
+	switch payload.SchemaVersion {
+	case legacyFilesystemSchemaVersion:
+		// Schema 2 is frozen: even an empty or null new field requires schema 3.
+		var fields struct {
+			Description json.RawMessage `json:"description"`
+		}
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return convertedCase{}, err
+		}
+		if fields.Description != nil {
+			return convertedCase{}, errors.New("filesystem case description requires schema_version 3")
+		}
+	case CurrentFilesystemSchemaVersion:
+		if strings.TrimSpace(payload.Description) == "" {
+			return convertedCase{}, errors.New("schema_version 3 filesystem case requires a non-empty description")
+		}
+	default:
+		return convertedCase{}, errors.New("unsupported filesystem case format; supported schema_version values are 2 and 3")
 	}
 	entity := domain.TestCase{
 		Key: payload.Key, Name: payload.Name, Dimension: payload.Dimension,
-		Enabled: payload.Enabled, Default: payload.Default, Severity: payload.Severity,
+		Description: payload.Description,
+		Enabled:     payload.Enabled, Default: payload.Default, Severity: payload.Severity,
 		ExecutionMode: payload.ExecutionMode, Definitions: payload.Definitions,
 	}
 	stamp := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -118,7 +137,8 @@ func convertFilesystemCase(sourcePath string, raw []byte) (convertedCase, error)
 	candidate := convertedCase{
 		SemanticSHA256: sha256Hex(semantic), ID: entity.ID,
 		Key: entity.Key, Name: entity.Name, Dimension: entity.Dimension,
-		Enabled: entity.Enabled, Default: entity.Default, Severity: entity.Severity,
+		Description: entity.Description,
+		Enabled:     entity.Enabled, Default: entity.Default, Severity: entity.Severity,
 		ExecutionMode: entity.ExecutionMode, Definitions: entity.Definitions,
 	}
 	return candidate, nil
@@ -127,7 +147,8 @@ func convertFilesystemCase(sourcePath string, raw []byte) (convertedCase, error)
 func (candidate convertedCase) materialize(meta domain.EntityMeta) domain.TestCase {
 	return domain.TestCase{
 		EntityMeta: meta, Key: candidate.Key, Name: candidate.Name, Dimension: candidate.Dimension,
-		Enabled: candidate.Enabled, Default: candidate.Default,
+		Description: candidate.Description,
+		Enabled:     candidate.Enabled, Default: candidate.Default,
 		Severity: candidate.Severity, ExecutionMode: candidate.ExecutionMode, Definitions: candidate.Definitions,
 	}
 }
@@ -138,12 +159,7 @@ func sha256Hex(value []byte) string {
 }
 
 func materializedHash(testCase domain.TestCase) (string, error) {
-	payload := shareableFilesystemCase{
-		SchemaVersion: CurrentFilesystemSchemaVersion, ID: testCase.ID,
-		Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
-		Enabled: testCase.Enabled, Default: testCase.Default,
-		Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode, Definitions: testCase.Definitions,
-	}
+	payload := filesystemPayload(testCase)
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
@@ -153,6 +169,19 @@ func materializedHash(testCase domain.TestCase) (string, error) {
 		return "", err
 	}
 	return sha256Hex(canonical), nil
+}
+
+func filesystemPayload(testCase domain.TestCase) shareableFilesystemCase {
+	version := legacyFilesystemSchemaVersion
+	if testCase.Description != "" {
+		version = CurrentFilesystemSchemaVersion
+	}
+	return shareableFilesystemCase{
+		SchemaVersion: version, ID: testCase.ID,
+		Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
+		Description: testCase.Description, Enabled: testCase.Enabled, Default: testCase.Default,
+		Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode, Definitions: testCase.Definitions,
+	}
 }
 
 func MaterializedSHA256(testCase domain.TestCase) (string, error) {

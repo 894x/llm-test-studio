@@ -58,6 +58,7 @@ type Case struct {
 	Directory     string                     `json:"directory"`
 	Key           string                     `json:"key"`
 	Name          string                     `json:"name"`
+	Description   string                     `json:"description,omitempty"`
 	Dimension     string                     `json:"dimension"`
 	Enabled       bool                       `json:"enabled"`
 	Default       bool                       `json:"default"`
@@ -116,7 +117,8 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		groups[len(groups)-1].Cases = append(groups[len(groups)-1].Cases, Case{
 			ID: testCase.ID, Revision: testCase.Revision, Group: entry.Group, Directory: entry.Directory,
 			Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
-			Enabled: testCase.Enabled, Default: testCase.Default, Severity: testCase.Severity,
+			Description: testCase.Description,
+			Enabled:     testCase.Enabled, Default: testCase.Default, Severity: testCase.Severity,
 			ExecutionMode: testCase.ExecutionMode, Source: entry.Source, Definitions: testCase.Definitions.Clone(),
 		})
 	}

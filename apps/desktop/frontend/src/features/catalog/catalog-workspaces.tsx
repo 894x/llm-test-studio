@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { NewRunSheet } from "@/features/runs/run-workspace"
 import type { StartRunTargetCommand } from "@/features/runs/data"
 import { PerformanceProfileSummary } from "@/features/quick-test/performance-profile-summary"
@@ -51,10 +51,26 @@ interface CatalogWorkspaceProps {
   mutationError: string
 }
 
-export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPending, mutationError }: CatalogWorkspaceProps) {
+export interface ModelChannelNavigationIntent {
+  sequence: number
+  tab: "models" | "channels" | "mappings" | "matrix"
+}
+
+export interface CasesNavigationIntent {
+  sequence: number
+  tab: "cases" | "suites"
+}
+
+export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPending, mutationError, navigationIntent }: CatalogWorkspaceProps & { navigationIntent?: ModelChannelNavigationIntent }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("catalog")
-  const [tab, setTab] = useState<"models" | "channels" | "mappings" | "matrix">("models")
+  const [tab, setTab] = useState<ModelChannelNavigationIntent["tab"]>(navigationIntent?.tab ?? "models")
+  const lastNavigationSequence = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (!navigationIntent || navigationIntent.sequence === lastNavigationSequence.current) return
+    lastNavigationSequence.current = navigationIntent.sequence
+    setTab(navigationIntent.tab)
+  }, [navigationIntent])
   const [selectedModelID, setSelectedModelID] = useState("")
   const [selectedChannelID, setSelectedChannelID] = useState("")
   const [selectedMappingID, setSelectedMappingID] = useState("")
@@ -530,17 +546,23 @@ function ChannelInspector({
   )
 }
 
-export function CasesWorkspace({ catalog, actions, mutate, mutationPending, mutationError }: CatalogWorkspaceProps) {
+export function CasesWorkspace({ catalog, actions, mutate, mutationPending, mutationError, navigationIntent }: CatalogWorkspaceProps & { navigationIntent?: CasesNavigationIntent }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("catalog")
-  const [tab, setTab] = useState<"cases" | "suites">("cases")
+  const [tab, setTab] = useState<CasesNavigationIntent["tab"]>(navigationIntent?.tab ?? "cases")
+  const lastNavigationSequence = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (!navigationIntent || navigationIntent.sequence === lastNavigationSequence.current) return
+    lastNavigationSequence.current = navigationIntent.sequence
+    setTab(navigationIntent.tab)
+  }, [navigationIntent])
   const [selectedID, setSelectedID] = useState("")
   const [selectedSuiteID, setSelectedSuiteID] = useState("")
   const caseSearch = useCatalogSearch(catalog.test_cases, (testCase) => [
-    testCase.key, testCase.name, ...Object.keys(testCase.definitions), caseProtocolLabel(testCase), t(casePolicyKey(testCase)),
+    testCase.key, testCase.name, testCase.description ?? "", ...Object.keys(testCase.definitions), caseProtocolLabel(testCase), t(casePolicyKey(testCase)),
   ])
   const suiteSearch = useCatalogSearch(catalog.suites, (suite) => [
-    suite.key, suite.name, suite.protocol, PROTOCOL_LABELS[suite.protocol],
+    suite.key, suite.name, suite.description, suite.protocol, PROTOCOL_LABELS[suite.protocol],
   ])
   const search = tab === "cases" ? caseSearch : suiteSearch
   const selected = caseSearch.rows.find((item) => item.id === selectedID) ?? caseSearch.rows[0]
@@ -588,6 +610,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
                       {testCase.name}
                     </Button>
                     <div className="mt-0.5 text-[10px] text-muted-foreground">{testCase.key}</div>
+                    <p className="mt-1 whitespace-pre-wrap text-[11px] leading-4 text-muted-foreground [overflow-wrap:anywhere]">{testCase.description?.trim() || t("cases.noCaseDescription")}</p>
                   </TableCell>
                   <TableCell className="py-1 text-[11px]">{caseProtocolLabel(testCase)}</TableCell>
                   <TableCell className="py-1">
@@ -607,7 +630,26 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
 function SuiteTable({ suites, selectedID, onSelect }: { suites: CatalogSuite[]; selectedID: string; onSelect: (id:string) => void }) {
   const { t } = useTranslation("catalog")
   if (!suites.length) return <CatalogEmpty title={t("cases.suiteEmpty")} description={t("cases.suiteEmptyDescription")} />
-  return <ScrollArea className="min-h-0 flex-1 px-4"><Table aria-label={t("cases.suiteAria")} className="table-fixed"><TableHeader><TableRow><TableHead className="h-8 pl-2 text-[11px]">{t("common.suite")}</TableHead><TableHead className="h-8 w-24 text-right text-[11px]">{t("cases.caseCount")}</TableHead></TableRow></TableHeader><TableBody>{suites.map(suite => <TableRow key={suite.id} data-state={suite.id === selectedID ? "selected" : undefined} onClick={() => onSelect(suite.id)}><TableCell className="pl-2 text-xs">{suite.name}</TableCell><TableCell className="text-right text-xs tabular-nums">{suite.case_count}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
+  return <ScrollArea className="min-h-0 flex-1 px-4">
+    <Table aria-label={t("cases.suiteAria")} className="table-fixed">
+      <TableHeader><TableRow>
+        <TableHead className="h-8 pl-2 text-[11px]">{t("common.suite")}</TableHead>
+        <TableHead className="h-8 w-24 text-right text-[11px]">{t("cases.caseCount")}</TableHead>
+      </TableRow></TableHeader>
+      <TableBody>{suites.map(suite => <TableRow key={suite.id}
+        aria-selected={suite.id === selectedID}
+        data-state={suite.id === selectedID ? "selected" : undefined}
+        onClick={() => onSelect(suite.id)}>
+        <TableCell className="min-w-0 py-2 pl-2 text-xs">
+          <Button variant="link" size="sm" className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs [overflow-wrap:anywhere] no-underline hover:no-underline" aria-label={t("cases.viewSuite", { name: suite.name })}>
+            {suite.name}
+          </Button>
+          <p className="mt-1 whitespace-pre-wrap text-[11px] leading-4 text-muted-foreground [overflow-wrap:anywhere]">{suite.description.trim() || t("cases.noSuiteDescription")}</p>
+        </TableCell>
+        <TableCell className="text-right text-xs tabular-nums">{suite.case_count}</TableCell>
+      </TableRow>)}</TableBody>
+    </Table>
+  </ScrollArea>
 }
 
 function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: CatalogSnapshot }) {
@@ -619,6 +661,7 @@ function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: Cata
     <Separator />
     <dl className="space-y-1 px-4 py-2">
       <InspectorRow label={t("common.version")} value={`r${suite.revision}`} />
+      <CatalogDescriptionRow description={suite.description.trim() || t("cases.noSuiteDescription")} />
       <div data-slot="inspector-definition-row" className="py-2">
         <dt className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
           <span>{t("cases.pinnedCases")}</span>
@@ -654,8 +697,8 @@ function CaseInspector({ testCase, catalog }: { testCase: CatalogTestCase; catal
       <Separator />
       <dl className="space-y-1 px-4 py-2">
         <InspectorRow label={tx("desktop:catalog_source_key")} value={testCase.key} />
-        <InspectorRow label={tx("desktop:catalog_protocol")} value={testCase.key} />
-        <InspectorRow label={tx("desktop:catalog_applicable_models")} value={caseProtocolLabel(testCase)} />
+        <CatalogDescriptionRow description={testCase.description?.trim() || t("cases.noCaseDescription")} />
+        <InspectorRow label={t("protocolDesign.supportedProtocols")} value={caseProtocolLabel(testCase)} />
         <InspectorRow label={tx("desktop:catalog_dimension")} value={testCase.dimension} />
         <InspectorRow label={tx("desktop:catalog_execution_policy")} value={t(casePolicyKey(testCase))} />
         <InspectorRow label={tx("desktop:catalog_severity")} value={testCase.severity === "critical" ? tx("desktop:catalog_critical") : tx("desktop:catalog_normal")} />
@@ -664,6 +707,14 @@ function CaseInspector({ testCase, catalog }: { testCase: CatalogTestCase; catal
       </dl>
     </>
   )
+}
+
+function CatalogDescriptionRow({ description }: { description: string }) {
+  const { t } = useTranslation("catalog")
+  return <div data-slot="inspector-definition-row" className="min-w-0 py-2 [overflow-wrap:anywhere]">
+    <dt className="text-[11px] text-muted-foreground">{t("protocolDesign.description")}</dt>
+    <dd className="mt-1 min-w-0 whitespace-pre-wrap text-xs font-medium">{description}</dd>
+  </div>
 }
 
 function CasePolicyBadge({ testCase }: { testCase: CatalogTestCase }) {

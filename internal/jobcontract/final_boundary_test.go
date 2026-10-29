@@ -100,7 +100,7 @@ func completeTaskCapabilities() RunnerCapabilities {
 		JobKinds: []Kind{KindRun, KindPerformance, KindComparison}, Protocols: []string{"openai-chat"},
 		Features: []string{
 			FeatureExecutionOrigin, FeatureMixedPlanItems, "warmup", "ramp", "capacity", "open_loop", "time_slices",
-			"normal_workload", "random_input", "assets", FeaturePerformanceAffinity,
+			"normal_workload", "random_input", "assets", FeaturePerformanceAffinity, FeatureCaseDescriptions,
 		},
 	}
 }

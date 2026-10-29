@@ -16,6 +16,66 @@ const props = {
 }
 
 describe("Catalog table search", () => {
+  it("applies repeated case and suite drilldowns without clearing their search or selection", async () => {
+    const user = userEvent.setup()
+    const view = render(<CasesWorkspace {...props} navigationIntent={{ sequence: 1, tab: "suites" }} />)
+    expect(screen.getByRole("tab", { name: /套件/ })).toHaveAttribute("aria-selected", "true")
+    await user.type(screen.getByRole("searchbox", { name: "搜索套件" }), "openai")
+    await user.click(screen.getByRole("button", { name: `查看套件 ${FIXTURE_CATALOG.suites[1].name}` }))
+    await user.click(screen.getByRole("tab", { name: /用例 4/ }))
+    await user.type(screen.getByRole("searchbox", { name: "搜索用例" }), "T037")
+    view.rerender(<CasesWorkspace {...props} navigationIntent={{ sequence: 2, tab: "suites" }} />)
+    expect(screen.getByRole("searchbox", { name: "搜索套件" })).toHaveValue("openai")
+    expect(screen.getByRole("row", { selected: true })).toHaveTextContent(FIXTURE_CATALOG.suites[1].name)
+    await user.click(screen.getByRole("tab", { name: /用例 4/ }))
+    view.rerender(<CasesWorkspace {...props} navigationIntent={{ sequence: 2, tab: "suites" }} />)
+    expect(screen.getByRole("searchbox", { name: "搜索用例" })).toHaveValue("T037")
+    expect(screen.getByRole("row", { selected: true })).toHaveTextContent("工具调用")
+    view.rerender(<CasesWorkspace {...props} navigationIntent={{ sequence: 3, tab: "suites" }} />)
+    expect(screen.getByRole("searchbox", { name: "搜索套件" })).toHaveValue("openai")
+    expect(screen.getByRole("row", { selected: true })).toHaveTextContent(FIXTURE_CATALOG.suites[1].name)
+  })
+
+  it("applies model and channel drilldowns once per intent while preserving tab context", async () => {
+    const user = userEvent.setup()
+    const view = render(<ModelChannelWorkspace {...props} navigationIntent={{ sequence: 1, tab: "channels" }} />)
+    await user.type(screen.getByRole("searchbox", { name: "搜索渠道" }), "https")
+    await user.click(screen.getByRole("button", { name: `查看渠道 ${FIXTURE_CATALOG.channels[1].name}` }))
+    await user.click(screen.getByRole("tab", { name: /^模型/ }))
+    await user.type(screen.getByRole("searchbox", { name: "搜索模型" }), "QWEN3")
+    view.rerender(<ModelChannelWorkspace {...props} navigationIntent={{ sequence: 2, tab: "channels" }} />)
+    expect(screen.getByRole("searchbox", { name: "搜索渠道" })).toHaveValue("https")
+    expect(screen.getByRole("row", { selected: true })).toHaveTextContent(FIXTURE_CATALOG.channels[1].name)
+    await user.click(screen.getByRole("tab", { name: /^模型/ }))
+    view.rerender(<ModelChannelWorkspace {...props} navigationIntent={{ sequence: 2, tab: "channels" }} />)
+    expect(screen.getByRole("searchbox", { name: "搜索模型" })).toHaveValue("QWEN3")
+    view.rerender(<ModelChannelWorkspace {...props} navigationIntent={{ sequence: 3, tab: "mappings" }} />)
+    expect(screen.getByRole("searchbox", { name: "搜索映射" })).toBeInTheDocument()
+    view.rerender(<ModelChannelWorkspace {...props} navigationIntent={{ sequence: 4, tab: "matrix" }} />)
+    expect(screen.getByRole("searchbox", { name: "搜索模型渠道矩阵" })).toBeInTheDocument()
+    view.rerender(<ModelChannelWorkspace {...props} navigationIntent={{ sequence: 5, tab: "channels" }} />)
+    expect(screen.getByRole("searchbox", { name: "搜索渠道" })).toHaveValue("https")
+    expect(screen.getByRole("row", { selected: true })).toHaveTextContent(FIXTURE_CATALOG.channels[1].name)
+  })
+
+  it("shows and searches case explanations with a fallback for missing descriptions", async () => {
+    const user = userEvent.setup()
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.test_cases[0].description = "目的：验证消息响应。\n限制：单次请求，不代表持续容量。"
+    delete catalog.test_cases[1].description
+    render(<CasesWorkspace {...props} catalog={catalog} />)
+    const table = screen.getByRole("table", { name: "测试用例目录" })
+    expect(within(table).getByText(/目的：验证消息响应。/)).toHaveClass("whitespace-pre-wrap")
+    expect(within(table).getAllByText("暂无用例说明").length).toBeGreaterThan(0)
+    expect(screen.getByRole("complementary", { name: "用例详情" })).toHaveTextContent("不代表持续容量")
+    await user.type(screen.getByRole("searchbox", { name: "搜索用例" }), "持续容量")
+    expect(within(table).getAllByRole("row")).toHaveLength(2)
+    expect(screen.getByRole("row", { selected: true })).toHaveTextContent(catalog.test_cases[0].name)
+    await user.click(screen.getByRole("button", { name: "清空搜索" }))
+    await user.click(screen.getByRole("button", { name: `查看用例 ${catalog.test_cases[1].name}` }))
+    expect(screen.getByRole("complementary", { name: "用例详情" })).toHaveTextContent("暂无用例说明")
+  })
+
   it("finds case keys, translated types, protocols, and suite references without searching request payloads", async () => {
     const user = userEvent.setup()
     render(<CasesWorkspace {...props} />)
@@ -69,6 +129,34 @@ describe("Catalog table search", () => {
     await user.click(screen.getByRole("button", { name: "清空搜索" }))
     expect(screen.getByRole("searchbox")).toHaveFocus()
     expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(3)
+  })
+
+  it("shows and searches suite descriptions while keeping the selected details in sync", async () => {
+    const user = userEvent.setup()
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.suites[0].description = "  "
+    catalog.suites[1].description = "验证消息响应，并检查协议连通性。"
+    render(<CasesWorkspace {...props} catalog={catalog} />)
+    const caseDetails = screen.getByRole("complementary", { name: "用例详情" })
+    expect(within(caseDetails).getByText("支持的协议")).toBeInTheDocument()
+    expect(within(caseDetails).queryByText("适用模型")).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("tab", { name: /套件/ }))
+    const table = screen.getByRole("table", { name: "测试套件目录" })
+    expect(within(table).getByText("验证消息响应，并检查协议连通性。")).toBeInTheDocument()
+    expect(within(table).getByText("暂无套件说明")).toBeInTheDocument()
+    expect(screen.getByRole("complementary", { name: "套件详情" })).toHaveTextContent("暂无套件说明")
+
+    await user.type(screen.getByRole("searchbox", { name: "搜索套件" }), "消息响应")
+    expect(within(table).getAllByRole("row")).toHaveLength(2)
+    expect(screen.getByRole("row", { selected: true })).toHaveTextContent(catalog.suites[1].name)
+    expect(screen.getByRole("complementary", { name: "套件详情" })).toHaveTextContent(catalog.suites[1].description)
+    await user.click(screen.getByRole("button", { name: "清空搜索" }))
+    const firstSuite = screen.getByRole("button", { name: `查看套件 ${catalog.suites[0].name}` })
+    firstSuite.focus()
+    await user.keyboard("{Enter}")
+    expect(screen.getByRole("row", { selected: true })).toHaveTextContent(catalog.suites[0].name)
+    expect(screen.getByRole("complementary", { name: "套件详情" })).toHaveTextContent("暂无套件说明")
   })
 
   it("updates visible selection when a catalog refresh removes the matching case", async () => {

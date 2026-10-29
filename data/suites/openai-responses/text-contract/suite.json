@@ -3,7 +3,7 @@
   "key": "openai-responses.text-contract",
   "name": "OpenAI Responses 文本协议契约",
   "protocol": "openai-responses",
-  "description": "使用同一组 Case 的原生协议配置。",
+  "description": "目的：检查 OpenAI Responses 常用文本交互，包含同步响应、短流完整性、非流式与流式 Usage、工具调用共五个用例。前提：已配置支持相应文本、流式和工具请求的模型与渠道。通过：五个成员各自的协议及业务断言通过。范围：用量字段允许按定义缺失；工具仅检查生成调用，不执行工具；不覆盖图像、完整参数边界、精确计费或持续负载。",
   "cases": [
     {
       "case_id": "062b66ef-8d2e-59a1-95cb-dadf03dfe264"

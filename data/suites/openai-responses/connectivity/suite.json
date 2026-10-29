@@ -3,7 +3,7 @@
   "key": "openai-responses.connectivity",
   "name": "OpenAI Responses 连通性测试",
   "protocol": "openai-responses",
-  "description": "使用同一组 Case 的原生协议配置。",
+  "description": "目的：用一次短文本请求检查 OpenAI Responses 基础连通性。前提：已配置支持该协议的模型、渠道和凭据。通过：非流式 Usage 用例返回 HTTP 200、非空文本且无协议问题；返回的用量字段按定义检查类型和加和关系，缺失字段允许通过。范围：不保证必返用量，不覆盖流式、工具、图像、精确计费或持续性能。",
   "cases": [
     {
       "case_id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96"

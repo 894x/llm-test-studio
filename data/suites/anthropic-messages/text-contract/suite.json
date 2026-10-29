@@ -3,7 +3,7 @@
   "key": "anthropic-messages.text-contract",
   "name": "Anthropic Messages 文本协议契约",
   "protocol": "anthropic-messages",
-  "description": "使用同一组 Case 的原生协议配置。",
+  "description": "目的：检查 Anthropic Messages 常用文本交互，包含同步响应、短流完整性、非流式与流式 Usage、工具调用共五个用例。前提：已配置支持相应文本、流式和工具请求的模型与渠道。通过：五个成员各自的状态、消息、文本、流式或用量断言通过，工具用例至少产生一个调用。范围：不实际执行工具，不覆盖工具结果回传、图像、完整参数边界、精确计费或持续负载。",
   "cases": [
     {
       "case_id": "062b66ef-8d2e-59a1-95cb-dadf03dfe264"

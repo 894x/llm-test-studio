@@ -1,8 +1,9 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "18ed9e4f-9572-53ca-952c-24ef738261e3",
   "key": "must.json_object",
   "name": "结构化输出 · JSON Object",
+  "description": "目的：检查 JSON Object 请求在当前协议定义下的处理行为。前提：Chat 正向检测需要支持 response_format.json_object；Responses 定义发送带 schema 的 json_object 形状作为拒绝场景。通过：Chat 返回成功且文本可解析为含 name、age 的对象；Responses 返回 HTTP 400 且 error.message 为字符串。范围：Chat 不校验字段值或完整 Schema；Responses 的通过表示按预期拒绝。",
   "dimension": "structured-output",
   "enabled": true,
   "default": false,

@@ -3,7 +3,7 @@
   "key": "openai-chat.connectivity",
   "name": "OpenAI Chat 连通性测试",
   "protocol": "openai-chat",
-  "description": "发送一条消息并检查同步响应。",
+  "description": "目的：用一条短消息检查 OpenAI Chat 基础连通性。前提：已配置模型、渠道和凭据；可修改套件提示词。通过：同步响应检测用例的 HTTP 状态、choices 和非空文本断言通过。范围：仅含一个同步用例，不校验是否严格回答数字 5，不覆盖流式、工具、图像、计费或持续性能。",
   "cases": [
     {
       "case_id": "062b66ef-8d2e-59a1-95cb-dadf03dfe264"

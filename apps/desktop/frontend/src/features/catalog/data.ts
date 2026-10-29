@@ -57,6 +57,7 @@ export interface CatalogTestCase {
   revision: number
   key: string
   name: string
+  description?: string
   dimension: string
   enabled: boolean
   default: boolean
@@ -126,7 +127,7 @@ export type UpdateChannelCommand = CreateChannelCommand & { id: string; expected
 export type CreateChannelModelCommand = Pick<CatalogChannelModel, "channel_id" | "model_id" | "upstream_model_name" | "protocols">
 export type UpdateChannelModelCommand = Pick<CatalogChannelModel, "upstream_model_name" | "protocols"> & { id: string; expected_revision: number }
 export type CreateTestCaseCommand = Pick<CatalogTestCase,
-  "key" | "name" | "dimension" | "enabled" | "default" | "severity" |
+  "key" | "name" | "description" | "dimension" | "enabled" | "default" | "severity" |
   "execution_mode" | "definitions"
 >
 export type UpdateTestCaseCommand = CreateTestCaseCommand & { id: string; expected_revision: number }
@@ -355,6 +356,7 @@ function parseTestCase(value: unknown): CatalogTestCase {
     !isPositiveInteger(value.revision) ||
     !isSafeCaseKey(value.key) ||
     !isNonBlank(value.name) ||
+    ("description" in value && typeof value.description !== "string") ||
     !isSafeDimension(value.dimension) ||
     typeof value.enabled !== "boolean" ||
     typeof value.default !== "boolean" ||
@@ -371,6 +373,7 @@ function parseTestCase(value: unknown): CatalogTestCase {
     revision: value.revision,
     key: value.key,
     name: value.name,
+    ...(typeof value.description === "string" ? { description: value.description } : {}),
     dimension: value.dimension,
     enabled: value.enabled,
     default: value.default,

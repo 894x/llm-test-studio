@@ -217,6 +217,7 @@ type TestCase struct {
 	EntityMeta
 	Key           string              `json:"key"`
 	Name          string              `json:"name"`
+	Description   string              `json:"description,omitempty"`
 	Dimension     string              `json:"dimension"`
 	Enabled       bool                `json:"enabled"`
 	Default       bool                `json:"default"`
@@ -273,6 +274,9 @@ func (testCase TestCase) validateFields() error {
 	}
 	if strings.TrimSpace(testCase.Name) == "" {
 		return errors.New("test case name must not be empty")
+	}
+	if testCase.Description != "" && strings.TrimSpace(testCase.Description) == "" {
+		return errors.New("test case description must contain text when supplied")
 	}
 	if strings.TrimSpace(testCase.Dimension) == "" || strings.TrimSpace(testCase.Dimension) != testCase.Dimension {
 		return errors.New("test case dimension must be a trimmed non-empty value")

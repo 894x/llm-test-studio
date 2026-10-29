@@ -56,6 +56,7 @@ type TestCaseSummary struct {
 	Revision      uint64                     `json:"revision"`
 	Key           string                     `json:"key"`
 	Name          string                     `json:"name"`
+	Description   string                     `json:"description,omitempty"`
 	Dimension     string                     `json:"dimension"`
 	Enabled       bool                       `json:"enabled"`
 	Default       bool                       `json:"default"`
@@ -190,6 +191,7 @@ type UpdateChannelModelCommand struct {
 type CreateTestCaseCommand struct {
 	Key           string                     `json:"key"`
 	Name          string                     `json:"name"`
+	Description   string                     `json:"description,omitempty"`
 	Dimension     string                     `json:"dimension"`
 	Enabled       bool                       `json:"enabled"`
 	Default       bool                       `json:"default"`
@@ -203,6 +205,7 @@ type UpdateTestCaseCommand struct {
 	ExpectedRevision uint64                     `json:"expected_revision"`
 	Key              string                     `json:"key"`
 	Name             string                     `json:"name"`
+	Description      string                     `json:"description,omitempty"`
 	Dimension        string                     `json:"dimension"`
 	Enabled          bool                       `json:"enabled"`
 	Default          bool                       `json:"default"`

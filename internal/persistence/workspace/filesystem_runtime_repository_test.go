@@ -159,6 +159,7 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndCasesAtRunStart(t *
 	}
 	updatedCase := caseEntry.TestCase
 	updatedCase.Name = "updated file case"
+	updatedCase.Description = "Purpose: frozen authored context.\nLimits: one request."
 	if err := catalogRepository.UpdateTestCase(ctx, caseEntry.TestCase.Revision, updatedCase); err != nil {
 		t.Fatalf("SaveCase(updated) error = %v", err)
 	}
@@ -218,7 +219,8 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndCasesAtRunStart(t *
 	queuedSnapshot := queued.Snapshot()
 	if len(queuedSnapshot.Entries) != 1 || len(queuedSnapshot.Entries[0].CaseDefinitions) != 1 ||
 		queuedSnapshot.Entries[0].CaseDefinitions[0].Revision != currentCase.TestCase.Revision ||
-		queuedSnapshot.Entries[0].CaseDefinitions[0].Name != currentCase.TestCase.Name {
+		queuedSnapshot.Entries[0].CaseDefinitions[0].Name != currentCase.TestCase.Name ||
+		queuedSnapshot.Entries[0].CaseDefinitions[0].Description != updatedCase.Description {
 		t.Fatalf("queued run suite definitions = %#v, want pinned revision %#v", queuedSnapshot.Entries, caseEntry.TestCase)
 	}
 	if queuedSnapshot.Model.Revision != newModel.Revision || queuedSnapshot.Model.Name != newModel.Name ||
@@ -227,6 +229,15 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndCasesAtRunStart(t *
 		queuedSnapshot.Mapping.UpstreamModelName != mapping.UpstreamModelName {
 		t.Fatalf("queued run did not resolve current targets: %#v", queuedSnapshot)
 	}
+	newerCase := currentCase.TestCase
+	newerCase.Description = "Context edited after the run was prepared."
+	if err := catalogRepository.UpdateTestCase(ctx, currentCase.TestCase.Revision, newerCase); err != nil {
+		t.Fatalf("UpdateTestCase(after prepare) error = %v", err)
+	}
+	frozenRun, err := repository.GetRun(ctx, runID)
+	if err != nil || frozenRun.Snapshot().Entries[0].CaseDefinitions[0].Description != updatedCase.Description {
+		t.Fatalf("editing the catalog changed a historical SQLite snapshot: %v", err)
+	}
 	// Activating reloads the canonical SQLite document and validates the next
 	// state against the file-derived in-memory Run.
 	if err := service.ActivateRun(ctx, runID); err != nil {
@@ -234,7 +245,8 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndCasesAtRunStart(t *
 	}
 	select {
 	case request := <-executor.requests:
-		if len(request.Cases) != 1 || request.Cases[0].Revision != currentCase.TestCase.Revision || request.Cases[0].Name != currentCase.TestCase.Name {
+		if len(request.Cases) != 1 || request.Cases[0].Revision != currentCase.TestCase.Revision ||
+			request.Cases[0].Name != currentCase.TestCase.Name || request.Cases[0].Description != updatedCase.Description {
 			t.Fatalf("execution cases = %#v, want pinned revision %#v", request.Cases, caseEntry.TestCase)
 		}
 		snapshot := request.Run.Snapshot()

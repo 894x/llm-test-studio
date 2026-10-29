@@ -1,8 +1,9 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96",
   "key": "must.usage_non_stream",
   "name": "协议 · Usage 非流式",
+  "description": "目的：检查非流式响应中的用量信息。前提：模型、渠道及所选协议配置可用。通过：Chat 检查 usage 对象及正数输入用量；Messages 检查输入、输出用量和文本；Responses 检查返回的用量字段类型及字段齐全时的加和关系，并允许这些字段缺失。范围：仅按各协议现有断言判断，不校准分词器，也不证明账单金额或精确计费。",
   "dimension": "protocol",
   "enabled": true,
   "default": true,

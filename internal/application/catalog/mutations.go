@@ -668,7 +668,8 @@ func validUpdateIdentity(id string, revision uint64) bool {
 func testCaseFromCreate(meta domain.EntityMeta, command CreateTestCaseCommand) domain.TestCase {
 	return domain.TestCase{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Dimension: command.Dimension,
-		Enabled: command.Enabled, Default: command.Default,
+		Description: command.Description,
+		Enabled:     command.Enabled, Default: command.Default,
 		Severity: command.Severity, ExecutionMode: command.ExecutionMode, Definitions: command.Definitions.Clone(),
 	}
 }
@@ -676,7 +677,8 @@ func testCaseFromCreate(meta domain.EntityMeta, command CreateTestCaseCommand) d
 func testCaseFromUpdate(meta domain.EntityMeta, command UpdateTestCaseCommand) domain.TestCase {
 	return domain.TestCase{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Dimension: command.Dimension,
-		Enabled: command.Enabled, Default: command.Default,
+		Description: command.Description,
+		Enabled:     command.Enabled, Default: command.Default,
 		Severity: command.Severity, ExecutionMode: command.ExecutionMode, Definitions: command.Definitions.Clone(),
 	}
 }

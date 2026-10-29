@@ -9,6 +9,101 @@ import { EMPTY_CATALOG, type CatalogActions } from "./data"
 import { performanceFormFromProfile, performanceProfileFromForm } from "@/features/quick-test/performance-profile"
 
 describe("current protocol catalog editors", () => {
+  it("explains selected cases and suites and updates the context when changing targets", async () => {
+    const user = userEvent.setup()
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.suites[1].description = ""
+    catalog.test_cases[0].description = "Checks message responses with a configured model."
+    delete catalog.test_cases[1].description
+    const item = catalog.plans[0]
+    const updatePlan = vi.fn(async (_command: Record<string, any>) => catalog)
+    render(<I18nextProvider i18n={createAppI18n("en-US")}><CatalogEditor kind="plan" item={item} catalog={catalog} actions={{ updatePlan } as unknown as CatalogActions} pending={false} mutate={async operation => { await operation() }} /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: "Edit plan" }))
+    const target = screen.getByRole("combobox", { name: "Case or suite" })
+    expect(target).toHaveAccessibleDescription(`Suite description: ${catalog.suites[0].description}`)
+    await user.click(target)
+    await user.click(screen.getByRole("option", { name: `suite · ${catalog.suites[1].name}` }))
+    expect(target).toHaveAccessibleDescription("Suite description: No suite description provided")
+    expect(screen.getByRole("dialog", { name: "Edit plan" })).toBeInTheDocument()
+
+    await user.click(target)
+    await user.click(screen.getByRole("option", { name: `case · ${catalog.test_cases[0].name}` }))
+    expect(target).toHaveAccessibleDescription(`Case description: ${catalog.test_cases[0].description}`)
+    expect(screen.queryByText("Suite description: No suite description provided")).not.toBeInTheDocument()
+    await user.click(target)
+    await user.click(screen.getByRole("option", { name: `case · ${catalog.test_cases[1].name}` }))
+    expect(target).toHaveAccessibleDescription("Case description: No case description provided")
+    await user.click(screen.getByRole("button", { name: "Save plan" }))
+    await waitFor(() => expect(updatePlan).toHaveBeenCalledWith(expect.objectContaining({ entries: [expect.objectContaining({ target_kind: "case", target_id: catalog.test_cases[1].id })] })))
+  })
+
+  it("edits multiline case descriptions, preserves them after failure, and omits cleared text", async () => {
+    const user = userEvent.setup()
+    const item = { ...FIXTURE_CATALOG.test_cases[0], description: "Original explanation" }
+    const updateTestCase = vi.fn<(command: Record<string, unknown>) => Promise<typeof FIXTURE_CATALOG>>()
+      .mockRejectedValueOnce(new Error("save failed"))
+      .mockResolvedValue(FIXTURE_CATALOG)
+    render(<I18nextProvider i18n={createAppI18n("en-US")}><CatalogEditor kind="case" item={item} catalog={FIXTURE_CATALOG} actions={{ updateTestCase } as unknown as CatalogActions} pending={false} mutate={async operation => { await operation() }} /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: "Edit case" }))
+    const explanation = screen.getByRole("textbox", { name: "Case description (optional)" })
+    expect(explanation.tagName).toBe("TEXTAREA")
+    expect(explanation).not.toHaveClass("font-mono")
+    expect(explanation).toHaveValue(item.description)
+    expect(explanation).toHaveAccessibleDescription(/purpose, prerequisites, pass criteria, and coverage limits/)
+    const description = "Purpose: Check message responses.\nPrerequisites: A configured model.\nPass criteria: All assertions pass.\nCoverage limits: One request."
+    fireEvent.change(explanation, { target: { value: `  ${description}  ` } })
+    await user.click(screen.getByRole("button", { name: "Save case" }))
+    await waitFor(() => expect(updateTestCase).toHaveBeenCalledOnce())
+    expect(updateTestCase.mock.calls[0][0]).toMatchObject({ description })
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Edit case" })).toHaveTextContent("Save did not complete"))
+    expect(explanation).toHaveValue(`  ${description}  `)
+    fireEvent.change(explanation, { target: { value: " \n " } })
+    await user.click(screen.getByRole("button", { name: "Save case" }))
+    await waitFor(() => expect(updateTestCase).toHaveBeenCalledTimes(2))
+    expect(updateTestCase.mock.calls[1][0]).not.toHaveProperty("description")
+  })
+
+  it("creates a case with a description while preserving protocol drafts", async () => {
+    const user = userEvent.setup()
+    const createTestCase = vi.fn(async (_command: Record<string, unknown>) => FIXTURE_CATALOG)
+    render(<I18nextProvider i18n={createAppI18n("en-US")}><CatalogEditor kind="case" catalog={FIXTURE_CATALOG} actions={{ createTestCase } as unknown as CatalogActions} pending={false} mutate={async operation => { await operation() }} /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: "Add case" }))
+    fireEvent.change(screen.getByLabelText("Case key"), { target: { value: "custom-case" } })
+    fireEvent.change(screen.getByLabelText("Case name"), { target: { value: "Custom case" } })
+    fireEvent.change(screen.getByLabelText("Case description (optional)"), { target: { value: "  Check the configured response assertions.  " } })
+    const bodyLabel = "Request body / Generator (JSON)"
+    fireEvent.change(screen.getByLabelText(bodyLabel), { target: { value: '{"messages":[{"role":"user","content":"draft"}]}' } })
+    await user.click(screen.getByRole("checkbox", { name: "OpenAI Responses" }))
+    fireEvent.change(screen.getByLabelText(bodyLabel), { target: { value: '{"input":"response draft"}' } })
+    expect(screen.getByLabelText("Case description (optional)")).toHaveValue("  Check the configured response assertions.  ")
+    await user.click(screen.getByRole("button", { name: "Save case" }))
+    await waitFor(() => expect(createTestCase).toHaveBeenCalledOnce())
+    expect(createTestCase.mock.calls[0][0]).toMatchObject({ description: "Check the configured response assertions.", definitions: {
+      "openai-chat": { request: { body: { messages: [{ role: "user", content: "draft" }] } } },
+      "openai-responses": { request: { body: { input: "response draft" } } },
+    } })
+  })
+
+  it("shows case explanations when choosing suite members and edits a multiline suite explanation", async () => {
+    const user = userEvent.setup()
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.test_cases[0].description = "Purpose: Check a message response.\nCoverage limits: One response."
+    delete catalog.test_cases[1].description
+    const item = catalog.suites[0]
+    const updateSuite = vi.fn(async (_command: Record<string, unknown>) => catalog)
+    render(<I18nextProvider i18n={createAppI18n("en-US")}><CatalogEditor kind="suite" item={item} catalog={catalog} actions={{ updateSuite } as unknown as CatalogActions} pending={false} mutate={async operation => { await operation() }} /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: "Edit suite" }))
+    expect(screen.getByRole("checkbox", { name: catalog.test_cases[0].name })).toHaveAccessibleDescription(catalog.test_cases[0].description)
+    expect(screen.getByRole("checkbox", { name: catalog.test_cases[1].name })).toHaveAccessibleDescription("No case description provided")
+    const explanation = screen.getByRole("textbox", { name: "Description" })
+    expect(explanation.tagName).toBe("TEXTAREA")
+    expect(explanation).not.toHaveClass("font-mono")
+    const description = "Purpose: Check message behavior.\nCoverage limits: Configured suite members."
+    fireEvent.change(explanation, { target: { value: description } })
+    await user.click(screen.getByRole("button", { name: "Save suite" }))
+    await waitFor(() => expect(updateSuite).toHaveBeenCalledWith(expect.objectContaining({ description, cases: item.cases })))
+  })
+
   it("preserves mixed items, failure policies and independent duplicated pressure profiles", async () => {
     const user = userEvent.setup()
     const updatePlan = vi.fn(async (_command: Record<string, any>) => FIXTURE_CATALOG)

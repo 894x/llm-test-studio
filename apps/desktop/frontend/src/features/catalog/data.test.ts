@@ -4,6 +4,26 @@ import { parseCatalogSnapshot, parseSuiteInput, selectCatalog } from "./data"
 import { FILE_CATALOG, FILE_INPUT } from "@/test/local-file-fixture"
 
 describe("reference-only protocol catalog", () => {
+  it("preserves optional case descriptions and accepts existing cases without the field", () => {
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    delete catalog.test_cases[0].description
+    expect(parseCatalogSnapshot(catalog).test_cases[0]).not.toHaveProperty("description")
+    for (const description of ["", "Purpose: Verify a response.\nCoverage limits: One request."]) {
+      catalog.test_cases[0].description = description
+      const before = structuredClone(catalog)
+      expect(parseCatalogSnapshot(catalog).test_cases[0].description).toBe(description)
+      expect(catalog).toEqual(before)
+    }
+  })
+
+  it.each([null, undefined, 7, false, [], {}])("rejects a non-string case description without modifying the input: %j", description => {
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    Object.assign(catalog.test_cases[0], { description })
+    const before = structuredClone(catalog)
+    expect(() => parseCatalogSnapshot(catalog)).toThrow()
+    expect(catalog).toEqual(before)
+  })
+
   it("parses only explicit current file declarations without reinterpreting ordinary object inputs", () => {
     expect(parseCatalogSnapshot(FILE_CATALOG)).toEqual(FILE_CATALOG)
     expect(parseSuiteInput(FILE_INPUT)).toEqual(FILE_INPUT)

@@ -1243,7 +1243,7 @@ describe("desktop run workspace", () => {
     expect(within(table).queryByText("r137")).not.toBeInTheDocument()
 
     const inspector = screen.getByRole("complementary", { name: "用例详情" })
-    expect(within(inspector).getByText("协议")).toBeInTheDocument()
+    expect(within(inspector).getByText("支持的协议")).toBeInTheDocument()
     expect(inspector).not.toHaveTextContent("r137")
   })
 

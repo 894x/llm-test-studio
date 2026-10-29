@@ -1,8 +1,9 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "062b66ef-8d2e-59a1-95cb-dadf03dfe264",
   "key": "T001",
   "name": "同步响应检测",
+  "description": "目的：用一条短消息检查所选协议的同步文本响应。前提：配置可用的模型、渠道和凭据；可通过 prompt 输入替换默认提示词。通过：HTTP 状态、响应结构及非空文本满足当前协议定义的断言。范围：仅验证本次基础响应，不校验是否严格回答数字 5，也不证明内容质量、流式能力或持续可用性。",
   "dimension": "boundary",
   "enabled": true,
   "default": true,

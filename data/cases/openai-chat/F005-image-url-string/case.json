@@ -1,8 +1,9 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "b007bcfc-612e-5b82-afd2-8b79cff874b0",
   "key": "must.image_url_string",
   "name": "多模态图像 · image_url 字符串形式",
+  "description": "目的：检查图像地址采用字符串形式时能否读取内置数字 7 图片。前提：模型和渠道支持所选协议定义中的图像输入形状。通过：HTTP 200，响应满足当前协议断言，提取到的数字为 7。范围：使用随用例提供的图片，不依赖外部图片地址；只验证该固定样本与请求形状，不证明通用视觉理解或所有图片格式兼容。",
   "dimension": "multimodal",
   "enabled": true,
   "default": false,

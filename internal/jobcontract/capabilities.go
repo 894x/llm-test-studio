@@ -11,6 +11,7 @@ const FeatureExecutionOrigin = "execution_origin"
 const FeatureMixedPlanItems = "mixed_plan_items"
 const FeaturePerformanceAffinity = "performance_affinity"
 const FeatureFunctionalProgress = "functional_progress"
+const FeatureCaseDescriptions = "case_descriptions"
 
 // SupportsJob checks only the current task requirements, independent of client
 // release and build. Report-transfer requirements may be stricter for a caller.
@@ -33,6 +34,12 @@ func (capabilities RunnerCapabilities) SupportsJob(spec JobSpec) bool {
 		for _, run := range spec.PreparedRuns() {
 			protocols = append(protocols, string(run.Snapshot.Channel.Protocol))
 			for index, entry := range run.Snapshot.Entries {
+				for _, testCase := range entry.CaseDefinitions {
+					if testCase.Description != "" {
+						features = append(features, FeatureCaseDescriptions)
+						break
+					}
+				}
 				if entry.Performance != nil || entry.OnFailure != "" || run.Snapshot.PlanDocument.Entries[index].Name != "" {
 					features = append(features, FeatureMixedPlanItems)
 				}

@@ -276,7 +276,8 @@ func (service *Service) buildSnapshot(
 		}
 		snapshot.TestCases = append(snapshot.TestCases, TestCaseSummary{
 			ID: testCase.ID, Revision: testCase.Revision, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
-			Enabled: testCase.Enabled, Default: testCase.Default,
+			Description: testCase.Description,
+			Enabled:     testCase.Enabled, Default: testCase.Default,
 			Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode,
 			Definitions: testCase.Definitions.Clone(),
 		})

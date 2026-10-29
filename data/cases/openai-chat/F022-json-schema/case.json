@@ -1,8 +1,9 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "57d07366-b7bf-57cc-a36e-886febee83ea",
   "key": "must.json_schema",
   "name": "结构化输出 · JSON Schema",
+  "description": "目的：以 person Schema 提取姓名和年龄，检查结构化输出。前提：模型和渠道支持所选协议定义中的 JSON Schema 请求形状。通过：Chat 返回成功且文本为含 name、age 的 JSON 对象；Responses 还要求解析结果精确等于小林、28 的对象并通过协议检查。范围：Chat 当前断言不证明字段值、类型和 additionalProperties 全部受约束；本用例不覆盖任意 Schema 或所有关键字。",
   "dimension": "structured-output",
   "enabled": true,
   "default": false,

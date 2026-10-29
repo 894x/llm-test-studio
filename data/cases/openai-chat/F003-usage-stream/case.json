@@ -1,8 +1,9 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "id": "c6b97ab0-a95c-53f9-ab6e-c949d5454b90",
   "key": "must.usage_stream",
   "name": "协议 · Usage 流式",
+  "description": "目的：检查流式响应结束及用量信息。前提：模型和渠道支持所选协议的流式请求；Chat 请求显式开启 include_usage。通过：流正常完成且满足协议定义；Chat 检查 usage 对象，Messages 检查输入、输出用量，Responses 检查返回字段的类型及字段齐全时的加和关系，并允许用量字段缺失。范围：不保证所有协议必返用量，不证明精确计费或长流稳定性。",
   "dimension": "protocol",
   "enabled": true,
   "default": false,
