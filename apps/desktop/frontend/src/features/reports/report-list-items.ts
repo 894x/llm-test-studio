@@ -9,11 +9,16 @@ export type ReportListItem =
 // Comparisons already persist their run references; group those reports for display.
 export function reportListItems(reports: ReportSummary[], comparisons: ComparisonSummary[]): ReportListItem[] {
   const comparedRuns = new Set(comparisons.flatMap(item => item.channels.map(channel => channel.run_id)))
-  return [
+  const items: ReportListItem[] = [
     ...comparisons.map(comparison => ({ id: comparison.id, kind: "comparison" as const, comparison })),
     ...reports.filter(report => !report.run_id || !comparedRuns.has(report.run_id))
       .map(report => ({ id: report.id, kind: "report" as const, report })),
   ]
+  return items.sort((left, right) => {
+    const leftTime = left.kind === "comparison" ? left.comparison.created_at : left.report.generated_at
+    const rightTime = right.kind === "comparison" ? right.comparison.created_at : right.report.generated_at
+    return Date.parse(rightTime) - Date.parse(leftTime) || right.kind.localeCompare(left.kind) || right.id.localeCompare(left.id)
+  })
 }
 
 export function channelVerdict(channel: ComparisonChannelResult, t: TFunction<"reports">, report?: ReportSummary) {

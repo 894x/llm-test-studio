@@ -41,6 +41,24 @@ async function openComparison(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("channel comparison reports", () => {
+  it("interleaves comparisons and ordinary reports by time without repeating channel reports", () => {
+    const data = fixture()
+    const newer = { ...data.snapshot.reports[0], id: reportID(50), run_id: reportID(51),
+      generated_at: "2026-10-12T00:00:00Z", model_name: "newest ordinary report" }
+    const older = { ...newer, id: reportID(52), run_id: reportID(53),
+      generated_at: "2026-10-10T00:00:00Z", model_name: "oldest ordinary report" }
+    data.snapshot.reports = [older, ...data.snapshot.reports, newer]
+    const original = structuredClone(data.snapshot)
+    mount(data)
+    const rows = within(screen.getByRole("table", { name: "测试报告目录" })).getAllByRole("row").slice(1)
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toHaveTextContent(newer.model_name)
+    expect(rows[1]).toHaveTextContent("渠道对比")
+    expect(rows[2]).toHaveTextContent(older.model_name)
+    expect(data.snapshot).toEqual(original)
+    expect(data.getDetail).not.toHaveBeenCalled()
+  })
+
   it("lists one comparison, searches both channels, and opens details on demand", async () => {
     const data = fixture(); const user = userEvent.setup()
     mount(data)

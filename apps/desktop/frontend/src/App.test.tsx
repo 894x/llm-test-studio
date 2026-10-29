@@ -404,7 +404,6 @@ describe("desktop run workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "报告" }))
     await act(async () => window.dispatchEvent(new HashChangeEvent("hashchange")))
     await act(async () => { await vi.dynamicImportSettled() })
-    fireEvent.click(screen.getByRole("button", { name: "查看渠道对比记录" }))
     await act(async () => {})
     expect(client.getComparisons).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole("button", { name: "查看渠道对比报告：test-model" })).not.toBeInTheDocument()
@@ -1331,6 +1330,7 @@ describe("desktop run workspace", () => {
 
     await screen.findByRole("heading", { name: "测试报告" })
     expect(within(screen.getByRole("table", { name: "测试报告目录" })).getAllByRole("row")).toHaveLength(FIXTURE_REPORTS.reports.length + 1)
+    await user.click(within(screen.getByRole("table", { name: "测试报告目录" })).getByText("兼容性门禁通过"))
     await user.click(screen.getByRole("button", { name: "JSON" }))
 
     expect(await screen.findByText(
@@ -1665,7 +1665,7 @@ describe("desktop run workspace", () => {
     await waitFor(() => expect(client.getReports).toHaveBeenCalledTimes(2))
     await screen.findByRole("heading", { name: "测试报告" })
     expect(client.getWorkspace).not.toHaveBeenCalled()
-    expect(client.getComparisons).not.toHaveBeenCalled()
+    expect(client.getComparisons).toHaveBeenCalledTimes(1)
   })
 
   it("defers report-ready refreshes until an unvisited report page is opened", async () => {
@@ -1934,7 +1934,7 @@ describe("desktop run workspace", () => {
     expect(client.getCatalog).toHaveBeenCalledTimes(2)
   })
 
-  it("loads execution history on the runs page and keeps comparison reports on demand", async () => {
+  it("loads comparison summaries automatically on the reports page and keeps details on demand", async () => {
     const user = userEvent.setup()
     const client = desktopClient()
     render(<App client={client} />)
@@ -1945,8 +1945,35 @@ describe("desktop run workspace", () => {
     expect(client.getReports).not.toHaveBeenCalled()
     expect(client.getComparisons).not.toHaveBeenCalled()
     await user.click(screen.getByRole("button", { name: "报告" }))
-    await user.click(await screen.findByRole("button", { name: "查看渠道对比记录" }))
+    await screen.findByRole("table", { name: "测试报告目录" })
     await waitFor(() => expect(client.getComparisons).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole("button", { name: "查看渠道对比记录" })).not.toBeInTheDocument()
+    expect(client.getReportDetail).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "计划" }))
+    await screen.findByRole("heading", { name: "测试计划" })
+    await user.click(screen.getByRole("button", { name: "报告" }))
+    await screen.findByRole("table", { name: "测试报告目录" })
+    expect(client.getComparisons).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps ordinary reports available while comparisons load or fail and retries independently", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const pending = deferred<ComparisonSnapshot>()
+    vi.mocked(client.getComparisons).mockReturnValueOnce(pending.promise)
+    window.history.replaceState(null, "", "#reports")
+    render(<App client={client} />)
+    const table = await screen.findByRole("table", { name: "测试报告目录" })
+    expect(table).toHaveTextContent(FIXTURE_REPORTS.reports[0].model_name)
+    expect(screen.getByText("正在读取对比记录…")).toBeVisible()
+    await act(async () => pending.reject(new Error("private comparison failure")))
+    expect(table).toBeVisible()
+    expect(screen.queryByText("private comparison failure")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "重试" }))
+    await waitFor(() => expect(client.getComparisons).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument())
+    expect(client.getReports).toHaveBeenCalledTimes(1)
+    expect(client.getReportDetail).not.toHaveBeenCalled()
   })
 
   it("keeps navigation available after a page read fails and retries only that page", async () => {
@@ -1962,7 +1989,7 @@ describe("desktop run workspace", () => {
     await user.click(screen.getByRole("button", { name: "模型与渠道" }))
     await screen.findByRole("heading", { name: "模型与渠道" })
     expect(client.getWorkspace).not.toHaveBeenCalled()
-    expect(client.getComparisons).not.toHaveBeenCalled()
+    expect(client.getComparisons).toHaveBeenCalledTimes(1)
   })
 
 })

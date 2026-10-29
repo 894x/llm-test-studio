@@ -215,6 +215,7 @@ function AppWorkspace({
 
   useEffect(() => {
     PAGE_READS[page].forEach(key => { void resources[key].load().catch(() => {}) })
+    if (page === "reports") void resources.comparisons.load().catch(() => {})
   }, [page, resources])
 
   const retryInitialLoad = useCallback(() => {
@@ -284,7 +285,7 @@ function AppWorkspace({
     return () => { active = false; window.clearTimeout(timer) }
   }, [page, overviewActive, client, resources])
 
-  const shouldPollComparisons = (page === "runs" || page === "reports") && showComparisons && (comparisonRunning || pendingComparisonIDs.length > 0 || retryComparisonPoll)
+  const shouldPollComparisons = (page === "reports" || (page === "runs" && showComparisons)) && (comparisonRunning || pendingComparisonIDs.length > 0 || retryComparisonPoll)
   useEffect(() => {
     if (!shouldPollComparisons) return
     let active = true
@@ -390,7 +391,7 @@ function AppWorkspace({
     resources.reports.invalidate()
     const visibleReads: readonly string[] = PAGE_READS[pageRef.current]
     if (visibleReads.includes("workspace")) void refreshWorkspace().catch(() => setRetryWorkspacePoll(true))
-    if (showComparisons && (pageRef.current === "runs" || pageRef.current === "reports")) {
+    if (pageRef.current === "reports" || (showComparisons && pageRef.current === "runs")) {
       void resources.comparisons.refresh().then(receiveComparisons).catch(() => setRetryComparisonPoll(true))
     }
     if (visibleReads.includes("reports")) void refreshReports().catch(() => { /* The reports read owns its retry state. */ })
@@ -598,11 +599,10 @@ function AppWorkspace({
       ) : page === "reports" ? (
         <ReportWorkspace
           snapshot={reports!}
-          comparisonControl={!showComparisons || comparisonState.error || (!comparisonState.data && !comparisonState.pending) ? <Button size="sm" variant="ghost" onClick={() => {
-            setShowComparisons(true)
+          comparisonControl={comparisonState.error ? <Button size="sm" variant="ghost" onClick={() => {
             void resources.comparisons.refresh().catch(() => {})
-          }}>{t(comparisonState.error ? "runs:comparisons.retry" : "runs:comparisons.load")}</Button> : comparisonState.pending ? <span role="status" className="text-xs text-muted-foreground">{t("runs:comparisons.loading")}</span> : comparisons?.comparisons.length === 0 ? <span role="status" className="text-xs text-muted-foreground">{t("runs:comparisons.empty")}</span> : comparisons?.next_cursor ? <Button size="sm" variant="ghost" disabled={comparisonAppending} onClick={() => void loadMoreComparisons()}>{t(comparisonAppendError ? "runs:comparisons.retry" : "runs:executions.more")}</Button> : undefined}
-          comparisons={showComparisons ? comparisons ?? EMPTY_COMPARISONS : EMPTY_COMPARISONS}
+          }}>{t("runs:comparisons.retry")}</Button> : comparisonState.pending ? <span role="status" className="text-xs text-muted-foreground">{t("runs:comparisons.loading")}</span> : comparisons?.next_cursor ? <Button size="sm" variant="ghost" disabled={comparisonAppending} onClick={() => void loadMoreComparisons()}>{t(comparisonAppendError ? "runs:comparisons.retry" : "runs:executions.more")}</Button> : undefined}
+          comparisons={comparisons ?? EMPTY_COMPARISONS}
           preferredReportID={preferredReportID}
           reportOpenSequence={reportOpenSequence}
           getDetail={client.getReportDetail}
