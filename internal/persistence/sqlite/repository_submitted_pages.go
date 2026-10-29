@@ -39,7 +39,7 @@ func (repository *Repository) readJobPage(
 		return jobs.JobPage{}, fmt.Errorf("begin job page: %w", err)
 	}
 	defer tx.Rollback()
-	ids, more, err := jobPageIDs(
+	ids, more, err := repository.jobPageIDs(
 		ctx,
 		tx,
 		after,
@@ -91,13 +91,20 @@ type jobPageIdentity struct {
 
 // Close the bounded ID cursor before loading frozen job sources on pool=1.
 // The raw document budget also limits work before expensive typed projection.
-func jobPageIDs(ctx context.Context, tx *sql.Tx, after string, limit uint32) ([]jobPageIdentity, bool, error) {
+func (repository *Repository) jobPageIDs(
+	ctx context.Context,
+	tx *sql.Tx,
+	after string,
+	limit uint32,
+) ([]jobPageIdentity, bool, error) {
 	rows, err := tx.QueryContext(
 		ctx,
 		`WITH submissions AS MATERIALIZED (
- SELECT job_id FROM job_submissions WHERE job_id > ?1 ORDER BY job_id LIMIT ?3
+ SELECT job_id FROM job_submissions WHERE job_id > ?1
+ AND `+repository.historyVisibleSQL("job", "job_submissions.job_id")+` ORDER BY job_id LIMIT ?3
 ), mirrors AS MATERIALIZED (
- SELECT job_id FROM remote_job_mirrors WHERE job_id > ?2 ORDER BY job_id LIMIT ?3
+ SELECT job_id FROM remote_job_mirrors WHERE job_id > ?2
+ AND `+repository.historyVisibleSQL("job", "remote_job_mirrors.job_id")+` ORDER BY job_id LIMIT ?3
 ), candidates AS MATERIALIZED (
  SELECT job_id FROM (SELECT job_id FROM submissions UNION SELECT job_id FROM mirrors)
  ORDER BY job_id LIMIT ?3)

@@ -8,6 +8,10 @@ import { localizeStoredMessage } from "@/i18n/runtime"
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import FolderOpenIcon from "lucide-react/dist/esm/icons/folder-open.mjs"
+import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
+import type { OverviewDestination } from "@/features/overview/overview-workspace"
+import type { HistoryChanged, HistoryVisibilityChange } from "@/features/history-recycle/data"
+import { historyVisibility } from "@/features/history-recycle/visibility"
 
 import {
   createDesktopClient,
@@ -59,12 +63,13 @@ const ReportWorkspace = lazy(() => import("@/features/reports/report-workspace")
 const ModelChannelWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces").then(module => ({ default: module.ModelChannelWorkspace })))
 const CasesWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces").then(module => ({ default: module.CasesWorkspace })))
 const PlansWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces").then(module => ({ default: module.PlansWorkspace })))
+const HistoryRecycleWorkspace = lazy(() => import("@/features/history-recycle/history-recycle-workspace").then(module => ({ default: module.HistoryRecycleWorkspace })))
 
 const PAGE_READS = {
   overview: ["overview"],
   "quick-test": ["quickCatalog"],
   catalog: ["connections"], cases: ["definitions"], plans: ["catalog"],
-  runs: [], reports: ["reports"],
+  runs: [], reports: ["reports"], "recycle-bin": [],
 } as const
 type ResourceKey = "overview" | "workspace" | "catalog" | "reports" | "comparisons" | "connections" | "definitions" | "quickCatalog"
 
@@ -88,6 +93,15 @@ function AppWorkspace({
     desktopPageFromHash(window.location.hash),
   )
   const pageRef = useRef(page)
+  const [historyChanges, setHistoryChanges] = useState<HistoryVisibilityChange[]>([])
+  const historyChangesRef = useRef<HistoryVisibilityChange[]>([])
+  const hiddenHistory = useMemo(() => historyVisibility(historyChanges), [historyChanges])
+  const hiddenHistoryRef = useRef(hiddenHistory)
+  useEffect(() => { hiddenHistoryRef.current = hiddenHistory }, [hiddenHistory])
+  const [catalogNavigation, setCatalogNavigation] = useState<{ sequence: number; tab: "models" | "channels" | "mappings" | "matrix" }>()
+  const [caseNavigation, setCaseNavigation] = useState<{ sequence: number; tab: "cases" | "suites" }>()
+  const [overviewDestination, setOverviewDestination] = useState<DesktopPage | null>(null)
+  const [recycleReturnPage, setRecycleReturnPage] = useState<DesktopPage>("runs")
   const dismissOverlays = useDismissTransientOverlays()
   const changePage = useCallback((next: DesktopPage) => {
     if (pageRef.current === next) return
@@ -120,9 +134,15 @@ function AppWorkspace({
   const quickCatalogState = useResource(resources.quickCatalog)
   const reportState = useResource(resources.reports)
   const comparisonState = useResource(resources.comparisons)
-  const snapshot = workspaceState.data
-  const reports = reportState.data
-  const comparisons = comparisonState.data
+  const snapshot = useMemo(() => workspaceState.data && ({ ...workspaceState.data,
+    runs: workspaceState.data.runs.filter(run => !hiddenHistory.runs.has(run.id) && !hiddenHistory.jobs.has(run.job_id ?? "")),
+  }), [workspaceState.data, hiddenHistory])
+  const reports = useMemo(() => reportState.data && ({ ...reportState.data,
+    reports: reportState.data.reports.filter(report => !hiddenHistory.reports.has(report.id) && !hiddenHistory.runs.has(report.run_id ?? "")),
+  }), [reportState.data, hiddenHistory])
+  const comparisons = useMemo(() => comparisonState.data && ({ ...comparisonState.data,
+    comparisons: comparisonState.data.comparisons.filter(comparison => !hiddenHistory.comparisons.has(comparison.id)),
+  }), [comparisonState.data, hiddenHistory])
   const setSnapshot = resources.workspace.set
   const setCatalog = useCallback((next: CatalogSnapshot) => {
     resources.overview.invalidate()
@@ -134,15 +154,18 @@ function AppWorkspace({
   const setReports = resources.reports.set
   const setComparisons = resources.comparisons.set
   const comparisonAppend = useRef(false)
+  const comparisonGeneration = useRef(0)
   const [comparisonAppending, setComparisonAppending] = useState(false)
   const [comparisonAppendError, setComparisonAppendError] = useState(false)
   const loadMoreComparisons = async () => {
     if (!comparisons?.next_cursor || comparisonState.pending || comparisonAppend.current) return
     comparisonAppend.current = true
+    const generation = comparisonGeneration.current
     setComparisonAppending(true)
     setComparisonAppendError(false)
     try {
       const next = await client.getComparisons(comparisons.next_cursor)
+      if (generation !== comparisonGeneration.current) return
       const merged = new Map((resources.comparisons.getSnapshot().data ?? EMPTY_COMPARISONS).comparisons.map(item => [item.id, item]))
       next.comparisons.forEach(item => merged.set(item.id, item))
       const combined = { ...next, comparisons: [...merged.values()] }
@@ -179,7 +202,6 @@ function AppWorkspace({
   })
   const latestDraft = useRef(quickDraft)
   const workspaceGeneration = useRef(0)
-  const comparisonGeneration = useRef(0)
   const catalogGeneration = useRef(0)
   const invalidateWorkspace = useCallback(() => {
     workspaceGeneration.current += 1
@@ -271,10 +293,11 @@ function AppWorkspace({
     let timer: number | undefined
     const refresh = async () => {
       try {
-        const current = resources.overview.getSnapshot().data
-        if (!current) return
+        const currentState = resources.overview.getSnapshot()
+        const current = currentState.data
+        if (!current || currentState.pending || currentState.stale) return
         const next = await client.getRunSummaries(current.workspace.runs.map(run => run.id))
-        if (!active) return
+        if (!active || currentState !== resources.overview.getSnapshot()) return
         if (next.runs.some(run => isRunActive(run.status))) {
           resources.overview.set({ ...current, workspace: { ...current.workspace, runs: next.runs } })
         } else { await resources.overview.refresh() }
@@ -334,6 +357,7 @@ function AppWorkspace({
     const latest = new Map<string, number>()
     const receive = (progress: ReportGenerationProgress) => {
       if (!active || progress.sequence <= (latest.get(progress.run_id) ?? 0)) return
+      if (hiddenHistoryRef.current.runs.has(progress.run_id) || hiddenHistoryRef.current.reports.has(progress.report_id ?? "")) return
       latest.set(progress.run_id, progress.sequence)
       setReportGeneration((previous) => ({ ...previous, [progress.run_id]: progress }))
       if (progress.phase === "ready") {
@@ -380,6 +404,7 @@ function AppWorkspace({
 
   const lastObservedJob = useRef("")
   const receiveJobObservation = useCallback((job: JobView) => {
+    if (hiddenHistoryRef.current.jobs.has(job.job_id)) return
     const marker = `${job.job_id}:${job.submission?.delivery_revision}:${job.submission?.confirmation?.revision}:${job.execution?.revision}:${job.execution?.latest_sequence}:${job.performance_result_ready}`
     if (lastObservedJob.current === marker) return
     lastObservedJob.current = marker
@@ -404,6 +429,48 @@ function AppWorkspace({
     }
     window.location.hash = next
   }, [changePage])
+
+  const openOverviewDestination = useCallback((target: OverviewDestination) => {
+    const next = ["models", "channels", "mappings"].includes(target) ? "catalog"
+      : target === "cases" || target === "suites" ? "cases" : target as DesktopPage
+    if (next === "catalog") setCatalogNavigation(previous => ({ sequence: (previous?.sequence ?? 0) + 1, tab: target as "models" | "channels" | "mappings" }))
+    if (next === "cases") setCaseNavigation(previous => ({ sequence: (previous?.sequence ?? 0) + 1, tab: target as "cases" | "suites" }))
+    setOverviewDestination(next)
+    navigate(next)
+  }, [navigate])
+
+  const openRecycleBin = useCallback(() => {
+    setRecycleReturnPage(pageRef.current === "recycle-bin" ? "runs" : pageRef.current)
+    navigate("recycle-bin")
+  }, [navigate])
+
+  const receiveHistoryChange = useCallback<HistoryChanged>((entry, action) => {
+    const change = { entry, action }
+    const nextChanges = [...historyChangesRef.current, change]
+    historyChangesRef.current = nextChanges
+    hiddenHistoryRef.current = historyVisibility(nextChanges)
+    setHistoryChanges(nextChanges)
+    if (action === "recycle") {
+      setPreferredJob(previous => previous && entry.job_ids.includes(previous.job_id) ? null : previous)
+      setPreferredRunID(previous => entry.run_ids.includes(previous) ? "" : previous)
+      setPreferredReportID(previous => entry.report_ids.includes(previous) || entry.comparison_ids.includes(previous) ? "" : previous)
+      setQuickRunID(previous => entry.run_ids.includes(previous) ? "" : previous)
+      setQuickFunctionalJobs(previous => previous.filter(item => !entry.job_ids.includes(item.job.job_id)))
+      setPendingComparisonIDs(previous => previous.filter(id => !entry.comparison_ids.includes(id)))
+      setReportGeneration(previous => Object.fromEntries(Object.entries(previous).filter(([runID]) => !entry.run_ids.includes(runID))))
+    }
+    reportReadGeneration.current += 1
+    comparisonGeneration.current += 1
+    invalidateWorkspace()
+    resources.reports.invalidate()
+    resources.comparisons.invalidate()
+    // Counts and restored rows come from Core; retained pages hide affected IDs immediately.
+    void resources.overview.refresh().catch(() => {})
+    if (pageRef.current === "reports") {
+      void refreshReports().catch(() => {})
+      void resources.comparisons.refresh().then(receiveComparisons).catch(() => setRetryComparisonPoll(true))
+    }
+  }, [invalidateWorkspace, resources, refreshReports, receiveComparisons])
 
   const refreshArchivedPerformanceReport = useCallback(async (reportID: string): Promise<void> => {
     resources.reports.invalidate()
@@ -554,7 +621,8 @@ function AppWorkspace({
     ) : null
 
       return (page === "runs" && startup?.status !== "running" && startup?.status !== "failed" ? null : pageStatus) ?? (page === "overview" ? (
-        <OverviewWorkspace workspace={overviewState.data!.workspace} catalog={EMPTY_CATALOG} reports={overviewState.data!.reports} counts={overviewState.data!.catalog} runCount={overviewState.data!.run_count} reportCount={overviewState.data!.report_count} onOpenReport={openReport} />
+        <OverviewWorkspace workspace={{ ...overviewState.data!.workspace, runs: overviewState.data!.workspace.runs.filter(run => !hiddenHistory.runs.has(run.id) && !hiddenHistory.jobs.has(run.job_id ?? "")) }} catalog={EMPTY_CATALOG} reports={{ ...overviewState.data!.reports, reports: overviewState.data!.reports.reports.filter(report => !hiddenHistory.reports.has(report.id) && !hiddenHistory.runs.has(report.run_id ?? "")) }} counts={overviewState.data!.catalog} runCount={overviewState.data!.run_count} reportCount={overviewState.data!.report_count} onOpenReport={openReport}
+          onNavigate={openOverviewDestination} onOpenRun={id => { setPreferredJob(null); setPreferredRunID(id); setOverviewDestination("runs"); navigate("runs") }} />
       ) : page === "quick-test" ? (
         <QuickTaskPage
           catalog={catalog!}
@@ -577,11 +645,14 @@ function AppWorkspace({
           }}
           onPerformanceArchived={refreshArchivedPerformanceReport}
           onOpenReport={openReport}
+          historyChanges={historyChanges}
+          onHistoryChanged={receiveHistoryChange}
+          onOpenRecycleBin={openRecycleBin}
         />
       ) : page === "catalog" ? (
-        <ModelChannelWorkspace catalog={catalog!} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} />
+        <ModelChannelWorkspace catalog={catalog!} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} navigationIntent={catalogNavigation} />
       ) : page === "cases" ? (
-        <CasesWorkspace catalog={catalog!} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} />
+        <CasesWorkspace catalog={catalog!} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} navigationIntent={caseNavigation} />
       ) : page === "plans" ? (
         <PlansWorkspace
           catalog={catalog!}
@@ -610,7 +681,13 @@ function AppWorkspace({
           saveReportExport={client.saveReportExport}
           copyReportPNG={client.copyReportPNG}
           renderRunShortcuts={renderRunShortcuts}
+          recycleClient={client}
+          historyChanges={historyChanges}
+          onHistoryChanged={receiveHistoryChange}
+          onOpenRecycleBin={openRecycleBin}
         />
+      ) : page === "recycle-bin" ? (
+        <HistoryRecycleWorkspace client={client} onHistoryChanged={receiveHistoryChange} onBack={() => navigate(recycleReturnPage)} />
       ) : (
         <RunWorkspace
           historyRevision={reportGeneration}
@@ -624,6 +701,9 @@ function AppWorkspace({
           renderRunShortcuts={renderRunShortcuts}
           onJobChange={receiveJobObservation}
           onOpenReport={openReport}
+          historyChanges={historyChanges}
+          onHistoryChanged={receiveHistoryChange}
+          onOpenRecycleBin={openRecycleBin}
           onOpenComparison={async id => {
             setShowComparisons(true)
             setPendingComparisonIDs(ids => ids.includes(id) ? ids : [...ids, id])
@@ -636,7 +716,7 @@ function AppWorkspace({
 
   return (
     <DesktopShell
-      activePage={page}
+      activePage={page === "recycle-bin" ? recycleReturnPage : page}
       onNavigate={navigate}
       actions={
 				<div className="flex items-center gap-1">
@@ -657,15 +737,20 @@ function AppWorkspace({
 				</div>
       }
     >
+      {page === overviewDestination ? <div className="shrink-0 px-4 pb-1">
+        <Button size="xs" variant="ghost" onClick={() => navigate("overview")}><ArrowLeftIcon />{t("overview:drilldown.back")}</Button>
+      </div> : null}
       {DESKTOP_PAGES.map(({ id }) => (
         <RetainedWorkspace key={id} active={page === id}
           fallback={<div role="status" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground"><Spinner />{t("app:loadingPage")}</div>}>
           {renderWorkspace(id)}
         </RetainedWorkspace>
       ))}
+      {page === "recycle-bin" ? <RetainedWorkspace active fallback={<Spinner />}>{renderWorkspace("recycle-bin")}</RetainedWorkspace> : null}
       <ReportGenerationStatus
         progress={Object.values(reportGeneration).filter((progress) =>
-          progress.phase !== "ready" || !reports?.reports.some((report) => report.id === progress.report_id),
+          !hiddenHistory.runs.has(progress.run_id) && !hiddenHistory.reports.has(progress.report_id ?? "") &&
+          (progress.phase !== "ready" || !reports?.reports.some((report) => report.id === progress.report_id)),
         )}
         onOpenLogs={() => { void openLogs() }}
       />

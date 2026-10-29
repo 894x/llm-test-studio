@@ -27,6 +27,9 @@ import { RunInspectorFrame, InspectorDefinitionRow } from "./run-inspector-frame
 import type { RunShortcutRenderer } from "./use-run-shortcuts"
 import { useRunHistory, type RunHistoryClient } from "./use-run-history"
 import { useExecutionJobs } from "./use-execution-jobs"
+import type { HistoryChanged, HistoryVisibilityChange } from "@/features/history-recycle/data"
+import { RecycleHistoryButton, type HistoryRecycleClient } from "@/features/history-recycle/recycle-history-button"
+import { historyVisibility } from "@/features/history-recycle/visibility"
 
 type ExecutionRow = { id: string; job?: JobView; runs: RunRecord[]; title: string; time: string }
 const STATUS_CLASS: Record<JobStatus | SubmissionView["delivery"] | RunStatus, string> = {
@@ -51,8 +54,9 @@ const subscribeDesktop = (notify: () => void) => {
 const isDesktop = () => window.matchMedia(desktopQuery).matches
 
 export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, preferredJob, preferredRunID, commandError,
-  renderRunShortcuts, onJobChange, onOpenReport, onOpenComparison, readStatus, historyRevision }: {
-  client: JobClient & Partial<RunHistoryClient>; snapshot: WorkspaceSnapshot; reports: ReportSnapshot
+  renderRunShortcuts, onJobChange, onOpenReport, onOpenComparison, readStatus, historyRevision,
+  onOpenRecycleBin, onHistoryChanged, historyChanges = [] }: {
+  client: JobClient & Partial<RunHistoryClient> & Partial<HistoryRecycleClient>; snapshot: WorkspaceSnapshot; reports: ReportSnapshot
   preferredJob: JobView | null; preferredRunID?: string; commandError: string
   renderRunShortcuts?: RunShortcutRenderer
   onJobChange?: (job: JobView) => void
@@ -60,11 +64,25 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
   onOpenComparison?: (id: string) => void | Promise<void>
   historyRevision?: Record<string, ReportGenerationProgress>
   readStatus?: ReactNode
+  onOpenRecycleBin?: () => void
+  onHistoryChanged?: HistoryChanged
+  historyChanges?: HistoryVisibilityChange[]
 }) {
   const { t, i18n } = useTranslation("runs")
   const { t: tj } = useTranslation("jobs")
+  const { t: tr } = useTranslation("historyRecycle")
+  const [localHistoryChanges, setLocalHistoryChanges] = useState<HistoryVisibilityChange[]>([])
   const history = useExecutionJobs(client, preferredJob)
   const runHistory = useRunHistory(client, history.jobs, preferredRunID)
+  const appliedHistoryChanges = useRef(0)
+  const applyJobHistory = history.applyHistoryChange
+  const applyRunHistory = runHistory.applyHistoryChange
+  useEffect(() => {
+    historyChanges.slice(appliedHistoryChanges.current).forEach(({ entry, action }) => {
+      void applyJobHistory(entry, action); void applyRunHistory(entry, action)
+    })
+    appliedHistoryChanges.current = historyChanges.length
+  }, [historyChanges, applyJobHistory, applyRunHistory])
   const readyHistory = JSON.stringify(Object.values(historyRevision ?? {}).filter(item => item.phase === "ready").map(item => item.run_id).sort())
   const observedReady = useRef(new Set<string>())
   const refreshRunIDs = runHistory.refreshIDs
@@ -112,7 +130,9 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
     return { executions, moreStandalone: standalone.length > standaloneLimit || runHistory.hasMore }
   }, [history.jobs, presentation.runs, snapshot.runs, standaloneLimit, runHistory.hasMore, tj])
   const needle = query.trim().toLocaleLowerCase()
+  const hidden = historyVisibility([...localHistoryChanges, ...historyChanges])
   const visible = rows.executions.filter(row =>
+    !hidden.jobs.has(row.id) && !hidden.runs.has(row.id) &&
     (kind === "all" || (row.job?.kind ?? "run") === kind) &&
     (location === "all" || row.job?.location.kind === location) &&
     (status === "all" || (row.job ? row.job.execution?.status ?? `delivery_${row.job.submission?.delivery}` : row.runs[0]?.coreStatus) === status) &&
@@ -123,9 +143,13 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
   const selectedJob = selected?.job
   useEffect(() => { if (selectedJob) onJobChange?.(selectedJob) }, [selectedJob, onJobChange])
   const filtered = !!needle || [kind, location, status, plan].some(value => value !== "all")
-  const details = selected ? <ExecutionInspector key={selected.id} row={selected} client={client} reports={reports}
+  const recycleAction = selected && client.previewHistoryRecycle && client.recycleHistory ? <RecycleHistoryButton
+    key={selected.id} client={client as HistoryRecycleClient} target={{ kind: selected.job ? "job" : "run", id: selected.id }}
+    onHistoryChanged={onHistoryChanged} onRecycled={(entry, action) => { setLocalHistoryChanges(current => [...current, { entry, action }]); void applyJobHistory(entry, action); void applyRunHistory(entry, action); setSelectedID(""); setSelectedChildID("") }} /> : null
+  const details = selected ? <div className="flex min-h-0 min-w-0 flex-1 flex-col"><ExecutionInspector key={selected.id} row={selected} client={client} reports={reports}
     selectedChildID={selectedChildID} onSelectChild={setSelectedChildID} detailTab={detailTab} onDetailTabChange={setDetailTab}
     renderRunShortcuts={renderRunShortcuts} onJobChange={onJobChange} onOpenReport={onOpenReport} onOpenComparison={onOpenComparison} />
+    {recycleAction ? <div className="shrink-0 px-4 py-2">{recycleAction}</div> : null}</div>
     : <p className="p-4 text-xs text-muted-foreground">{t("inspector.noneSelected")}</p>
 
   const loadMore = () => {
@@ -141,6 +165,7 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
           <p className="mt-1 text-[11px] text-muted-foreground">{t("description")}</p></div>
         <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
           <span>{t("executions.shown", { count: visible.length })}</span>
+          {onOpenRecycleBin ? <Button size="sm" variant="ghost" onClick={onOpenRecycleBin}>{tr("title")}</Button> : null}
           {filtered ? <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setPlan("all") }}>{t("executions.clear")}</Button> : null}
           <Button size="sm" variant="ghost" disabled={history.pending} onClick={() => { history.retry(); void runHistory.refresh() }}>{history.pending ? <Spinner /> : null}{t("executions.refresh")}</Button>
           {!desktop && selected ? <Sheet><SheetTrigger asChild><Button variant="outline" size="sm"><PanelRightIcon />{t("mobile.details")}</Button></SheetTrigger>
@@ -242,15 +267,17 @@ function ExecutionInspector({ row, client, reports, selectedChildID, onSelectChi
     (report.run_id && job.run_ids.includes(report.run_id))).map(report => report.id) : [])])]
   if (job?.kind === "performance") return <PerformanceInspector row={row} client={client} reportIDs={reportIDs}
     onJobChange={onJobChange} onOpenReport={onOpenReport} />
-  const execution = job ? <JobDetails key={job.job_id} client={client} jobID={job.job_id} initialJob={job}
-    reportIDs={reportIDs} onOpenReport={onOpenReport} onJobChange={onJobChange} /> : undefined
-  return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+  const layout = (execution?: ReactNode, controls?: ReactNode) => <div className="flex min-h-0 min-w-0 flex-1 flex-col">
     {job?.kind === "comparison" ? <div className="px-4 pt-3"><p className="mb-2 text-xs font-medium">{t("executions.children", { count: job.run_ids.length })}</p>
       {onOpenComparison ? <Button variant="outline" size="sm" className="mb-2" onClick={() => void onOpenComparison(job.comparison_id)}>{t("executions.comparisonReport")}</Button> : null}
       {row.runs.length ? <SearchableSelect aria-label={t("executions.child")} value={run.id} onValueChange={onSelectChild} options={row.runs.map(child => ({ value: child.id, label: `${child.channel} · ${child.title}` }))} /> : null}</div> : null}
     {run ? <RunInspectorContent key={run.id} run={run} tab={detailTab} onTabChange={onDetailTabChange} execution={execution} shortcuts={renderRunShortcuts?.(run.id)} />
       : <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1 px-4"><h2 className="pt-4 text-sm font-semibold">{row.title}</h2>{execution}</ScrollArea>}
+    {controls ? <div className="shrink-0 border-t border-divider px-4 py-3">{controls}</div> : null}
   </div>
+  return job ? <JobDetails key={job.job_id} client={client} jobID={job.job_id} initialJob={job}
+    reportIDs={reportIDs} onOpenReport={onOpenReport} onJobChange={onJobChange}
+    renderLayout={({ details, controls }) => layout(details, controls)} /> : layout()
 }
 
 function PerformanceInspector({ row, client, reportIDs, onJobChange, onOpenReport }: {
@@ -280,7 +307,7 @@ function PerformanceInspector({ row, client, reportIDs, onJobChange, onOpenRepor
   }, [archivedID, client])
   return <JobDetails client={client} jobID={row.job!.job_id} initialJob={row.job}
     onJobChange={onJobChange} onArchived={setArchivedID} showPerformanceResult={false}
-    renderLayout={({ job, result, error, details }) => {
+    renderLayout={({ job, result, error, details, controls }) => {
       const report = result?.observation?.report
       const failure = job.execution?.failure
       const reportID = availableID || reportIDs[0]
@@ -304,7 +331,8 @@ function PerformanceInspector({ row, client, reportIDs, onJobChange, onOpenRepor
           {!failure && !report?.error_code && !report?.failures.length ? <p>{t("inspector.noFailures")}</p> : null}
         </div>}
         artifacts={<p className="py-1">{reportID ? t("shortcuts.viewReport") : t("inspector.noArtifacts")}</p>}
-        footer={<div className="shrink-0 border-t border-divider px-4 py-3">
+        footer={<div className="shrink-0 space-y-3 border-t border-divider px-4 py-3">
+          {controls}
           <Button size="sm" variant="outline" disabled={!reportID} onClick={() => { if (reportID) void onOpenReport(reportID) }}>
             <FileTextIcon />{t("shortcuts.viewReport")}
           </Button>

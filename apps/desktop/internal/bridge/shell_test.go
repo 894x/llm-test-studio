@@ -206,6 +206,11 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		desktopCodeFileInputBusy:             {},
 		desktopCodeFileInputNotFound:         {},
 		desktopCodeFileInputUnavailable:      {},
+		desktopCodeHistoryRecycleInvalid:     {},
+		desktopCodeHistoryRecycleNotFound:    {},
+		desktopCodeHistoryRecycleActive:      {},
+		desktopCodeHistoryRecycleUnconfirmed: {},
+		desktopCodeHistoryRecycleUnavailable: {},
 	}
 	if len(gotCodes) != len(wantCodes) {
 		t.Fatalf("frontend error codes = %v, want exact backend code set %v", gotCodes, wantCodes)

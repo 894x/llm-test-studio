@@ -17,6 +17,11 @@
     "details": "{{title}} details"
   },
   "error": {
+    "history_recycle_active": "The task is running or awaiting confirmation. End it and sync its state before moving it to the recycle bin.",
+    "history_recycle_invalid": "The selected test record is invalid. Refresh and try again.",
+    "history_recycle_not_found": "The test record is unavailable or no longer in this view. Refresh the list.",
+    "history_recycle_unconfirmed": "The task state is not confirmed. Wait for synchronization before moving it to the recycle bin.",
+    "history_recycle_unavailable": "The recycle bin is unavailable. Try again in the desktop app.",
     "file_input_invalid": "The selected image is invalid. Choose a nonempty PNG or JPEG image.",
     "file_input_too_large": "The image exceeds the 1 MiB limit. Choose a smaller image.",
     "file_input_limit": "The local image selection limit is reached. Remove an image before retrying.",

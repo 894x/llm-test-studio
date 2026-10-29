@@ -18,6 +18,33 @@ import { FILE_SELECTION } from "@/test/local-file-fixture"
 import { remoteUpgradeFixture, REMOTE_CONFIGURATION_ID, UPGRADE_OPERATION_ID } from "@/test/remote-upgrade-fixture"
 
 describe("Wails desktop client", () => {
+  it("uses canonical local history bindings and rejects cross-record or malformed responses", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const client = createDesktopClient()
+    const entry = { kind: "job" as const, id: JOB_ID, title: "Saved test", removed_at: "2026-10-30T00:00:00Z", run_ids: [RUN_ID], report_ids: [], comparison_ids: [], job_ids: [JOB_ID], remote: true }
+    const target = { kind: "run" as const, id: RUN_ID }
+    binding.PreviewHistoryRecycle.mockResolvedValueOnce({ schema_version: 1, entry: { ...entry, removed_at: "" }, can_recycle: true, blocked_reason: "" })
+    await expect(client.previewHistoryRecycle(target)).resolves.toMatchObject({ entry: { kind: "job", id: JOB_ID }, can_recycle: true })
+    expect(binding.PreviewHistoryRecycle).toHaveBeenCalledExactlyOnceWith(target)
+    binding.RecycleHistory.mockResolvedValueOnce(entry)
+    await expect(client.recycleHistory(target)).resolves.toEqual(entry)
+    expect(binding.RecycleHistory).toHaveBeenCalledExactlyOnceWith(target)
+    await expect(client.getRecycledHistory("opaque")).resolves.toEqual({ schema_version: 1, entries: [], next_cursor: "", has_more: false })
+    expect(binding.GetRecycledHistory).toHaveBeenCalledExactlyOnceWith("opaque")
+    binding.RestoreHistory.mockResolvedValueOnce({ ...entry, removed_at: "" })
+    await expect(client.restoreHistory({ kind: "job", id: JOB_ID })).resolves.toMatchObject({ removed_at: "" })
+    binding.RecycleHistory.mockResolvedValueOnce({ ...entry, run_ids: [] })
+    await expect(client.recycleHistory(target)).rejects.toBeInstanceOf(DesktopDataError)
+    binding.RestoreHistory.mockResolvedValueOnce(entry)
+    await expect(client.restoreHistory({ kind: "job", id: JOB_ID })).rejects.toBeInstanceOf(DesktopDataError)
+    binding.RecycleHistory.mockRejectedValueOnce("history_recycle_active")
+    await expect(client.recycleHistory(target)).rejects.toMatchObject({ code: "history_recycle_active" })
+    binding.RecycleHistory.mockRejectedValueOnce("history_recycle_unconfirmed")
+    await expect(client.recycleHistory(target)).rejects.toMatchObject({ code: "history_recycle_unconfirmed" })
+    const count = binding.RecycleHistory.mock.calls.length
+    await expect(client.recycleHistory({ kind: "report", id: "private_path" })).rejects.toBeInstanceOf(DesktopDataError)
+    expect(binding.RecycleHistory).toHaveBeenCalledTimes(count)
+  })
   it("reads bounded quick history through its own binding and rejects malformed pages", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const client = createDesktopClient()
@@ -1200,6 +1227,10 @@ function installBinding(
   reports: unknown = FIXTURE_REPORTS,
 ) {
   const binding = {
+    PreviewHistoryRecycle: vi.fn<(target: unknown) => Promise<unknown>>(),
+    GetRecycledHistory: vi.fn(async (_after?: string): Promise<unknown> => ({ schema_version: 1, entries: [], next_cursor: "", has_more: false })),
+    RecycleHistory: vi.fn<(target: unknown) => Promise<unknown>>(),
+    RestoreHistory: vi.fn<(target: unknown) => Promise<unknown>>(),
     CreateLocalFileSelection: vi.fn<(document: string) => Promise<unknown>>(),
     ReleaseLocalFileSelection: vi.fn(async (_id?: string) => undefined),
     GetRemoteNodes: vi.fn(async () => structuredClone(EMPTY_REMOTE_NODES)),

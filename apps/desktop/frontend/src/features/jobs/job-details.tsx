@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
 import type { QuickPerformanceProgress, QuickPerformanceReport } from "@/features/quick-test/data"
-import { isJobTerminal, type ControlInput, type JobView, type PerformanceResultView } from "./data"
-import { jobControlRevision, type JobClient } from "./execution"
+import { isJobTerminal, type ControlInput, type ControlView, type JobView, type PerformanceResultView } from "./data"
+import { jobControlRevision, jobControlStatus, type JobClient } from "./execution"
 import { useJobObservation } from "./use-job-observation"
 
 export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport, onJobChange, onArchived, renderProgress, renderPerformance, showPerformanceResult = true, renderLayout }: {
@@ -19,7 +19,7 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
   renderProgress?: (progress: QuickPerformanceProgress) => ReactNode
   renderPerformance?: (report: QuickPerformanceReport) => ReactNode
   showPerformanceResult?: boolean
-  renderLayout?: (state: { job: JobView; result: PerformanceResultView | null; error: unknown; details: ReactNode }) => ReactNode
+  renderLayout?: (state: { job: JobView; result: PerformanceResultView | null; error: unknown; details: ReactNode; controls: ReactNode }) => ReactNode
 }) {
   const { t } = useTranslation("jobs")
   const [refresh, setRefresh] = useState(0)
@@ -27,7 +27,8 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
   const [controlBack, setControlBack] = useState<string[]>([])
   const [pending, setPending] = useState(false)
   const [commandError, setCommandError] = useState<unknown>(null)
-  const { job: observed, result, controls, error } = useJobObservation(client, jobID, controlCursor, refresh)
+  const [submittedControl, setSubmittedControl] = useState<ControlView | null>(null)
+  const { job: observed, result, controls, controlSummary, error } = useJobObservation(client, jobID, controlCursor, refresh)
   const job = observed ?? initialJob
   const archived = result?.observation?.report.archived ? result.observation.report.report_id : undefined
   const notifiedArchive = useRef("")
@@ -44,11 +45,25 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
   }
   if (!job) return <div role="status" className="py-4 text-xs text-muted-foreground">{error ? publicDesktopErrorMessage(error, t("readFailed")) : <Spinner />}</div>
   const revision = jobControlRevision(job)
-  const terminal = !!job.execution && isJobTerminal(job.execution.status)
-  const awaitingControl = controls?.commands.some(command => command.state === "pending") ?? false
+  const status = jobControlStatus(job)
+  const terminal = status ? isJobTerminal(status) : false
+  const returnedControl = controlSummary?.commands.find(command => command.command_id === submittedControl?.command_id)
+  const currentControl = returnedControl && (!submittedControl || returnedControl.delivery_revision >= submittedControl.delivery_revision)
+    ? returnedControl : submittedControl?.job_id === jobID ? submittedControl : controlSummary?.commands[0]
+  const awaitingControl = currentControl?.state === "pending" || (controlSummary?.commands.some(command => command.state === "pending") ?? false)
   const control = (kind: ControlInput["kind"]) => {
-    if (revision) void execute(() => client.controlJob({ job_id: job.job_id, kind, expected_revision: revision }))
+    if (revision) void execute(async () => { setSubmittedControl(await client.controlJob({ job_id: job.job_id, kind, expected_revision: revision })) })
   }
+  const controlActions = <section aria-label={t("executionControls")} className="space-y-2 text-xs [overflow-wrap:anywhere]">
+    <div className="flex flex-wrap gap-2">
+      <Button size="sm" variant="outline" aria-description={t("stopDescription")} disabled={pending || terminal || status === "draining" || !revision || !controlSummary?.ready || awaitingControl} onClick={() => control("stop_sending")}>{t("stop")}</Button>
+      <Button size="sm" variant="outline" aria-description={t("cancelDescription")} disabled={pending || terminal || !revision || !controlSummary?.ready || awaitingControl} onClick={() => control("cancel")}>{t("cancel")}</Button>
+    </div>
+    {!terminal ? <p className="text-[11px] leading-relaxed text-muted-foreground">{!revision ? t("awaitingControlConfirmation") : t("controlHint")}</p> : null}
+    {pending ? <p role="status" className="flex items-center gap-2 text-[11px] text-muted-foreground"><Spinner className="size-3" />{t("sendingControl")}</p> : null}
+    {currentControl ? <p role="status" className="text-[11px] text-muted-foreground">{t(currentControl.kind === "cancel" ? "cancel" : "stop")} · {t(`controlStates.${currentControl.state}`)}{currentControl.observation ? ` · ${t(`observations.${currentControl.observation}`)}` : ""}</p> : null}
+    {commandError ? <Alert variant="destructive"><AlertDescription>{publicDesktopErrorMessage(commandError, t("controlFailed"))}</AlertDescription></Alert> : null}
+  </section>
   const p = job.progress?.progress
   const submission = job.submission
   const confirmation = submission?.confirmation
@@ -69,12 +84,10 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
       {p.planned > 0 ? <Progress value={Math.min(100, p.completed / p.planned * 100)} aria-label={t("execution")} /> : <Spinner />}
     </div> : null}
     {error ? <Alert role="status"><AlertDescription>{t("stale")} {publicDesktopErrorMessage(error, t("readFailed"))}</AlertDescription></Alert> : null}
+    {!renderLayout ? controlActions : null}
     <div className="flex flex-wrap gap-2">
-      <Button size="sm" variant="outline" disabled={pending || terminal || !revision || awaitingControl} onClick={() => control("stop_sending")}>{t("stop")}</Button>
-      <Button size="sm" variant="outline" disabled={pending || terminal || !revision || awaitingControl} onClick={() => control("cancel")}>{t("cancel")}</Button>
       {onOpenReport ? (reportIDs ?? []).map(id => <Button key={id} size="sm" variant="outline" onClick={() => void onOpenReport(id)}>{t("openReport")}</Button>) : null}
     </div>
-    {commandError ? <Alert variant="destructive"><AlertDescription>{publicDesktopErrorMessage(commandError, t("controlFailed"))}</AlertDescription></Alert> : null}
     {controls && controls.commands.length > 0 ? <div className="flex flex-col gap-2">
       <h3 className="font-medium">{t("controls")}</h3>
       <p className="text-muted-foreground">{t("controlsDescription")}</p>
@@ -82,7 +95,7 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
         <p>{t(command.kind === "cancel" ? "cancel" : "stop")} · {t(`controlStates.${command.state}`)} · r{command.expected_revision}</p>
         <p className="text-muted-foreground">{command.command_id}</p>
         {command.observation ? <p className="text-muted-foreground">{t(`observations.${command.observation}`)}</p> : null}
-        {command.state === "pending" ? <Button variant="outline" size="sm" disabled={pending} onClick={() => void execute(() => client.retryJobControl(command.command_id))}>{t("retryControl")}</Button> : null}
+        {command.state === "pending" ? <Button variant="outline" size="sm" disabled={pending} onClick={() => void execute(async () => { setSubmittedControl(await client.retryJobControl(command.command_id)) })}>{t("retryControl")}</Button> : null}
       </div>)}
       <div className="flex gap-2">
         <Button size="sm" variant="ghost" disabled={!controlBack.length} onClick={() => { setControlCursor(controlBack.at(-1)!); setControlBack(value => value.slice(0, -1)) }}>{t("previous")}</Button>
@@ -103,7 +116,7 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
       </> : <p className="text-muted-foreground">{t(result.execution_started ? "noCheckpoint" : "noObservation")}</p>}
     </section> : null}
   </section>
-  return renderLayout ? renderLayout({ job, result, error, details }) : details
+  return renderLayout ? renderLayout({ job, result, error, details, controls: controlActions }) : details
 }
 
 function Property({ label, value }: { label: string; value: string }) {

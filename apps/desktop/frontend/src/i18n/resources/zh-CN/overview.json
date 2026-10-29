@@ -1,6 +1,9 @@
 {
   "title": "工作台总览",
   "description": "汇总本地目录、活动运行和最近报告",
+  "drilldown": {
+    "back": "返回总览"
+  },
   "summary": {
     "aria": "本地对象摘要",
     "models": "{{count}} 个模型",
@@ -8,7 +11,9 @@
     "channels": "{{count}} 个渠道",
     "enabled": "{{count}} 个启用",
     "cases": "{{count}} 个用例",
+    "executableCases": "测试定义",
     "suites": "{{count}} 个套件",
+    "reusableSuites": "可复用用例组合",
     "plans": "{{count}} 个计划",
     "fixedVersions": "固定版本",
     "runs": "{{count}} 次运行",
@@ -19,6 +24,7 @@
   },
   "activeRun": {
     "title": "当前运行",
+    "open": "查看运行",
     "plan": "计划",
     "modelChannel": "模型与渠道",
     "load": "负载",

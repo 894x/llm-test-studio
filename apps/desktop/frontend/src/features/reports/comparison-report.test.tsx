@@ -144,6 +144,7 @@ describe("channel comparison reports", () => {
 
   it("exports every case and reflects the folded view", async () => {
     const data = fixture(); const user = userEvent.setup()
+    data.right.report.generated_at = "2026-09-10T12:34:56Z"
     for (const detail of [data.left, data.right]) {
       const seed = detail.entries[0].cases[0]
       detail.entries[0].cases = Array.from({ length: 60 }, (_, i) => ({ ...seed, case_id: reportID(100 + i), name: `Case ${i}` }))
@@ -152,6 +153,10 @@ describe("channel comparison reports", () => {
       expect(element).toHaveTextContent("Case 59")
       expect(element.querySelectorAll("thead th")).toHaveLength(3)
       expect(element).toHaveTextContent("rhzs")
+      expect(Array.from(element.querySelectorAll("time"), time => time.dateTime)).toEqual([
+        data.left.report.generated_at, data.right.report.generated_at,
+      ])
+      expect(element.querySelector("time")?.textContent).toMatch(/GMT|UTC/)
       return { filename: "comparison.html", mediaType: "text/html", blob: new Blob(["html"]) }
     })
     const save = vi.fn(async () => true)
@@ -165,6 +170,7 @@ describe("channel comparison reports", () => {
     visualExport.mockImplementationOnce(async element => {
       expect(element.querySelectorAll("thead th")).toHaveLength(9)
       expect(element).toHaveTextContent("Case 59")
+      expect(Array.from(element.querySelectorAll("time"), time => time.dateTime)).toEqual([data.left.report.generated_at])
       return { filename: "comparison.png", mediaType: "image/png", blob: new Blob(["png"]) }
     })
     await user.click(screen.getByRole("button", { name: "PNG" }))

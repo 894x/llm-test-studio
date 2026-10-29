@@ -20,6 +20,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/channelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/channelconfig"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
+	"github.com/894x/llm-test-studio/internal/application/historyrecycle"
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/modelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/overview"
@@ -188,7 +189,7 @@ func NewInitializer(options Options) bridge.Initializer {
 		if err := runs.RecoverInterrupted(ctx, repository, ProductionClock{}); err != nil {
 			return bridge.Dependencies{}, fmt.Errorf("recover interrupted desktop runs: %w", err)
 		}
-		readView, err = repository.OpenReadOnlyView(ctx)
+		readView, err = repository.OpenDesktopReadOnlyView(ctx)
 		if err != nil {
 			return bridge.Dependencies{}, fmt.Errorf("open desktop history read view: %w", err)
 		}
@@ -325,6 +326,7 @@ func NewInitializer(options Options) bridge.Initializer {
 			return bridge.Dependencies{}, fmt.Errorf("create job launcher: %w", err)
 		}
 		return bridge.Dependencies{
+			HistoryRecycle:         historyrecycle.New(repository),
 			Overview:               overview.New(readView, catalogQuery),
 			ComparisonHistory:      comparisons.NewHistory(readView, comparisonService.Refresher),
 			RunHistory:             workspace.NewHistory(readView),

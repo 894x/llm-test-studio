@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 
 	"github.com/894x/llm-test-studio/internal/application/quickhistory"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
@@ -21,7 +22,12 @@ func (repository *Repository) ListRunHistory(ctx context.Context, after string) 
 		return nil, "", err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, runHistoryIDsQuery, cursor.Time, cursor.ID, workspace.HistoryPageSize+1)
+	query := runHistoryIDsQuery
+	if repository.hideRecycled {
+		query = strings.Replace(query, " ORDER BY stamp", " AND "+
+			repository.historyVisibleSQL("run", "root.id")+"\n ORDER BY stamp", 1)
+	}
+	rows, err := tx.QueryContext(ctx, query, cursor.Time, cursor.ID, workspace.HistoryPageSize+1)
 	if err != nil {
 		return nil, "", err
 	}
@@ -48,7 +54,7 @@ func (repository *Repository) ListRunHistory(ctx context.Context, after string) 
 		ids = ids[:workspace.HistoryPageSize]
 		next = keys[workspace.HistoryPageSize-1]
 	}
-	projections, err := runSummaries(ctx, tx, ids)
+	projections, err := repository.runSummaries(ctx, tx, ids)
 	if err != nil {
 		return nil, "", err
 	}
@@ -67,14 +73,18 @@ func (repository *Repository) ReadRunSummaries(ctx context.Context, ids []string
 		return nil, err
 	}
 	defer tx.Rollback()
-	projections, err := runSummaries(ctx, tx, ids)
+	projections, err := repository.runSummaries(ctx, tx, ids)
 	if err != nil {
 		return nil, err
 	}
 	return projections, tx.Commit()
 }
 
-func runSummaries(ctx context.Context, tx *sql.Tx, ids []string) ([]workspace.RunProjection, error) {
+func (repository *Repository) runSummaries(
+	ctx context.Context,
+	tx *sql.Tx,
+	ids []string,
+) ([]workspace.RunProjection, error) {
 	if len(ids) == 0 {
 		return []workspace.RunProjection{}, nil
 	}
@@ -82,7 +92,8 @@ func runSummaries(ctx context.Context, tx *sql.Tx, ids []string) ([]workspace.Ru
 	if err != nil {
 		return nil, err
 	}
-	return readWorkspaceProjections(ctx, tx, quickHistoryRunQuery, string(document))
+	query := repository.visibleRunProjectionQuery(quickHistoryRunQuery)
+	return readWorkspaceProjections(ctx, tx, query, string(document))
 }
 
 var runHistoryIDsQuery = `SELECT root.id, ` + historyTimeKey("root.created_at") + ` AS stamp
@@ -102,8 +113,11 @@ func (repository *Repository) AvailableReports(ctx context.Context, ids []string
 	if err != nil {
 		return nil, err
 	}
-	rows, err := repository.db.QueryContext(ctx, `SELECT id FROM reports WHERE id IN (SELECT value FROM json_each(?1))
- UNION SELECT id FROM quick_performance_reports WHERE id IN (SELECT value FROM json_each(?1))`, string(document))
+	query := `SELECT id FROM reports WHERE id IN (SELECT value FROM json_each(?1)) AND ` +
+		repository.reportVisibleSQL("reports.id", "reports.run_id") +
+		` UNION SELECT id FROM quick_performance_reports WHERE id IN (SELECT value FROM json_each(?1)) AND ` +
+		repository.historyVisibleSQL("report", "quick_performance_reports.id")
+	rows, err := repository.db.QueryContext(ctx, query, string(document))
 	if err != nil {
 		return nil, err
 	}

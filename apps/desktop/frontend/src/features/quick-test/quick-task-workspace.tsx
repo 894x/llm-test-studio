@@ -13,11 +13,11 @@ import {
 import { useTranslation } from "react-i18next"
 import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
 import SaveIcon from "lucide-react/dist/esm/icons/save.mjs"
-import { controlRun, launchAtDefault, type JobClient } from "@/features/jobs/execution"
-import { isJobTerminal, type JobView } from "@/features/jobs/data"
+import { controlRun, jobControlRevision, jobControlStatus, launchAtDefault, type JobClient } from "@/features/jobs/execution"
+import { isJobTerminal, type ControlView, type JobView } from "@/features/jobs/data"
 import { useJobObservation } from "@/features/jobs/use-job-observation"
 import { LocalFileInput } from "./local-file-input"
-import { publicDesktopErrorMessage, type DesktopClient } from "@/app/desktop-client"
+import { DesktopClientError, publicDesktopErrorMessage, type DesktopClient } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Autocomplete,
@@ -53,8 +53,11 @@ import { SaveChannelSheet } from "./save-channel-sheet"
 import { QuickTestModeSwitch } from "./quick-test-mode-switch"
 import { QuickTestHistory, type QuickTestHistoryItem } from "./quick-test-history"
 import { ModelIcon, ProtocolIcon } from "./model-icon"
+import type { HistoryChanged, HistoryVisibilityChange } from "@/features/history-recycle/data"
+import { RecycleHistoryButton, type HistoryRecycleClient } from "@/features/history-recycle/recycle-history-button"
+import { historyVisibility } from "@/features/history-recycle/visibility"
 
-type Actions = JobClient & Pick<
+type Actions = JobClient & Partial<HistoryRecycleClient> & Pick<
   DesktopClient,
   | "getQuickTask"
   | "getReportDetail"
@@ -105,6 +108,9 @@ export function QuickTaskWorkspace({
   onOpenReport,
   onPerformanceArchived,
   onSaveChannel,
+  onOpenRecycleBin,
+  onHistoryChanged,
+  historyChanges = [],
 }: {
   catalog: CatalogSnapshot
   historyFooter?: ReactNode
@@ -124,14 +130,26 @@ export function QuickTaskWorkspace({
   onOpenReport: (id: string) => void | Promise<void>
   onPerformanceArchived: (id: string) => void | Promise<void>
   onSaveChannel: (command: SaveQuickTestTargetCommand) => Promise<SavedQuickTestTarget>
+  onOpenRecycleBin?: () => void
+  onHistoryChanged?: HistoryChanged
+  historyChanges?: HistoryVisibilityChange[]
 }) {
   const { t } = useTranslation("quickTest")
+  const { t: tr } = useTranslation("historyRecycle")
+  const [localHistoryChanges, setLocalHistoryChanges] = useState<HistoryVisibilityChange[]>([])
+  const hidden = historyVisibility([...localHistoryChanges, ...historyChanges])
   const { t: tj } = useTranslation("jobs")
   const [pending, setPending] = useState<
     "start" | "history" | "cancel" | "remember" | "forget" | "save" | null
   >(null)
   const observedJobs = useRef(new Map<string, string>())
   const [historicalJobs, setHistoricalJobs] = useState<Record<string, JobView>>({})
+  const [controlObservations, setControlObservations] = useState<Record<string, { job: JobView; commands: ControlView[] }>>({})
+  const [submittedControls, setSubmittedControls] = useState<Record<string, ControlView>>({})
+  const receiveControls = useCallback((job: JobView, commands: ControlView[]) => {
+    setControlObservations(current => JSON.stringify(current[job.job_id]) === JSON.stringify({ job, commands })
+      ? current : { ...current, [job.job_id]: { job, commands } })
+  }, [])
   const receiveHistoricalJob = useCallback((observed: JobView) => {
     const marker = JSON.stringify(observed)
     if (observedJobs.current.get(observed.job_id) === marker) return
@@ -162,6 +180,14 @@ export function QuickTaskWorkspace({
   const [mode, setMode] = useState<"functional" | "performance">("functional")
   const [performancePending, setPerformancePending] = useState(false)
   const [performanceHistory, setPerformanceHistory] = useState<QuickTestHistoryItem[]>([])
+  const appliedVisibilityChanges = useRef(0)
+  useEffect(() => {
+    const removals = historyChanges.slice(appliedVisibilityChanges.current).filter(change => change.action === "recycle")
+    appliedVisibilityChanges.current = historyChanges.length
+    if (!removals.length) return
+    const affected = historyVisibility(removals)
+    setPerformanceHistory(current => current.filter(item => !affected.jobs.has(item.jobID ?? item.id) && !affected.reports.has(item.reportID ?? "")))
+  }, [historyChanges])
   const [performanceSettings, setPerformanceSettings] = useState<Record<string, PerformanceHistorySettings>>({})
   const [restoredPerformanceProfile, setRestoredPerformanceProfile] = useState<QuickPerformanceProfile>()
   const [selectedPerformancePlanID, setSelectedPerformancePlanID] = useState("")
@@ -226,7 +252,7 @@ export function QuickTaskWorkspace({
     model_id: form.model.trim(),
     ...(form.channel_id ? { channel_id: form.channel_id } : {}),
   }
-  const history: QuickTestHistoryItem[] = [
+  const historyItems: QuickTestHistoryItem[] = [
     ...functionalJobs.map(entry => {
       const observed = entry.job
       const run = workspace.runs.find(run => run.job_id === observed.job_id || observed.run_ids.includes(run.id))
@@ -273,10 +299,22 @@ export function QuickTaskWorkspace({
         reportID: report?.id ?? (item.reportID && availableReportIDs.has(item.reportID) ? item.reportID : undefined) }
       return { ...item, status: report.run_status === "cancelled" ? "cancelled" : report.passed ? "passed" : "failed" }
     }),
-  ].map(item => ({ ...item,
-    waitingForReport: !item.active && !item.reportID && !unavailableReports.has(item.id),
-    reportError: !item.reportID && unavailableReports.has(item.id),
-  })).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+  ]
+  const history = historyItems.filter(item => !hidden.jobs.has(item.jobID ?? "") && !hidden.runs.has(item.runID ?? "") && !hidden.reports.has(item.reportID ?? "")).map(item => {
+    const observation = item.jobID ? controlObservations[item.jobID] : undefined
+    const submitted = item.jobID ? submittedControls[item.jobID] : undefined
+    const returned = observation?.commands.find(command => command.command_id === submitted?.command_id)
+    const command = returned && (!submitted || returned.delivery_revision >= submitted.delivery_revision) ? returned : submitted ?? observation?.commands[0]
+    const awaiting = command?.state === "pending" || !!observation?.commands.some(command => command.state === "pending")
+    const status = observation ? jobControlStatus(observation.job) : undefined
+    return { ...item,
+      cancelDisabled: !!item.jobID && (!observation || !jobControlRevision(observation.job) || awaiting || !!status && isJobTerminal(status)),
+      cancelHint: item.jobID && (!observation || !jobControlRevision(observation.job)) ? tj("awaitingControlConfirmation") : tj("cancelDescription"),
+      controlStatus: command ? `${tj(command.kind === "cancel" ? "cancel" : "stop")} · ${tj(`controlStates.${command.state}`)}${command.observation ? ` · ${tj(`observations.${command.observation}`)}` : ""}` : undefined,
+      waitingForReport: !item.active && !item.reportID && !unavailableReports.has(item.id),
+      reportError: !item.reportID && unavailableReports.has(item.id),
+    }
+  }).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
   const visibleHistory = history
   const historicalActiveJobs = workspace.runs.filter(run => run.source === "quick_task" && run.job_id &&
     isRunActive(run.status) && !functionalJobs.some(entry => entry.job.job_id === run.job_id))
@@ -518,13 +556,25 @@ export function QuickTaskWorkspace({
       setPending(null)
     }
   }
-  const cancel = async (id: string) => {
-    if (inFlight.current || !id) return
+  const cancel = async (item: QuickTestHistoryItem) => {
+    if (inFlight.current || item.cancelDisabled || !item.jobID && !item.runID) return
     inFlight.current = true
     setPending("cancel")
     setError("")
     try {
-      receiveFunctionalJob(await controlRun(actions, id, "cancel"))
+      if (item.jobID) {
+        const current = await actions.getJob(item.jobID)
+        const revision = jobControlRevision(current)
+        if (!revision) throw new DesktopClientError("job_confirmation_pending")
+        const status = jobControlStatus(current)
+        if (status && isJobTerminal(status)) return
+        const command = await actions.controlJob({ job_id: current.job_id, kind: "cancel", expected_revision: revision })
+        setSubmittedControls(controls => ({ ...controls, [current.job_id]: command }))
+        if (item.mode === "performance") performanceJobChanged(current)
+        else receiveFunctionalJob(current)
+      } else {
+        receiveFunctionalJob(await controlRun(actions, item.runID!, "cancel"))
+      }
       await refreshProgress()
     } catch (reason) {
       setError(publicDesktopErrorMessage(reason, t("task.failure")))
@@ -610,12 +660,15 @@ export function QuickTaskWorkspace({
     <main className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={t("title")}>
       {functionalJobs.map(entry =>
         <QuickTaskJobObserver key={entry.job.job_id} client={actions} jobID={entry.job.job_id} onChange={receiveFunctionalJob}
+          onControls={receiveControls}
           waitingForReport={!history.find(item => item.jobID === entry.job.job_id)?.reportID} />)}
       {historicalActiveJobs.map(run =>
         <QuickTaskJobObserver key={run.job_id} client={actions} jobID={run.job_id!} onChange={receiveHistoricalJob}
+          onControls={receiveControls}
           waitingForReport={!run.report_id} />)}
-      {performanceHistory.map(item =>
+      {performanceHistory.filter(item => !hidden.jobs.has(item.jobID ?? item.id) && !hidden.reports.has(item.reportID ?? "")).map(item =>
         <QuickTaskJobObserver key={item.id} client={actions} jobID={item.id} onChange={performanceJobChanged} onArchived={onPerformanceArchived}
+          onControls={receiveControls}
           waitingForReport={!availableReportIDs.has(item.reportID ?? "") && !reports.reports.some(report => report.id === item.reportID) && !unavailableReports.has(item.id)} onUnavailable={reportUnavailable} />)}
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[240px_minmax(0,1fr)] gap-4 p-4 xl:grid-cols-[256px_minmax(0,1fr)] overflow-hidden">
         <aside className="flex min-h-0 min-w-0 flex-col" aria-label={t("workspace.history")}>
@@ -623,6 +676,7 @@ export function QuickTaskWorkspace({
             <QuickTestModeSwitch performance={mode === "performance"} onChange={checked => setMode(checked ? "performance" : "functional")} />
             <div className="flex flex-wrap items-center justify-between gap-1"><h2 className="text-sm font-semibold">{t("workspace.history")}</h2><span className="text-[11px] text-muted-foreground">{t("workspace.active", { count: history.filter(item => item.active).length })}</span>
               {history.some(item => item.waitingForReport) ? <span role="status" className="text-[11px] text-muted-foreground">{t("workspace.syncingReports", { count: history.filter(item => item.waitingForReport).length })}</span> : null}
+              {onOpenRecycleBin ? <Button size="sm" variant="ghost" onClick={onOpenRecycleBin}>{tr("title")}</Button> : null}
             </div>
           </div>
           <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
@@ -636,10 +690,15 @@ export function QuickTaskWorkspace({
                   .catch(reason => setError(publicDesktopErrorMessage(reason, tj("readFailed"))))
               }}
               onRestore={id => { setMode("functional"); setSelectedHistoryID(id); void restore(id) }}
-              onOpenReport={id => void onOpenReport(id)} onCancel={id => void cancel(id)} onRefresh={() => void refreshProgress()} />
+              renderRecycleAction={actions.previewHistoryRecycle && actions.recycleHistory ? item => {
+                const target = item.jobID ? { kind: "job" as const, id: item.jobID } : item.runID ? { kind: "run" as const, id: item.runID } : item.reportID ? { kind: "report" as const, id: item.reportID } : null
+                return target ? <RecycleHistoryButton compact name={item.title} client={actions as HistoryRecycleClient} target={target} disabled={busy}
+                  onRecycled={(entry, action) => { setLocalHistoryChanges(current => [...current, { entry, action }]); setSelectedHistoryID(""); if (entry.run_ids.includes(runID)) onRunSelected("") }} onHistoryChanged={onHistoryChanged} /> : null
+              } : undefined}
+              onOpenReport={id => void onOpenReport(id)} onCancel={item => void cancel(item)} onRefresh={() => void refreshProgress()} />
               : <p className="py-4 text-xs leading-relaxed text-muted-foreground">{t("task.noHistory")}</p>}
             {historyFooter}
-            {runID && !history.some(item => item.runID === runID) ? <p role="status" className="flex items-center gap-2 py-4 text-xs text-muted-foreground"><Spinner />{t("task.waiting")}</p> : null}
+            {runID && !hidden.runs.has(runID) && !history.some(item => item.runID === runID) ? <p role="status" className="flex items-center gap-2 py-4 text-xs text-muted-foreground"><Spinner />{t("task.waiting")}</p> : null}
           </ScrollArea>
         </aside>
         <div className="flex min-h-0 min-w-0 flex-col">
@@ -999,16 +1058,18 @@ function taskKey(task: CatalogSuite) {
   return `${task.id}:${task.revision}`
 }
 // Keep unselected submissions observable without mounting a second details panel.
-function QuickTaskJobObserver({ client, jobID, onChange, onArchived, waitingForReport, onUnavailable }: {
+function QuickTaskJobObserver({ client, jobID, onChange, onArchived, waitingForReport, onUnavailable, onControls }: {
   client: JobClient; jobID: string; onChange: (job: JobView) => void
   onArchived?: (id: string) => void | Promise<void>
   waitingForReport: boolean
   onUnavailable?: (id: string) => void
+  onControls: (job: JobView, commands: ControlView[]) => void
 }) {
-  const { job, result } = useJobObservation(client, jobID, "", 0, waitingForReport)
+  const { job, result, controlSummary } = useJobObservation(client, jobID, "", 0, waitingForReport)
   const archived = result?.observation?.report.archived ? result.observation.report.report_id : undefined
   const notifiedArchive = useRef("")
   useEffect(() => { if (job) onChange(job) }, [job, onChange])
+  useEffect(() => { if (job && controlSummary?.ready) onControls(job, controlSummary.commands) }, [job, controlSummary, onControls])
   useEffect(() => {
     if (result && (!result.observation || result.observation.report.archive_status === "failed")) onUnavailable?.(jobID)
   }, [result, jobID, onUnavailable])

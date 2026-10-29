@@ -31,6 +31,7 @@ type DesktopApp struct {
 	ctx                      context.Context
 	cancel                   context.CancelFunc
 	overview                 OverviewQuery
+	historyRecycle           HistoryRecycleService
 	comparisonHistory        ComparisonHistoryQuery
 	runHistory               RunHistoryQuery
 	query                    WorkspaceQuery

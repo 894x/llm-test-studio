@@ -62,6 +62,20 @@
     "failed": "失败",
     "caseAria": "定位到用例：{{name}}，结论：{{status}}"
   },
+  "headline": {
+    "functional": "用例关键结果",
+    "failedCases": "失败用例",
+    "indeterminateCases": "无法判定",
+    "passedCases": "通过用例",
+    "observedCases": "仅观测",
+    "performance": "关键性能指标",
+    "ttftP95": "TTFT P95（含推理）",
+    "capacityStatus": {
+      "passed": "容量评估通过",
+      "failed": "容量评估未通过",
+      "not_evaluated": "容量评估未完成"
+    }
+  },
   "request": {
     "truncated": "当前显示前 1,000 条请求；完整 {{count}} 条可导出 JSON。",
     "aria": "请求级结果",

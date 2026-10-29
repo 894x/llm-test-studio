@@ -28,7 +28,12 @@ func (repository *Repository) ListRecentReportProjections(ctx context.Context, l
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	rows, err := repository.db.QueryContext(ctx, reportProjectionQuery, limit, domain.CurrentReportSchemaVersion)
+	query := reportProjectionQuery
+	if repository.hideRecycled {
+		query = strings.Replace(query, " SELECT id FROM reports\n", " SELECT id FROM reports WHERE "+
+			repository.reportVisibleSQL("reports.id", "reports.run_id")+"\n", 1)
+	}
+	rows, err := repository.db.QueryContext(ctx, query, limit, domain.CurrentReportSchemaVersion)
 	if err != nil {
 		return nil, reportProjectionReadError(ctx, "query report summaries", err)
 	}

@@ -159,6 +159,7 @@ func (repository *Repository) ListRecentQuickPerformanceSummaries(ctx context.Co
 	rows, err := repository.db.QueryContext(ctx, `
 		SELECT id, generated_at, generated_at_unix_nano, success, model_id, base_url, phase, completed, failed
 		FROM quick_performance_reports
+		WHERE `+repository.historyVisibleSQL("report", "quick_performance_reports.id")+`
 		ORDER BY generated_at_unix_nano DESC, id DESC
 		LIMIT ?
 	`, limit)

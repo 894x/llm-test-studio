@@ -7,7 +7,7 @@ import { createAppI18n } from "@/i18n/i18n"
 import { FIXTURE_CATALOG, FIXTURE_WORKSPACE, FIXTURE_REPORTS } from "@/features/runs/fixtures"
 import { createTaskDraft, type TaskDraft } from "./task-draft"
 import { QuickTaskWorkspace, type QuickTaskJobEntry } from "./quick-task-workspace"
-import { executionClient, jobFixture } from "@/test/jobs-fixture"
+import { controlFixture, executionClient, jobFixture, submissionFixture } from "@/test/jobs-fixture"
 import type { CatalogSuite } from "@/features/catalog/data"
 import { FILE_CATALOG, FILE_SELECTION, FILE_SUITE } from "@/test/local-file-fixture"
 import type { QuickPerformanceCommand } from "./data"
@@ -137,6 +137,41 @@ function setup(
 }
 
 describe("Suite quick task workspace", () => {
+  it("cancels a confirmed Job before its Run has synchronized and preserves pending delivery feedback", async () => {
+    const user = userEvent.setup()
+    const actions = setup({ ...createTaskDraft(task), base_url: "https://example.test", api_key: "private-key", model: "remote-model" },
+      undefined, { ...FIXTURE_WORKSPACE, runs: [] }, undefined, { schema_version: 1, reports: [] })
+    const accepted = jobFixture({ kind: "run", execution: null, run_ids: [], report_ids: [] })
+    actions.launchJob.mockResolvedValue(accepted)
+    actions.getJob.mockResolvedValue(accepted)
+    actions.controlJob.mockResolvedValue(controlFixture({ kind: "cancel", observation: "unreachable" }))
+    await user.click(screen.getByRole("button", { name: "开启功能测试" }))
+    const history = screen.getByRole("list", { name: "测试记录" })
+    const cancel = within(history).getByRole("button", { name: `取消测试 ${task.name}` })
+    await waitFor(() => expect(cancel).toBeEnabled())
+    await user.click(cancel)
+    expect(actions.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: accepted.job_id, kind: "cancel", expected_revision: 1 })
+    expect(actions.getJobs).not.toHaveBeenCalled()
+    expect(cancel).toBeDisabled()
+    expect(within(history).getByText("取消运行 · 等待确认 · 执行器暂不可达，任务状态尚不确定")).toBeVisible()
+    expect(within(history).queryByText("已取消")).not.toBeInTheDocument()
+  })
+
+  it("shows a disabled cancel action until an unconfirmed Job can be controlled", async () => {
+    const user = userEvent.setup()
+    const actions = setup({ ...createTaskDraft(task), base_url: "https://example.test", api_key: "private-key", model: "remote-model" },
+      undefined, { ...FIXTURE_WORKSPACE, runs: [] }, undefined, { schema_version: 1, reports: [] })
+    const pending = jobFixture({ kind: "run", execution: null, run_ids: [], report_ids: [],
+      submission: submissionFixture({ delivery: "pending", confirmation: null }) })
+    actions.launchJob.mockResolvedValue(pending)
+    actions.getJob.mockResolvedValue(pending)
+    await user.click(screen.getByRole("button", { name: "开启功能测试" }))
+    const history = screen.getByRole("list", { name: "测试记录" })
+    expect(within(history).getByRole("button", { name: `取消测试 ${task.name}` })).toBeDisabled()
+    expect(within(history).getByText("执行器确认任务后即可操作。")).toBeVisible()
+    expect(actions.controlJob).not.toHaveBeenCalled()
+  })
+
   it("unlocks on acceptance and keeps consecutive jobs while refresh is still pending", async () => {
     const user = userEvent.setup()
     let finishRefresh!: () => void

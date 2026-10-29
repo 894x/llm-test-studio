@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { DesktopClientError } from "@/app/desktop-client"
 import { executionClient, jobFixture, submissionFixture, JOB_ID, RUN_ID } from "@/test/jobs-fixture"
-import { controlRun, jobControlRevision, launchAtDefault } from "./execution"
+import { controlRun, jobControlRevision, jobControlStatus, launchAtDefault } from "./execution"
 
 describe("durable job submission and controls", () => {
   const payload = { kind: "plan" as const, plan: { plan_id: RUN_ID, model_id: RUN_ID, channel_id: RUN_ID }, quick_task: null, performance: null, comparison: null }
@@ -31,6 +31,13 @@ describe("durable job submission and controls", () => {
     expect(jobControlRevision(job)).toBe(4)
     expect(jobControlRevision({ ...job, execution: null })).toBe(4)
     expect(jobControlRevision({ ...job, execution: null, submission: submissionFixture({ delivery: "pending", confirmation: null }) })).toBeNull()
+  })
+
+  it("uses the status from the newest executor confirmation while the journal catches up", () => {
+    const job = jobFixture({ submission: submissionFixture({ confirmation: { ...submissionFixture().confirmation!, revision: 4, status: "completed" } }) })
+    expect(jobControlStatus(job)).toBe("completed")
+    expect(jobControlStatus({ ...job, execution: { ...job.execution!, revision: 5, status: "draining" } })).toBe("draining")
+    expect(jobControlStatus({ ...job, execution: null, submission: submissionFixture({ delivery: "pending", confirmation: null }) })).toBeUndefined()
   })
 
   it("maps a run through managed jobs and refreshes before control", async () => {

@@ -8,6 +8,7 @@ import type { FormalReportDetail, ReportCaseDetail, ReportEntryDetail, ReportSna
 import { EntryCaseTable, ExecutionDetails, VerificationBadge } from "./entry-case-table"
 import { channelVerdict } from "./report-list-items"
 import { CaseSeverityBadge } from "./case-severity-badge"
+import { formatReportTimestamp } from "./report-timestamp"
 
 export type ChannelReports = Record<string, { reportID: string; detail?: FormalReportDetail; error?: boolean }>
 const PAGE_SIZE = 50
@@ -19,7 +20,7 @@ export function ComparisonReportBody({ comparison, channels, loaded, reports, on
   onRetry?: () => void
   paginate?: boolean
 }) {
-  const { t } = useTranslation("reports")
+  const { t, i18n } = useTranslation("reports")
   const entries = new Map<string, ReportEntryDetail>()
   for (const channel of channels) for (const entry of loaded[channel.channel_id]?.detail?.entries ?? []) {
     if (!entries.has(entry.entry_id)) entries.set(entry.entry_id, entry)
@@ -29,14 +30,18 @@ export function ComparisonReportBody({ comparison, channels, loaded, reports, on
       <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">{comparison.plan_name} · {comparison.model_name}</p>
     </header>
     <div className="flex flex-wrap gap-x-6 gap-y-2">
-      {channels.map(channel => <div key={channel.channel_id} className="min-w-0 text-xs [overflow-wrap:anywhere]">
-        <span className="font-medium">{channel.channel_name}</span><span className="ml-2 text-muted-foreground">{channelVerdict(channel, t, reports.get(channel.run_id))}</span>
-        {loaded[channel.channel_id]?.error ? <div role="alert" className="mt-1 text-destructive">{t("detailError")}
-          {onRetry ? <Button variant="outline" size="xs" className="ml-2" onClick={onRetry}>{t("comparison.retry")}</Button> : null}
-        </div> : !loaded[channel.channel_id]?.detail ? <div className="mt-1 text-muted-foreground" role="status">
-          {reports.has(channel.run_id) ? <><Spinner className="mr-1 inline-block" />{t("detailLoading")}</> : t("comparison.pending")}
-        </div> : null}
-      </div>)}
+      {channels.map(channel => {
+        const detail = loaded[channel.channel_id]?.detail
+        return <div key={channel.channel_id} className="min-w-0 text-xs [overflow-wrap:anywhere]">
+          <span className="font-medium">{channel.channel_name}</span><span className="ml-2 text-muted-foreground">{channelVerdict(channel, t, reports.get(channel.run_id))}</span>
+          {detail ? <p className="mt-1 text-[11px] text-muted-foreground">{t("inspector.generated")}: <time className="tabular-nums" dateTime={detail.report.generated_at}>{formatReportTimestamp(detail.report.generated_at, i18n.resolvedLanguage ?? i18n.language)}</time></p> : null}
+          {loaded[channel.channel_id]?.error ? <div role="alert" className="mt-1 text-destructive">{t("detailError")}
+            {onRetry ? <Button variant="outline" size="xs" className="ml-2" onClick={onRetry}>{t("comparison.retry")}</Button> : null}
+          </div> : !detail ? <div className="mt-1 text-muted-foreground" role="status">
+            {reports.has(channel.run_id) ? <><Spinner className="mr-1 inline-block" />{t("detailLoading")}</> : t("comparison.pending")}
+          </div> : null}
+        </div>
+      })}
     </div>
     {[...entries.values()].map(entry => {
       const channelEntries = channels.map(channel => loaded[channel.channel_id]?.detail?.entries.find(item => item.entry_id === entry.entry_id))

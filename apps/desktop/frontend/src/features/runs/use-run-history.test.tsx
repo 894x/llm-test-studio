@@ -9,6 +9,26 @@ afterEach(() => vi.useRealTimers())
 const run = (index: number, active = false) => ({ ...FIXTURE_WORKSPACE.runs[0],
   id: `70000000-0000-4000-8000-${String(index).padStart(12, "0")}`, status: active ? "running" as const : "completed" as const })
 
+it("prunes removed retained records and prevents an older page request from reinserting them", async () => {
+  const first = run(1)
+  const second = run(2)
+  let finish!: (value: RunHistoryPage) => void
+  const client = { getRunHistory: vi.fn().mockResolvedValueOnce({ schema_version: 1, runs: [first, second], next_cursor: "older" }),
+    getRunSummaries: vi.fn().mockResolvedValue({ schema_version: 1, runs: [first], next_cursor: "" }) }
+  const { result } = renderHook(() => useRunHistory(client, []))
+  await waitFor(() => expect(result.current.snapshot.runs).toHaveLength(2))
+  client.getRunHistory.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+  act(() => { void result.current.loadMore() })
+  const entry = { kind: "run" as const, id: first.id, title: "saved", removed_at: "2026-10-30T00:00:00Z", run_ids: [first.id], report_ids: [], job_ids: [], comparison_ids: [], remote: false }
+  act(() => { void result.current.applyHistoryChange(entry, "recycle") })
+  expect(result.current.snapshot.runs.map(item => item.id)).toEqual([second.id])
+  await act(async () => finish({ schema_version: 1, runs: [first], next_cursor: "" }))
+  expect(result.current.snapshot.runs.map(item => item.id)).toEqual([second.id])
+  client.getRunHistory.mockResolvedValue({ schema_version: 1, runs: [first, second], next_cursor: "" })
+  await act(async () => { void result.current.applyHistoryChange({ ...entry, removed_at: "" }, "restore") })
+  await waitFor(() => expect(result.current.snapshot.runs).toHaveLength(2))
+})
+
 it("keeps loaded pages and polls only active IDs, then stops at terminal state", async () => {
   let visible = true
   const first: RunHistoryPage = { schema_version: 1, runs: Array.from({ length: 25 }, (_, i) => run(i, i === 0)), next_cursor: "older" }

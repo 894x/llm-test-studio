@@ -184,7 +184,7 @@ describe("QuickPerformanceSheet", () => {
     const details = await screen.findByRole("region", { name: "执行详情" })
     expect(await within(details).findByRole("button", { name: "取消运行" })).toBeDisabled()
     await user.click(await within(details).findByRole("button", { name: "重试原命令" }))
-    await within(details).findByText(/已拒绝/)
+    await within(within(details).getByRole("region", { name: "执行控制" })).findByText(/已拒绝/)
     expect(client.retryJobControl).toHaveBeenCalledExactlyOnceWith(COMMAND_ID)
     expect(client.controlJob).not.toHaveBeenCalled()
     expect(details).toHaveTextContent("运行中")

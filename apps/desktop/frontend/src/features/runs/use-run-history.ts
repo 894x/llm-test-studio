@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { DesktopClient, RunHistoryPage } from "@/app/desktop-client"
 import type { JobView } from "@/features/jobs/data"
 import { isRunActive, type WorkspaceSnapshot } from "./data"
+import type { HistoryChanged } from "@/features/history-recycle/data"
 
 export type RunHistoryClient = Pick<DesktopClient, "getRunHistory" | "getRunSummaries" | "getAvailableReports">
 const empty: RunHistoryPage = { schema_version: 1, runs: [], next_cursor: "" }
@@ -16,13 +17,15 @@ export function useRunHistory(client: Partial<RunHistoryClient>, jobs: JobView[]
   const observedJobs = useRef(new Map<string, string>())
   const requestedIDs = useRef(new Set<string>())
   const requests = useRef(new Map<string, Promise<void>>())
+  const hiddenIDs = useRef(new Set<string>())
   const merge = useCallback((next: RunHistoryPage, cursor?: string) => {
     const runs = new Map(retained.current.runs.map(run => [run.id, run]))
     next.runs.forEach(run => {
+      if (hiddenIDs.current.has(run.id)) return
       const previous = runs.get(run.id)
       if (!previous || run.revision > previous.revision || (run.revision === previous.revision && (!previous.report_id || run.report_id))) runs.set(run.id, run)
     })
-    retained.current = { schema_version: 1, runs: [...runs.values()], next_cursor: cursor ?? retained.current.next_cursor }
+    retained.current = { schema_version: 1, runs: [...runs.values()].filter(run => !hiddenIDs.current.has(run.id)), next_cursor: cursor ?? retained.current.next_cursor }
     setPage(retained.current)
   }, [])
   const read = useCallback((append: boolean) => {
@@ -44,7 +47,7 @@ export function useRunHistory(client: Partial<RunHistoryClient>, jobs: JobView[]
   }, [client, merge])
   const refreshIDs = useCallback(async (ids: string[]) => {
     if (!client.getRunSummaries) return
-    const unique = [...new Set(ids)].sort()
+    const unique = [...new Set(ids)].filter(id => !hiddenIDs.current.has(id)).sort()
     unique.forEach(id => requestedIDs.current.add(id))
     for (let offset = 0; offset < unique.length; offset += 100) {
       const batch = unique.slice(offset, offset + 100)
@@ -58,6 +61,15 @@ export function useRunHistory(client: Partial<RunHistoryClient>, jobs: JobView[]
       await request
     }
   }, [client, merge])
+  const applyHistoryChange = useCallback<HistoryChanged>((entry, action) => {
+    entry.run_ids.forEach(id => {
+      if (action === "recycle") { hiddenIDs.current.add(id); requestedIDs.current.delete(id) }
+      else hiddenIDs.current.delete(id)
+    })
+    retained.current = { ...retained.current, runs: retained.current.runs.filter(run => !hiddenIDs.current.has(run.id)) }
+    setPage(retained.current)
+    if (action === "restore") { void read(false); void refreshIDs(entry.run_ids) }
+  }, [read, refreshIDs])
   useEffect(() => {
     if (!refreshError) return
     const timer = window.setTimeout(() => void refreshIDs([...requestedIDs.current]), 2000)
@@ -82,7 +94,7 @@ export function useRunHistory(client: Partial<RunHistoryClient>, jobs: JobView[]
       const ids = observations.flatMap(job => job.ids.filter(id => !existing.has(id) || isRunActive(existing.get(id)!.status)))
       ids.push(...requestedIDs.current)
       ids.push(...retained.current.runs.filter(run => isRunActive(run.status)).map(run => run.id))
-      if (preferredRunID && !existing.has(preferredRunID)) ids.push(preferredRunID)
+      if (preferredRunID && !hiddenIDs.current.has(preferredRunID) && !existing.has(preferredRunID)) ids.push(preferredRunID)
       await refreshIDs(ids)
       if (active && (requestedIDs.current.size > 0 || ids.some(id => !retained.current.runs.some(run => run.id === id)) ||
         retained.current.runs.some(run => isRunActive(run.status)))) timer = window.setTimeout(() => void read(), 2000)
@@ -91,5 +103,5 @@ export function useRunHistory(client: Partial<RunHistoryClient>, jobs: JobView[]
     return () => { active = false; window.clearTimeout(timer) }
   }, [jobRuns, preferredRunID, refreshIDs, activeIDs])
   const snapshot: WorkspaceSnapshot = { schema_version: 1, plans: [], runs: page.runs }
-  return { snapshot, pending, error: error || refreshError, hasMore: !!page.next_cursor, loadMore: () => read(true), refresh: () => read(false), refreshIDs }
+  return { snapshot, pending, error: error || refreshError, hasMore: !!page.next_cursor, loadMore: () => read(true), refresh: () => read(false), refreshIDs, applyHistoryChange }
 }

@@ -8,11 +8,11 @@ export const DESKTOP_PAGES = [
   { id: "reports", labelKey: "navigation.reports" },
 ] as const
 
-export type DesktopPage = (typeof DESKTOP_PAGES)[number]["id"]
+export type DesktopPage = (typeof DESKTOP_PAGES)[number]["id"] | "recycle-bin"
 
 export function desktopPageFromHash(hash: string): DesktopPage {
   const candidate = hash.replace(/^#\/?/, "")
-  return DESKTOP_PAGES.some((page) => page.id === candidate)
+  return candidate === "recycle-bin" || DESKTOP_PAGES.some((page) => page.id === candidate)
     ? (candidate as DesktopPage)
     : "runs"
 }

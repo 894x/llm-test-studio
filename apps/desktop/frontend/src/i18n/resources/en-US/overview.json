@@ -1,6 +1,9 @@
 {
   "title": "Workspace overview",
   "description": "A summary of the local catalog, active runs, and recent reports",
+  "drilldown": {
+    "back": "Back to overview"
+  },
   "summary": {
     "aria": "Local object summary",
     "models": "{{count}} models",
@@ -8,7 +11,9 @@
     "channels": "{{count}} channels",
     "enabled": "{{count}} enabled",
     "cases": "{{count}} cases",
+    "executableCases": "Test definitions",
     "suites": "{{count}} suites",
+    "reusableSuites": "Reusable case groups",
     "plans": "{{count}} plans",
     "fixedVersions": "Pinned versions",
     "runs": "{{count}} runs",
@@ -19,6 +24,7 @@
   },
   "activeRun": {
     "title": "Active run",
+    "open": "Open run",
     "plan": "Plan",
     "modelChannel": "Model and channel",
     "load": "Load",

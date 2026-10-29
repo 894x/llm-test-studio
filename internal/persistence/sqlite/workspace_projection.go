@@ -22,12 +22,14 @@ func (repository *Repository) ListRunProjections(ctx context.Context) ([]workspa
 		return nil, fmt.Errorf("begin workspace projection read: %w", err)
 	}
 	defer tx.Rollback()
-	projections, err := readWorkspaceProjections(ctx, tx, workspaceProjectionQuery)
+	query := repository.visibleRunProjectionQuery(workspaceProjectionQuery)
+	projections, err := readWorkspaceProjections(ctx, tx, query)
 	if err != nil {
 		return nil, err
 	}
 	var rootCount int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM execution_runs`).Scan(&rootCount); err != nil {
+	countQuery := `SELECT COUNT(*) FROM execution_runs WHERE ` + repository.historyVisibleSQL("run", "execution_runs.id")
+	if err := tx.QueryRowContext(ctx, countQuery).Scan(&rootCount); err != nil {
 		return nil, err
 	}
 	if rootCount != len(projections) {

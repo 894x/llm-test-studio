@@ -10,6 +10,17 @@ import (
 	"time"
 )
 
+// OpenDesktopReadOnlyView omits locally recycled history from desktop lists.
+// Protocol and execution reads continue to use the complete stored history.
+func (repository *Repository) OpenDesktopReadOnlyView(ctx context.Context) (*Repository, error) {
+	view, err := repository.OpenReadOnlyView(ctx)
+	if err != nil {
+		return nil, err
+	}
+	view.hideRecycled = true
+	return view, nil
+}
+
 // OpenReadOnlyView isolates history reads from execution's connection.
 // Both roles use the same current repository implementation and validation.
 // The owner must stop readers and close this view before closing writer.

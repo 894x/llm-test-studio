@@ -1,3 +1,4 @@
+import { parseHistoryRecyclePreview, parseHistoryRecycleTarget, parseRecycledHistoryEntry, parseRecycledHistoryPage, type HistoryRecycleTarget, type HistoryRecyclePreview, type RecycledHistoryEntry, type RecycledHistoryPage } from "@/features/history-recycle/data"
 import type { QuickHistoryPage } from "@/features/quick-test/history-data"
 import { parseStartupProgress, READY_STARTUP, type StartupProgress } from "./startup-progress"
 import { DesktopDataError } from "@/app/data-error"
@@ -56,6 +57,11 @@ import {
 } from "@/features/reports/generation-progress"
 
 export type DesktopErrorCode =
+  | "history_recycle_invalid"
+  | "history_recycle_not_found"
+  | "history_recycle_active"
+  | "history_recycle_unconfirmed"
+  | "history_recycle_unavailable"
   | "desktop_not_started"
   | "desktop_startup_failed"
   | "desktop_stopped"
@@ -158,6 +164,10 @@ export function isCatalogSavedRefreshFailure(error: unknown): error is DesktopCl
 }
 
 export interface DesktopClient extends CatalogActions {
+  previewHistoryRecycle(target: HistoryRecycleTarget): Promise<HistoryRecyclePreview>
+  getRecycledHistory(after: string): Promise<RecycledHistoryPage>
+  recycleHistory(target: HistoryRecycleTarget): Promise<RecycledHistoryEntry>
+  restoreHistory(target: HistoryRecycleTarget): Promise<RecycledHistoryEntry>
   getStartupProgress(): Promise<StartupProgress>
   createLocalFileSelection(command: CreateLocalFileSelectionCommand): Promise<LocalFileSelection>
   releaseLocalFileSelection(selectionID: string): Promise<void>
@@ -242,6 +252,10 @@ export type DesktopDiagnosticsSnapshot = {
 }
 
 type WailsDesktopBinding = {
+  PreviewHistoryRecycle(target: HistoryRecycleTarget): Promise<unknown>
+  GetRecycledHistory(after: string): Promise<unknown>
+  RecycleHistory(target: HistoryRecycleTarget): Promise<unknown>
+  RestoreHistory(target: HistoryRecycleTarget): Promise<unknown>
   GetStartupProgress(): Promise<unknown>
   CreateLocalFileSelection(document: string): Promise<unknown>
   ReleaseLocalFileSelection(selectionID: string): Promise<unknown>
@@ -315,6 +329,7 @@ type FrontendDiagnostic = {
 }
 
 const REQUIRED_WAILS_BINDING_METHODS = [
+  "PreviewHistoryRecycle", "GetRecycledHistory", "RecycleHistory", "RestoreHistory",
   "CreateLocalFileSelection", "ReleaseLocalFileSelection",
   "GetRemoteNodes", "SaveRemoteNode", "RefreshRemoteNode", "SetRemoteNodeTaskConcurrency", "ConfirmRemoteNodeHostKey", "SelectDefaultExecution",
   "RetryRemoteInstallation", "RemoveRemoteNode",
@@ -368,6 +383,10 @@ export function createFixtureClient(
     }))
   }
   return {
+    async previewHistoryRecycle() { throw new DesktopClientError("history_recycle_unavailable") },
+    async getRecycledHistory() { return { schema_version: 1, entries: [], next_cursor: "", has_more: false } },
+    async recycleHistory() { throw new DesktopClientError("history_recycle_unavailable") },
+    async restoreHistory() { throw new DesktopClientError("history_recycle_unavailable") },
     async createLocalFileSelection() { throw new DesktopClientError("file_input_unavailable") },
     async releaseLocalFileSelection() { throw new DesktopClientError("file_input_unavailable") },
     async getDiagnostics() {
@@ -589,6 +608,10 @@ function createLazyFixtureClient(): DesktopClient {
       createFixtureClient(FIXTURE_WORKSPACE, FIXTURE_CATALOG, FIXTURE_REPORTS),
   )
   return {
+    previewHistoryRecycle: async target => (await client).previewHistoryRecycle(target),
+    getRecycledHistory: async after => (await client).getRecycledHistory(after),
+    recycleHistory: async target => (await client).recycleHistory(target),
+    restoreHistory: async target => (await client).restoreHistory(target),
     createLocalFileSelection: async command => (await client).createLocalFileSelection(command),
     releaseLocalFileSelection: async id => (await client).releaseLocalFileSelection(id),
     getDiagnostics: async () => (await client).getDiagnostics(),
@@ -712,6 +735,23 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
     definitions: catalogRead("definitions"), quick_test: catalogRead("quick_test"),
   }
   return {
+    previewHistoryRecycle: async target => callBinding(() => binding.PreviewHistoryRecycle(parseHistoryRecycleTarget(target)), value => {
+      const preview = parseHistoryRecyclePreview(value)
+      validateHistoryTarget(preview.entry, target)
+      return preview
+    }),
+    getRecycledHistory: async after => callBinding(() => binding.GetRecycledHistory(after), parseRecycledHistoryPage),
+    recycleHistory: async target => callBinding(() => binding.RecycleHistory(parseHistoryRecycleTarget(target)), value => {
+      const entry = parseRecycledHistoryEntry(value)
+      validateHistoryTarget(entry, target)
+      if (!entry.removed_at) throw new DesktopDataError("Missing history removal timestamp")
+      return entry
+    }),
+    restoreHistory: async target => callBinding(() => binding.RestoreHistory(parseHistoryRecycleTarget(target)), value => {
+      const entry = parseRecycledHistoryEntry(value)
+      if (entry.kind !== target.kind || entry.id !== target.id || entry.removed_at) throw new DesktopDataError("History restore identity mismatch")
+      return entry
+    }),
     createLocalFileSelection: async command => {
       const document = localFileSelectionDocument(command)
       return callBinding(() => binding.CreateLocalFileSelection(document), value => {
@@ -1216,6 +1256,11 @@ function planFromCommand(id: string, revision: number, command: CreatePlanComman
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
+}
+
+function validateHistoryTarget(entry: RecycledHistoryEntry, target: HistoryRecycleTarget): void {
+  const ids = target.kind === "job" ? entry.job_ids : target.kind === "comparison" ? entry.comparison_ids : target.kind === "run" ? entry.run_ids : entry.report_ids
+  if (!ids.includes(target.id)) throw new DesktopDataError("History recycle identity mismatch")
 }
 
 function isWorkspacePlan(value: unknown): boolean {

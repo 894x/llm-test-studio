@@ -43,7 +43,7 @@ func inspectMigrationState(
 		return state, schemaResetRequired("unsupported user_version %d", userVersion)
 	}
 	rows, err := conn.QueryContext(ctx,
-		`SELECT version, name, checksum, applied_at, app_version FROM schema_migrations ORDER BY version LIMIT 4`)
+		`SELECT version, name, checksum, applied_at, app_version FROM schema_migrations ORDER BY version LIMIT 5`)
 	if err != nil {
 		return state, schemaResetRequired("invalid migration history structure")
 	}
@@ -86,8 +86,14 @@ func inspectMigrationState(
 		objects = schemaV2Objects
 	}
 	if userVersion >= 3 {
-		if records[2].name != currentSchemaName || records[2].checksum != currentSchemaChecksum() {
+		if records[2].name != schemaV3Name || records[2].checksum != schemaV3Checksum() {
 			return state, schemaResetRequired("version 3 migration identity does not match")
+		}
+		objects = schemaV3Objects
+	}
+	if userVersion >= 4 {
+		if records[3].name != currentSchemaName || records[3].checksum != currentSchemaChecksum() {
+			return state, schemaResetRequired("version 4 migration identity does not match")
 		}
 		objects = currentSchemaObjects
 	}
@@ -119,6 +125,6 @@ func recordCurrentMigration(ctx context.Context, conn *sql.Conn, appVersion stri
 	}, appVersion); err != nil {
 		return err
 	}
-	_, err := conn.ExecContext(ctx, "PRAGMA user_version = 3")
+	_, err := conn.ExecContext(ctx, "PRAGMA user_version = 4")
 	return err
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
+	"github.com/894x/llm-test-studio/internal/application/historyrecycle"
 	"github.com/894x/llm-test-studio/internal/application/jobfiles"
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
@@ -103,6 +104,16 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 	}
 
 	switch {
+	case errors.Is(internal, historyrecycle.ErrInvalid):
+		return DesktopBindingError{Code: desktopCodeHistoryRecycleInvalid}
+	case errors.Is(internal, historyrecycle.ErrNotFound):
+		return DesktopBindingError{Code: desktopCodeHistoryRecycleNotFound}
+	case errors.Is(internal, historyrecycle.ErrActive):
+		return DesktopBindingError{Code: desktopCodeHistoryRecycleActive}
+	case errors.Is(internal, historyrecycle.ErrUnconfirmed):
+		return DesktopBindingError{Code: desktopCodeHistoryRecycleUnconfirmed}
+	case errors.Is(internal, ErrHistoryRecycleUnavailable):
+		return DesktopBindingError{Code: desktopCodeHistoryRecycleUnavailable}
 	case errors.Is(internal, jobfiles.ErrInvalid):
 		return DesktopBindingError{Code: desktopCodeFileInputInvalid}
 	case errors.Is(internal, jobfiles.ErrTooLarge):
@@ -218,6 +229,9 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 
 func isDesktopBindingCode(code string) bool {
 	switch code {
+	case desktopCodeHistoryRecycleInvalid, desktopCodeHistoryRecycleNotFound, desktopCodeHistoryRecycleActive,
+		desktopCodeHistoryRecycleUnconfirmed, desktopCodeHistoryRecycleUnavailable:
+		return true
 	case desktopCodeFileInputInvalid, desktopCodeFileInputTooLarge, desktopCodeFileInputLimit,
 		desktopCodeFileInputBusy, desktopCodeFileInputNotFound, desktopCodeFileInputUnavailable:
 		return true

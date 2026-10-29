@@ -62,6 +62,20 @@
     "failed": "Failed",
     "caseAria": "Go to case: {{name}}, outcome: {{status}}"
   },
+  "headline": {
+    "functional": "Key case results",
+    "failedCases": "Failed cases",
+    "indeterminateCases": "Indeterminate",
+    "passedCases": "Passed cases",
+    "observedCases": "Observed only",
+    "performance": "Key performance metrics",
+    "ttftP95": "TTFT P95 (includes reasoning)",
+    "capacityStatus": {
+      "passed": "Capacity evaluation passed",
+      "failed": "Capacity evaluation failed",
+      "not_evaluated": "Capacity evaluation incomplete"
+    }
+  },
   "request": {
     "truncated": "Showing the first 1,000 requests; all {{count}} are available in the JSON export.",
     "aria": "Request-level results",

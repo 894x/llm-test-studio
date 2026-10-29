@@ -1,12 +1,43 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { DesktopClientError } from "@/app/desktop-client"
-import { controlFixture, executionClient, jobFixture, JOB_ID, JOB_TIME, REPORT_ID } from "@/test/jobs-fixture"
+import { controlFixture, executionClient, jobFixture, submissionFixture, JOB_ID, JOB_TIME, REPORT_ID } from "@/test/jobs-fixture"
 import { JobDetails } from "./job-details"
 
 afterEach(() => { vi.useRealTimers() })
 
 describe("durable job observation", () => {
+  it("explains both controls and disables them before confirmation and after a confirmed terminal state", async () => {
+    const client = executionClient()
+    const unconfirmed = jobFixture({ execution: null, submission: submissionFixture({ delivery: "pending", confirmation: null }) })
+    client.getJob.mockResolvedValue(unconfirmed)
+    const view = render(<JobDetails client={client} jobID={JOB_ID} initialJob={unconfirmed} />)
+    expect(await screen.findByText("执行器确认任务后即可操作。")).toBeVisible()
+    expect(screen.getByRole("button", { name: "停止发送" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "取消运行" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "停止发送" })).toHaveAttribute("aria-description", "停止发送新请求，并等待已发出的请求结束。")
+    view.unmount()
+    const completed = jobFixture({ execution: null, submission: submissionFixture({ confirmation: { status: "completed", revision: 4, accepted_at: JOB_TIME } }) })
+    client.getJob.mockResolvedValue(completed)
+    render(<JobDetails client={client} jobID={JOB_ID} initialJob={completed} />)
+    await waitFor(() => expect(screen.getByText(/已确认：已完成/)).toBeVisible())
+    expect(screen.getByRole("button", { name: "停止发送" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "取消运行" })).toBeDisabled()
+  })
+
+  it("retains the returned pending command while offline without claiming cancellation completed", async () => {
+    const client = executionClient()
+    const pending = controlFixture({ kind: "cancel", observation: "unreachable" })
+    client.controlJob.mockResolvedValue(pending)
+    render(<JobDetails client={client} jobID={JOB_ID} initialJob={jobFixture()} />)
+    await waitFor(() => expect(screen.getByRole("button", { name: "取消运行" })).toBeEnabled())
+    fireEvent.click(screen.getByRole("button", { name: "取消运行" }))
+    expect(await screen.findByText("取消运行 · 等待确认 · 执行器暂不可达，任务状态尚不确定")).toBeVisible()
+    expect(screen.getByRole("button", { name: "取消运行" })).toBeDisabled()
+    expect(screen.getByText("运行中")).toBeVisible()
+    expect(screen.queryByText("已取消")).not.toBeInTheDocument()
+  })
+
   it("shows shared remote execution and controls it without local submission fields", async () => {
     const client = executionClient()
     const job = jobFixture({ submission: null, location: { kind: "remote", configuration_id: JOB_ID },

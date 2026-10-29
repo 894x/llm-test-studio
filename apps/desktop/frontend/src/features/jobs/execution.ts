@@ -14,6 +14,12 @@ export function jobControlRevision(job: JobView): number | null {
   return job.execution?.revision ?? confirmation?.revision ?? null
 }
 
+export function jobControlStatus(job: JobView) {
+  const confirmation = job.submission?.confirmation
+  return confirmation && (!job.execution || confirmation.revision > job.execution.revision)
+    ? confirmation.status : job.execution?.status
+}
+
 // A managed Job supplies the actual executor and authoritative control revision,
 // including shared remote jobs. A run ID alone cannot identify a control target.
 export async function controlRun(client: JobClient, runID: string, kind: ControlInput["kind"]): Promise<JobView> {

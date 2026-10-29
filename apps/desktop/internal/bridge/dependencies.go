@@ -5,6 +5,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
+	"github.com/894x/llm-test-studio/internal/application/historyrecycle"
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/overview"
 	"github.com/894x/llm-test-studio/internal/application/quickhistory"
@@ -101,7 +102,15 @@ type OverviewQuery interface {
 	Snapshot(context.Context) (overview.Snapshot, error)
 }
 
+type HistoryRecycleService interface {
+	Preview(context.Context, historyrecycle.Target) (historyrecycle.Preview, error)
+	Recycle(context.Context, historyrecycle.Target) (historyrecycle.Entry, error)
+	Restore(context.Context, historyrecycle.Target) (historyrecycle.Entry, error)
+	Page(context.Context, string) (historyrecycle.Page, error)
+}
+
 type Dependencies struct {
+	HistoryRecycle         HistoryRecycleService
 	Overview               OverviewQuery
 	ComparisonHistory      ComparisonHistoryQuery
 	RunHistory             RunHistoryQuery

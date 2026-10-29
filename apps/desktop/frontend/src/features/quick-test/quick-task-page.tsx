@@ -12,9 +12,14 @@ type Props = Omit<ComponentProps<typeof QuickTaskWorkspace>, "workspace" | "repo
   historyRevision: Record<string, ReportGenerationProgress>
 }
 
-export function QuickTaskPage({ actions, historyRevision, onJobChange, onPerformanceArchived, ...props }: Props) {
+export function QuickTaskPage({ actions, historyRevision, onJobChange, onPerformanceArchived, historyChanges = [], onHistoryChanged, ...props }: Props) {
   const { t } = useTranslation("quickTest")
-  const { data, loaded, loading, error, refresh, loadMore, retry, invalidate } = useQuickHistory(actions)
+  const { data, loaded, loading, error, refresh, loadMore, retry, invalidate, applyHistoryChange } = useQuickHistory(actions)
+  const appliedHistoryChanges = useRef(0)
+  useEffect(() => {
+    historyChanges.slice(appliedHistoryChanges.current).forEach(({ entry, action }) => void applyHistoryChange(entry, action))
+    appliedHistoryChanges.current = historyChanges.length
+  }, [historyChanges, applyHistoryChange])
   const end = useRef<HTMLDivElement>(null)
   const revision = useRef(historyRevision)
   useEffect(() => {
@@ -47,7 +52,8 @@ export function QuickTaskPage({ actions, historyRevision, onJobChange, onPerform
       : data.next_cursor ? <Button variant="ghost" size="sm" onClick={() => void loadMore()}>{t("historyPage.more")}</Button>
       : loaded && data.runs.length + data.reports.length > 0 ? t("historyPage.end") : null}
   </div>
-  return <QuickTaskWorkspace {...props} actions={actions}
+  return <QuickTaskWorkspace {...props} actions={actions} historyChanges={historyChanges}
+    onHistoryChanged={async (entry, action) => { await applyHistoryChange(entry, action); await onHistoryChanged?.(entry, action) }}
     workspace={{ schema_version: 1, plans: [], runs: data.runs }}
     reports={{ schema_version: 1, reports: data.reports }} refresh={refresh} historyFooter={footer}
     onJobChange={receiveJob}

@@ -12,6 +12,7 @@ import (
 )
 
 type desktopRequirements struct {
+	historyRecycle    bool
 	overview          bool
 	comparisonHistory bool
 	runHistory        bool
@@ -30,6 +31,7 @@ type desktopRequirements struct {
 }
 
 type desktopLease struct {
+	historyRecycle    HistoryRecycleService
 	overview          OverviewQuery
 	ctx               context.Context
 	comparisonHistory ComparisonHistoryQuery
@@ -108,6 +110,7 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	app.startupProgress.Stage = "ready"
 	app.startupProgress.ElapsedMS = time.Since(app.startupStarted).Milliseconds()
 	app.overview = dependencies.Overview
+	app.historyRecycle = dependencies.HistoryRecycle
 	app.comparisonHistory = dependencies.ComparisonHistory
 	app.runHistory = dependencies.RunHistory
 	app.query = dependencies.Query
@@ -182,6 +185,9 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 	if require.overview && isNilInterface(app.overview) {
 		return desktopLease{}, ErrWorkspaceUnavailable
 	}
+	if require.historyRecycle && isNilInterface(app.historyRecycle) {
+		return desktopLease{}, ErrHistoryRecycleUnavailable
+	}
 	if require.comparisonHistory && isNilInterface(app.comparisonHistory) {
 		return desktopLease{}, ErrWorkspaceUnavailable
 	}
@@ -239,6 +245,7 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 		}
 	}
 	return desktopLease{
+		historyRecycle:    app.historyRecycle,
 		overview:          app.overview,
 		comparisonHistory: app.comparisonHistory,
 		runHistory:        app.runHistory,
@@ -279,6 +286,7 @@ func (app *DesktopApp) shutdown() error {
 	selections := app.fileSelections
 	app.fileSelections = nil
 	app.query = nil
+	app.historyRecycle = nil
 	app.catalog = nil
 	app.catalogCommands = nil
 	app.reports = nil

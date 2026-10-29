@@ -16,6 +16,27 @@ beforeEach(() => {
 })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
+it.each(["run", "performance"] as const)("keeps %s controls in the fixed footer across every details tab", async kind => {
+  const user = userEvent.setup()
+  const snapshot = structuredClone(FIXTURE_WORKSPACE)
+  snapshot.runs = kind === "run" ? [{ ...snapshot.runs[0], job_id: JOB_ID }] : []
+  const job = jobFixture({ kind, run_ids: snapshot.runs.map(run => run.id), report_ids: [] })
+  const client = executionClient()
+  client.getJobs.mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
+  client.getJob.mockResolvedValue(job)
+  render(<RunWorkspace client={client} snapshot={snapshot} reports={EMPTY_REPORTS} preferredJob={null} commandError="" onOpenReport={vi.fn()} />)
+  const controls = await screen.findByRole("region", { name: "执行控制" })
+  await waitFor(() => expect(within(controls).getByRole("button", { name: "取消运行" })).toBeEnabled())
+  for (const name of ["失败", "产物", "执行", "摘要"]) {
+    await user.click(screen.getByRole("tab", { name }))
+    expect(screen.getAllByRole("region", { name: "执行控制" })).toHaveLength(1)
+    expect(controls).toBeVisible()
+    expect(controls.closest('[data-slot="scroll-area-viewport"]')).toBeNull()
+  }
+  expect(client.getJobControls).toHaveBeenCalledTimes(1)
+  expect(client.controlJob).not.toHaveBeenCalled()
+})
+
 it("lists a pending remote submission before a Run exists and recovers it after remount", async () => {
   const client = executionClient()
   const job = jobFixture({ location: { kind: "remote", configuration_id: JOB_ID }, execution: null,
@@ -51,12 +72,18 @@ it("shows a comparison once, selects its child runs, and controls its owning Job
   const table = await screen.findByRole("table", { name: "运行记录" })
   await waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(2))
   expect(within(table).getByText("2 个子运行")).toBeVisible()
+  expect(screen.getByRole("tab", { name: "摘要" })).toHaveAttribute("aria-selected", "true")
+  const controls = screen.getByRole("region", { name: "执行控制" })
+  expect(within(controls).getByRole("button", { name: "停止发送" })).toBeVisible()
+  expect(within(controls).getByRole("button", { name: "取消运行" })).toBeVisible()
   await user.click(screen.getByRole("combobox", { name: "查看子运行" }))
   await user.click(screen.getByRole("option", { name: `${snapshot.runs[1].channel_name} · ${snapshot.runs[1].plan_name}` }))
   await user.click(screen.getByRole("tab", { name: "执行" }))
   const details = await screen.findByRole("region", { name: "执行详情" })
   expect(details).toHaveTextContent("共享节点任务")
-  await user.click(within(details).getByRole("button", { name: "取消运行" }))
+  expect(controls.closest('[data-slot="scroll-area-viewport"]')).toBeNull()
+  expect(client.getJobControls).toHaveBeenCalledTimes(1)
+  await user.click(within(controls).getByRole("button", { name: "取消运行" }))
   expect(client.controlJob).toHaveBeenCalledWith({ job_id: JOB_ID, kind: "cancel", expected_revision: 1 })
   expect(client.launchJob).not.toHaveBeenCalled()
 })
@@ -96,7 +123,7 @@ it("retains the last remote state on read failure and retries the original contr
   fireEvent.mouseDown(screen.getByRole("tab", { name: "执行" }), { button: 0, ctrlKey: false })
   const details = screen.getByRole("region", { name: "执行详情" })
   expect(details).toHaveTextContent("当前展示最后一次确认的数据")
-  expect(within(details).getByRole("button", { name: "取消运行" })).toBeDisabled()
+  expect(screen.getByRole("button", { name: "取消运行" })).toBeDisabled()
   fireEvent.click(within(details).getByRole("button", { name: "重试原命令" }))
   await act(async () => {})
   expect(client.retryJobControl).toHaveBeenCalledExactlyOnceWith(command.command_id)

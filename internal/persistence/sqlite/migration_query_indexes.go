@@ -6,6 +6,7 @@ import (
 )
 
 const schemaV2Name = "0002_operational_upgrades"
+const schemaV3Name = "0003_query_indexes"
 
 func schemaV2Checksum() string { return schemaChecksum(schemaV2Name, schemaV2Objects) }
 
@@ -20,7 +21,9 @@ var queryIndexObjects = []schemaObject{
 	{kind: "index", name: "idx_comparisons_history", table: "comparisons", ddl: `CREATE INDEX idx_comparisons_history ON comparisons((` + queryIndexTimeKeyV3("created_at") + `) DESC, id DESC)`},
 }
 
-var currentSchemaObjects = append(append([]schemaObject{}, schemaV2Objects...), queryIndexObjects...)
+var schemaV3Objects = append(append([]schemaObject{}, schemaV2Objects...), queryIndexObjects...)
+
+func schemaV3Checksum() string { return schemaChecksum(schemaV3Name, schemaV3Objects) }
 
 func recordV2Migration(ctx context.Context, conn *sql.Conn, appVersion string) error {
 	if err := recordMigration(ctx, conn, migrationRecord{
@@ -29,6 +32,16 @@ func recordV2Migration(ctx context.Context, conn *sql.Conn, appVersion string) e
 		return err
 	}
 	_, err := conn.ExecContext(ctx, "PRAGMA user_version = 2")
+	return err
+}
+
+func recordV3Migration(ctx context.Context, conn *sql.Conn, appVersion string) error {
+	if err := recordMigration(ctx, conn, migrationRecord{
+		version: 3, name: schemaV3Name, checksum: schemaV3Checksum(),
+	}, appVersion); err != nil {
+		return err
+	}
+	_, err := conn.ExecContext(ctx, "PRAGMA user_version = 3")
 	return err
 }
 
@@ -55,7 +68,7 @@ func upgradeQueryIndexes(ctx context.Context, conn *sql.Conn, path string, optio
 	if err := verifyMigrationFacts(ctx, conn, facts); err != nil {
 		return err
 	}
-	return recordCurrentMigration(ctx, conn, options.AppVersion)
+	return recordV3Migration(ctx, conn, options.AppVersion)
 }
 
 const queryIndexReportTimeKeyV3 = `

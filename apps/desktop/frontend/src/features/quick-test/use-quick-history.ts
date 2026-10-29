@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { DesktopClient } from "@/app/desktop-client"
 import { isRunActive } from "@/features/runs/data"
 import type { QuickHistoryPage } from "./history-data"
+import type { HistoryChanged } from "@/features/history-recycle/data"
 
 const empty: QuickHistoryPage = { schema_version: 1, runs: [], reports: [], next_cursor: "" }
 
@@ -18,6 +19,8 @@ export function useQuickHistory(client: Pick<DesktopClient, "getQuickTestHistory
   const invalidated = useRef(false)
   const requestedIDs = useRef(new Set<string>())
   const visible = useRef(true)
+  const hidden = useRef({ runs: new Set<string>(), reports: new Set<string>() })
+  const restorePages = useRef(1)
 
   const read = useCallback(function readPage(append: boolean) {
     if (flight.current) return flight.current
@@ -26,10 +29,12 @@ export function useQuickHistory(client: Pick<DesktopClient, "getQuickTestHistory
     setLoading(true)
     setError(false)
     const operation = async () => {
+      const requestedPages = append ? 1 : restorePages.current
       try {
         let after = append ? state.current.data.next_cursor : ""
         const pages: QuickHistoryPage[] = []
-        const count = 1
+        const count = requestedPages
+        if (!append) restorePages.current = 1
         for (let index = 0; index < count; index++) {
           const page = await client.getQuickTestHistory(after)
           if (page.next_cursor && page.next_cursor === after) throw new Error("Non-advancing history cursor")
@@ -40,7 +45,7 @@ export function useQuickHistory(client: Pick<DesktopClient, "getQuickTestHistory
         if (!append) {
           // Terminal execution can precede report import, including runs beyond
           // the first history page. Keep those identities in the bounded refresh.
-          const ids = [...new Set([...requestedIDs.current, ...state.current.data.runs.filter(run => isRunActive(run.status) || !run.report_id).map(run => run.id)])]
+          const ids = [...new Set([...requestedIDs.current, ...state.current.data.runs.filter(run => isRunActive(run.status) || !run.report_id).map(run => run.id)])].filter(id => !hidden.current.runs.has(id))
           for (let offset = 0; offset < ids.length; offset += 100) {
             const updated = await client.getRunSummaries(ids.slice(offset, offset + 100))
             updated.runs.forEach(run => requestedIDs.current.delete(run.id))
@@ -48,20 +53,21 @@ export function useQuickHistory(client: Pick<DesktopClient, "getQuickTestHistory
           }
           const known = new Set([...state.current.data.runs, ...state.current.data.reports].map(item => item.id))
           const head = pages[0]
-          if ([...head.runs, ...head.reports].some(item => known.has(item.id))) after = state.current.data.next_cursor
+          if (count === 1 && [...head.runs, ...head.reports].some(item => known.has(item.id))) after = state.current.data.next_cursor
         }
         // Merge by identity: refresh and new submissions must not erase loaded history.
         const runs = new Map(state.current.data.runs.map(run => [run.id, run]))
         const reports = new Map(state.current.data.reports.map(report => [report.id, report]))
         pages.forEach(page => {
-          page.runs.forEach(run => runs.set(run.id, run))
-          page.reports.forEach(report => reports.set(report.id, report))
+          page.runs.forEach(run => { if (!hidden.current.runs.has(run.id)) runs.set(run.id, run) })
+          page.reports.forEach(report => { if (!hidden.current.reports.has(report.id)) reports.set(report.id, report) })
         })
-        const next: QuickHistoryPage = { schema_version: 1, runs: [...runs.values()], reports: [...reports.values()], next_cursor: after }
-        state.current = { data: next, pages: append ? state.current.pages + 1 : pages.length }
+        const next: QuickHistoryPage = { schema_version: 1, runs: [...runs.values()].filter(run => !hidden.current.runs.has(run.id)), reports: [...reports.values()].filter(report => !hidden.current.reports.has(report.id)), next_cursor: after }
+        state.current = { data: next, pages: append ? state.current.pages + 1 : Math.max(state.current.pages, Math.min(count, pages.length)) }
         setData(next)
         setLoaded(true)
       } catch {
+        if (!append) restorePages.current = Math.max(restorePages.current, requestedPages)
         failedAppend.current = append
         setError(true)
       } finally {
@@ -81,10 +87,26 @@ export function useQuickHistory(client: Pick<DesktopClient, "getQuickTestHistory
   const loadMore = useCallback(() => read(true), [read])
   const retry = useCallback(() => read(failedAppend.current), [read])
   const invalidate = useCallback((ids: string[] = []) => {
-    ids.forEach(id => requestedIDs.current.add(id))
+    ids.filter(id => !hidden.current.runs.has(id)).forEach(id => requestedIDs.current.add(id))
     if (!visible.current || flight.current) { invalidated.current = true; return }
     void read(false)
   }, [read])
+  const applyHistoryChange = useCallback<HistoryChanged>((entry, action) => {
+    entry.run_ids.forEach(id => {
+      if (action === "recycle") { hidden.current.runs.add(id); requestedIDs.current.delete(id) }
+      else hidden.current.runs.delete(id)
+    })
+    entry.report_ids.forEach(id => { if (action === "recycle") hidden.current.reports.add(id); else hidden.current.reports.delete(id) })
+    const next = { ...state.current.data, runs: state.current.data.runs.filter(run => !hidden.current.runs.has(run.id)), reports: state.current.data.reports.filter(report => !hidden.current.reports.has(report.id)) }
+    state.current = { ...state.current, data: next }
+    setData(next)
+    if (action === "restore") {
+      // A restored performance report may be older than the head page. Replay
+      // only the history windows this workspace has already loaded.
+      restorePages.current = Math.max(1, state.current.pages)
+      invalidate(entry.run_ids)
+    }
+  }, [invalidate])
   useEffect(() => {
     visible.current = true
     void refresh()
@@ -105,5 +127,5 @@ export function useQuickHistory(client: Pick<DesktopClient, "getQuickTestHistory
     const timer = window.setInterval(() => void refresh(), pending ? 2000 : 10_000)
     return () => window.clearInterval(timer)
   }, [pending, refresh])
-  return { data, loaded, loading, error, refresh, loadMore, retry, invalidate }
+  return { data, loaded, loading, error, refresh, loadMore, retry, invalidate, applyHistoryChange }
 }

@@ -83,6 +83,7 @@ function desktopClient(): DesktopClient & {
     createLocalFileSelection: vi.fn(), releaseLocalFileSelection: vi.fn(async () => undefined),
 
     ...catalogMutationMocks(),
+    ...historyRecycleMocks(),
     ...remoteNodeMocks(),
   }
   return client
@@ -97,6 +98,15 @@ function catalogMutationMocks() {
     createTestCase: vi.fn(reply), updateTestCase: vi.fn(reply), deleteTestCase: vi.fn(reply),
     createSuite: vi.fn(reply), updateSuite: vi.fn(reply), deleteSuite: vi.fn(reply),
     createPlan: vi.fn(reply), updatePlan: vi.fn(reply), deletePlan: vi.fn(reply),
+  }
+}
+
+function historyRecycleMocks() {
+  return {
+    previewHistoryRecycle: vi.fn<DesktopClient["previewHistoryRecycle"]>(),
+    recycleHistory: vi.fn<DesktopClient["recycleHistory"]>(),
+    restoreHistory: vi.fn<DesktopClient["restoreHistory"]>(),
+    getRecycledHistory: vi.fn<DesktopClient["getRecycledHistory"]>(async () => ({ schema_version: 1, entries: [], next_cursor: "", has_more: false })),
   }
 }
 
@@ -327,9 +337,9 @@ describe("desktop run workspace", () => {
     vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
     vi.mocked(client.getJob).mockResolvedValue(job)
     render(<App client={client} />)
-    const details = await screen.findByRole("region", { name: "执行详情" })
+    await screen.findByRole("region", { name: "执行详情" })
     expect(screen.getByRole("alert")).toBeInTheDocument()
-    await user.click(within(details).getByRole("button", { name: "取消运行" }))
+    await user.click(within(screen.getByRole("region", { name: "执行控制" })).getByRole("button", { name: "取消运行" }))
     expect(client.controlJob).toHaveBeenCalledWith({ job_id: JOB_ID, kind: "cancel", expected_revision: 1 })
     expect(client.launchJob).not.toHaveBeenCalled()
   })
@@ -580,6 +590,89 @@ describe("desktop run workspace", () => {
     expect(client.getOverview).toHaveBeenCalledTimes(1)
     expect(client.getCatalog).toHaveBeenCalledTimes(4)
     expect(client.getReports).toHaveBeenCalledTimes(1)
+  })
+
+  it("drills into the requested catalog tab and returns to the retained overview", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    window.history.replaceState(null, "", "#overview")
+    render(<App client={client} />)
+    const summary = await screen.findByRole("region", { name: "本地对象摘要" })
+    const overviewViewport = summary.closest('[data-slot="scroll-area-viewport"]') as HTMLElement
+    overviewViewport.scrollTop = 180
+    await user.click(within(summary).getByRole("button", { name: /个套件/ }))
+    expect(await screen.findByRole("tab", { name: /套件/ })).toHaveAttribute("aria-selected", "true")
+    await user.click(screen.getByRole("button", { name: "返回总览" }))
+    expect(await screen.findByRole("region", { name: "本地对象摘要" })).toBe(summary)
+    expect(overviewViewport.scrollTop).toBe(180)
+    await user.click(screen.getByRole("button", { name: /^模型映射/ }))
+    expect(await screen.findByRole("tab", { name: /^映射/ })).toHaveAttribute("aria-selected", "true")
+  })
+
+  it("keeps fresh overview counts when an older run-summary poll finishes later", async () => {
+    vi.useFakeTimers()
+    const client = desktopClient()
+    const summary = deferred<Awaited<ReturnType<DesktopClient["getRunSummaries"]>>>()
+    const refreshed = deferred<Awaited<ReturnType<DesktopClient["getOverview"]>>>()
+    vi.mocked(client.getRunSummaries).mockReturnValue(summary.promise)
+    vi.mocked(client.getOverview).mockResolvedValueOnce(createOverviewSnapshot(client.workspace, FIXTURE_CATALOG, FIXTURE_REPORTS)).mockReturnValue(refreshed.promise)
+    let receive!: (progress: ReportGenerationProgress) => void
+    vi.mocked(client.subscribeReportGeneration).mockImplementation(callback => { receive = callback; return () => {} })
+    window.history.replaceState(null, "", "#overview")
+    render(<App client={client} />)
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+    expect(client.getRunSummaries).toHaveBeenCalledTimes(1)
+    act(() => receive({ sequence: 1, run_id: client.workspace.active_run_id!, phase: "ready", processed: 0, total: 0, elapsed_ms: 10, report_id: FIXTURE_REPORTS.reports[0].id }))
+    await act(async () => {})
+    expect(client.getOverview).toHaveBeenCalledTimes(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+    expect(client.getRunSummaries).toHaveBeenCalledTimes(1)
+    await act(async () => refreshed.resolve(createOverviewSnapshot(client.workspace, FIXTURE_CATALOG, { schema_version: 1, reports: [] })))
+    await act(async () => summary.resolve({ schema_version: 1, runs: client.workspace.runs, next_cursor: "" }))
+    expect(screen.getByRole("button", { name: /0 份报告/ })).toBeInTheDocument()
+  })
+
+  it("removes a report group across retained pages and restores it from the recycle bin", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const report = FIXTURE_REPORTS.reports[0]
+    const entry = { kind: "run" as const, id: report.run_id!, title: report.plan_name, removed_at: JOB_TIME,
+      job_ids: [], run_ids: [report.run_id!], report_ids: [report.id], comparison_ids: [], remote: false }
+    let removed = false
+    let receiveProgress!: (progress: ReportGenerationProgress) => void
+    vi.mocked(client.subscribeReportGeneration).mockImplementation(receive => { receiveProgress = receive; return () => {} })
+    const visibleReports = () => ({ schema_version: 1 as const, reports: removed ? [] : [report] })
+    vi.mocked(client.getReports).mockImplementation(async () => visibleReports())
+    vi.mocked(client.getOverview).mockImplementation(async () => createOverviewSnapshot(client.workspace, FIXTURE_CATALOG, visibleReports()))
+    vi.mocked(client.previewHistoryRecycle).mockResolvedValue({ schema_version: 1, entry: { ...entry, removed_at: "" }, can_recycle: true, blocked_reason: "" })
+    vi.mocked(client.recycleHistory).mockImplementation(async () => { removed = true; return entry })
+    vi.mocked(client.getRecycledHistory).mockImplementation(async () => ({ schema_version: 1, entries: removed ? [entry] : [], next_cursor: "", has_more: false }))
+    vi.mocked(client.restoreHistory).mockImplementation(async () => { removed = false; return { ...entry, removed_at: "" } })
+    window.history.replaceState(null, "", "#overview")
+    render(<App client={client} />)
+    await screen.findByRole("heading", { name: "工作台总览" })
+    await user.click(screen.getByRole("button", { name: "报告" }))
+    await user.click(await screen.findByRole("button", { name: "移入回收站" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "移入结果回收站" })
+    await user.click(await within(dialog).findByRole("button", { name: "移入回收站" }))
+    await waitFor(() => expect(client.recycleHistory).toHaveBeenCalledWith({ kind: "run", id: report.run_id }))
+    await waitFor(() => expect(screen.queryByRole("button", { name: "移入回收站" })).not.toBeInTheDocument())
+    act(() => {
+      receiveProgress({ sequence: 1, run_id: entry.id, phase: "building", processed: 1, total: 2, elapsed_ms: 10 })
+      receiveProgress({ sequence: 2, run_id: entry.id, phase: "ready", processed: 0, total: 0, elapsed_ms: 20, report_id: report.id })
+    })
+    expect(screen.queryByText("正在汇总报告结果…")).not.toBeInTheDocument()
+    expect(screen.queryByText("报告已生成，正在更新报告列表…")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "总览" }))
+    expect(await screen.findByRole("button", { name: /0 份报告/ })).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "报告" }))
+    await user.click(screen.getByRole("button", { name: "结果回收站" }))
+    await user.click(await screen.findByRole("button", { name: `恢复 ${entry.title}` }))
+    await screen.findByText(`已恢复：${entry.title}`)
+    await user.click(screen.getByRole("button", { name: "返回" }))
+    await screen.findByRole("button", { name: "移入回收站" })
+    expect(client.getReports).toHaveBeenCalledTimes(3)
   })
 
   it("loads a newly generated report when navigating from runs to reports", async () => {
@@ -1513,6 +1606,7 @@ describe("desktop run workspace", () => {
 
       ...executionClient(),
       ...catalogMutationMocks(),
+      ...historyRecycleMocks(),
       ...remoteNodeMocks(),
     }
 

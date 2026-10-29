@@ -1,7 +1,7 @@
 import { Activity, type ReactNode } from "react"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { FIXTURE_WORKSPACE } from "@/features/runs/fixtures"
+import { FIXTURE_WORKSPACE, FIXTURE_REPORTS } from "@/features/runs/fixtures"
 import type { QuickHistoryPage } from "./history-data"
 import { useQuickHistory } from "./use-quick-history"
 
@@ -13,6 +13,44 @@ function page(index: number, next = "", active = false): QuickHistoryPage {
 afterEach(() => vi.useRealTimers())
 
 describe("quick history pages", () => {
+  it("replays loaded windows when an older performance report is restored", async () => {
+    const report = { ...FIXTURE_REPORTS.reports[0], source: "quick_performance" as const }
+    const head = { ...page(1, "older"), runs: [] }
+    const older: QuickHistoryPage = { schema_version: 1, runs: [], reports: [report], next_cursor: "last" }
+    const client = { getQuickTestHistory: vi.fn(async (cursor: string) => cursor ? older : head), getRunSummaries: vi.fn(async () => ({ schema_version: 1 as const, runs: [], next_cursor: "" })), subscribeRemoteResults: () => () => {} }
+    const { result } = renderHook(() => useQuickHistory(client))
+    await waitFor(() => expect(result.current.loaded).toBe(true))
+    await act(() => result.current.loadMore())
+    expect(result.current.data.reports).toHaveLength(1)
+    const entry = { kind: "report" as const, id: report.id, title: "saved", removed_at: "2026-10-30T00:00:00Z", run_ids: [], report_ids: [report.id], job_ids: [], comparison_ids: [], remote: false }
+    act(() => { void result.current.applyHistoryChange(entry, "recycle") })
+    expect(result.current.data.reports).toEqual([])
+    await act(() => result.current.refresh())
+    expect(result.current.data.reports).toEqual([])
+    client.getQuickTestHistory.mockClear()
+    await act(async () => { void result.current.applyHistoryChange({ ...entry, removed_at: "" }, "restore") })
+    await waitFor(() => expect(result.current.data.reports.map(item => item.id)).toEqual([report.id]))
+    expect(client.getQuickTestHistory.mock.calls.map(([cursor]) => cursor)).toEqual(["", "older"])
+  })
+  it("prunes an authoritative removed run, rejects stale reads and refreshes it after restore", async () => {
+    const first = page(1, "next")
+    first.runs[0].report_id = "33333333-3333-4333-8333-333333333333"
+    let finish!: (page: QuickHistoryPage) => void
+    const client = { getQuickTestHistory: vi.fn().mockResolvedValueOnce(first),
+      getRunSummaries: vi.fn().mockResolvedValue({ schema_version: 1, runs: [first.runs[0]], next_cursor: "" }), subscribeRemoteResults: () => () => {} }
+    const { result } = renderHook(() => useQuickHistory(client))
+    await waitFor(() => expect(result.current.loaded).toBe(true))
+    client.getQuickTestHistory.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    act(() => { void result.current.loadMore() })
+    const entry = { kind: "run" as const, id: first.runs[0].id, title: "saved", removed_at: "2026-10-30T00:00:00Z", run_ids: [first.runs[0].id], report_ids: [first.runs[0].report_id], job_ids: [], comparison_ids: [], remote: false }
+    act(() => { void result.current.applyHistoryChange(entry, "recycle") })
+    expect(result.current.data.runs).toEqual([])
+    await act(async () => finish(first))
+    expect(result.current.data.runs).toEqual([])
+    client.getQuickTestHistory.mockResolvedValue(first)
+    await act(async () => { void result.current.applyHistoryChange({ ...entry, removed_at: "" }, "restore") })
+    await waitFor(() => expect(result.current.data.runs.map(run => run.id)).toEqual([entry.id]))
+  })
   it("keeps a terminal run beyond the head page fresh until its report arrives", async () => {
     const old = page(1, "next", true)
     old.runs[0].report_id = undefined

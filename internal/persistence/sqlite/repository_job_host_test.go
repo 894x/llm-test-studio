@@ -119,7 +119,24 @@ func TestLookupJobOnlyReadsMatchingImmutableAdmission(t *testing.T) {
 }
 
 func TestProgressEventAndCursorRollbackTogether(t *testing.T) {
-	repository, db, snapshot := openJournalFixture(t)
+	path := filepath.Join(t.TempDir(), "functional-progress-journal.db")
+	if err := persistence.Migrate(t.Context(), path, persistence.MigrateOptions{AppVersion: "journal-test"}); err != nil {
+		t.Fatal(err)
+	}
+	repository := reopenHardeningRepository(t, path)
+	t.Cleanup(func() { _ = repository.Close() })
+	db := openDatabase(t, path)
+	t.Cleanup(func() { _ = db.Close() })
+	spec := jobSpecForRun(t, runWithCompleteSnapshot(t))
+	spec.FunctionalProgress = true
+	spec.Spec.Run.Snapshot.QuickTask = &domain.QuickTaskSnapshot{}
+	spec.Spec.Run.PlanID = spec.Spec.Run.Meta.ID
+	spec.Spec.Run.Snapshot.Plan.ID = spec.Spec.Run.Meta.ID
+	spec.Spec.Run.Snapshot.PlanDocument.ID = spec.Spec.Run.Meta.ID
+	snapshot, _, err := repository.AcceptJob(t.Context(), jobAcceptance(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.ExecContext(t.Context(), `CREATE TRIGGER reject_progress BEFORE INSERT ON execution_job_events
 		WHEN NEW.kind = 'progress' BEGIN SELECT RAISE(ABORT, 'injected progress failure'); END`); err != nil {
 		t.Fatal(err)

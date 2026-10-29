@@ -1,6 +1,7 @@
 import type { OverviewCounts } from "@/app/desktop-client"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
+import { ArrowRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,11 +16,15 @@ import {
 } from "@/features/runs/data"
 import { PageFrame } from "@/features/shell/page-frame"
 
+export type OverviewDestination = "models" | "channels" | "mappings" | "cases" | "suites" | "plans" | "runs" | "reports"
+
 export function OverviewWorkspace({
   workspace,
   catalog,
   reports,
   onOpenReport,
+  onNavigate,
+  onOpenRun,
   counts, runCount, reportCount,
 }: {
   counts?: OverviewCounts
@@ -29,6 +34,8 @@ export function OverviewWorkspace({
   catalog: CatalogSnapshot
   reports: ReportSnapshot
   onOpenReport: (reportID: string) => void
+  onNavigate?: (destination: OverviewDestination) => void
+  onOpenRun?: (runID: string) => void
 }) {
   const { t } = useTranslation(["overview", "common", "reports"])
   const presentation = useMemo(() => presentWorkspace(workspace), [workspace])
@@ -44,6 +51,7 @@ export function OverviewWorkspace({
   const configuredChannels = counts?.configured_channels ?? catalog.channels.filter(
     (channel) => channel.credential_configured,
   ).length
+  const navigate = (destination: OverviewDestination) => onNavigate ? () => onNavigate(destination) : undefined
 
   return (
     <PageFrame
@@ -52,13 +60,14 @@ export function OverviewWorkspace({
     >
       <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
         <div className="min-w-0">
-          <section aria-label={t("summary.aria")} className="grid grid-cols-6 gap-2 px-4">
-            <SummaryCell value={t("summary.models", { count: (counts?.models ?? catalog.models.length) })} label={t("summary.logicalModels")} />
-            <SummaryCell value={t("summary.channels", { count: (counts?.channels ?? catalog.channels.length) })} label={t("summary.enabled", { count: enabledChannels })} />
-            <SummaryCell value={t("summary.cases", { count: (counts?.test_cases ?? catalog.test_cases.length) })} label={t("summary.suites", { count: (counts?.suites ?? catalog.suites.length) })} />
-            <SummaryCell value={t("summary.plans", { count: (counts?.plans ?? catalog.plans.length) })} label={t("summary.fixedVersions")} />
-            <SummaryCell value={t("summary.runs", { count: runCount ?? presentation.runs.length })} label={t(activeRun ? "summary.activeRun" : "summary.noActiveRun")} />
-            <SummaryCell value={t("summary.reports", { count: reportCount ?? reports.reports.length })} label={t("summary.archivedConclusions")} />
+          <section aria-label={t("summary.aria")} className="grid grid-cols-4 gap-2 px-4 xl:grid-cols-7">
+            <SummaryCell value={t("summary.models", { count: (counts?.models ?? catalog.models.length) })} label={t("summary.logicalModels")} onClick={navigate("models")} />
+            <SummaryCell value={t("summary.channels", { count: (counts?.channels ?? catalog.channels.length) })} label={t("summary.enabled", { count: enabledChannels })} onClick={navigate("channels")} />
+            <SummaryCell value={t("summary.cases", { count: (counts?.test_cases ?? catalog.test_cases.length) })} label={t("summary.executableCases")} onClick={navigate("cases")} />
+            <SummaryCell value={t("summary.suites", { count: (counts?.suites ?? catalog.suites.length) })} label={t("summary.reusableSuites")} onClick={navigate("suites")} />
+            <SummaryCell value={t("summary.plans", { count: (counts?.plans ?? catalog.plans.length) })} label={t("summary.fixedVersions")} onClick={navigate("plans")} />
+            <SummaryCell value={t("summary.runs", { count: runCount ?? presentation.runs.length })} label={t(activeRun ? "summary.activeRun" : "summary.noActiveRun")} onClick={navigate("runs")} />
+            <SummaryCell value={t("summary.reports", { count: reportCount ?? reports.reports.length })} label={t("summary.archivedConclusions")} onClick={navigate("reports")} />
           </section>
 
           <div className="grid grid-cols-2">
@@ -68,13 +77,20 @@ export function OverviewWorkspace({
                 {activeRun ? <Badge variant="outline">{t(`common:status.${activeRun.status}`)}</Badge> : null}
               </div>
               {activeRun ? (
-                <dl className="mt-3 grid grid-cols-[112px_minmax(0,1fr)] [overflow-wrap:anywhere] gap-x-3 gap-y-2 text-xs">
-                  <dt className="text-muted-foreground">{t("activeRun.plan")}</dt><dd className="font-medium">{activeRun.title}</dd>
-                  <dt className="text-muted-foreground">{t("activeRun.modelChannel")}</dt><dd>{activeRun.model} · {activeRun.channel}</dd>
-                  <dt className="text-muted-foreground">{t("activeRun.load")}</dt><dd>{activeRun.loadProfile}</dd>
-                  <dt className="text-muted-foreground">{t("activeRun.completed")}</dt><dd className="tabular-nums">{activeRun.quickTask ? activeRun.completed : `${activeRun.completed}/${activeRun.total || t("activeRun.timed")}`}</dd>
-                  <dt className="text-muted-foreground">{t("activeRun.coreStatus")}</dt><dd>{activeRun.coreStatus}</dd>
-                </dl>
+                <>
+                  <dl className="mt-3 grid grid-cols-[112px_minmax(0,1fr)] [overflow-wrap:anywhere] gap-x-3 gap-y-2 text-xs">
+                    <dt className="text-muted-foreground">{t("activeRun.plan")}</dt><dd className="font-medium">{activeRun.title}</dd>
+                    <dt className="text-muted-foreground">{t("activeRun.modelChannel")}</dt><dd>{activeRun.model} · {activeRun.channel}</dd>
+                    <dt className="text-muted-foreground">{t("activeRun.load")}</dt><dd>{activeRun.loadProfile}</dd>
+                    <dt className="text-muted-foreground">{t("activeRun.completed")}</dt><dd className="tabular-nums">{activeRun.quickTask ? activeRun.completed : `${activeRun.completed}/${activeRun.total || t("activeRun.timed")}`}</dd>
+                    <dt className="text-muted-foreground">{t("activeRun.coreStatus")}</dt><dd>{activeRun.coreStatus}</dd>
+                  </dl>
+                  {onOpenRun ? (
+                    <Button variant="ghost" size="sm" className="mt-3" onClick={() => onOpenRun(activeRun.id)}>
+                      {t("activeRun.open")}<ArrowRight aria-hidden="true" />
+                    </Button>
+                  ) : null}
+                </>
               ) : (
                 <Empty className="min-h-40 border-0 p-0">
                   <EmptyTitle>{t("activeRun.emptyTitle")}</EmptyTitle>
@@ -86,10 +102,10 @@ export function OverviewWorkspace({
             <section aria-labelledby="readiness-heading" className="min-h-52 min-w-0 px-4 py-3">
               <h2 id="readiness-heading" className="text-sm font-semibold">{t("readiness.title")}</h2>
               <dl className="mt-3 grid grid-cols-[128px_minmax(0,1fr)] [overflow-wrap:anywhere] gap-x-3 gap-y-2 text-xs">
-                <dt className="text-muted-foreground">{t("readiness.enabledChannels")}</dt><dd>{enabledChannels}/{(counts?.channels ?? catalog.channels.length)}</dd>
-                <dt className="text-muted-foreground">{t("readiness.configuredCredentials")}</dt><dd>{configuredChannels}/{(counts?.channels ?? catalog.channels.length)}</dd>
-                <dt className="text-muted-foreground">{t("readiness.modelMappings")}</dt><dd>{t("readiness.mappingCount", { count: (counts?.channel_models ?? catalog.channel_models.length) })}</dd>
-                <dt className="text-muted-foreground">{t("readiness.reusableSuites")}</dt><dd>{t("readiness.suiteCount", { count: (counts?.suites ?? catalog.suites.length) })}</dd>
+                <dt className="text-muted-foreground">{t("readiness.enabledChannels")}</dt><dd><ReadinessLink label={t("readiness.enabledChannels")} value={`${enabledChannels}/${counts?.channels ?? catalog.channels.length}`} onClick={navigate("channels")} /></dd>
+                <dt className="text-muted-foreground">{t("readiness.configuredCredentials")}</dt><dd><ReadinessLink label={t("readiness.configuredCredentials")} value={`${configuredChannels}/${counts?.channels ?? catalog.channels.length}`} onClick={navigate("channels")} /></dd>
+                <dt className="text-muted-foreground">{t("readiness.modelMappings")}</dt><dd><ReadinessLink label={t("readiness.modelMappings")} value={t("readiness.mappingCount", { count: (counts?.channel_models ?? catalog.channel_models.length) })} onClick={navigate("mappings")} /></dd>
+                <dt className="text-muted-foreground">{t("readiness.reusableSuites")}</dt><dd><ReadinessLink label={t("readiness.reusableSuites")} value={t("readiness.suiteCount", { count: (counts?.suites ?? catalog.suites.length) })} onClick={navigate("suites")} /></dd>
                 <dt className="text-muted-foreground">{t("readiness.localSecrets")}</dt><dd>{t("readiness.localSecretsValue")}</dd>
               </dl>
             </section>
@@ -142,11 +158,28 @@ export function OverviewWorkspace({
   )
 }
 
-function SummaryCell({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="min-w-0 rounded-lg px-4 py-3 transition-colors duration-200 hover:bg-surface-hover [overflow-wrap:anywhere]">
-      <div className="text-sm font-semibold tabular-nums">{value}</div>
-      <div className="mt-1 text-[10px] text-muted-foreground">{label}</div>
-    </div>
+function SummaryCell({ value, label, onClick }: { value: string; label: string; onClick?: () => void }) {
+  const content = (
+    <>
+      <span className="flex items-center justify-between gap-2 text-sm font-semibold tabular-nums">
+        <span>{value}</span>
+        {onClick ? <ArrowRight aria-hidden="true" className="size-3.5 text-muted-foreground" /> : null}
+      </span>
+      <span className="mt-1 text-[10px] text-muted-foreground">{label}</span>
+    </>
   )
+  const className = "min-w-0 rounded-lg px-3 py-3 text-left [overflow-wrap:anywhere]"
+  return onClick ? (
+    <Button variant="ghost" className={`${className} h-auto flex-col items-stretch justify-start gap-0 whitespace-normal`} onClick={onClick}>
+      {content}
+    </Button>
+  ) : <div className={`${className} flex flex-col`}>{content}</div>
+}
+
+function ReadinessLink({ label, value, onClick }: { label: string; value: string; onClick?: () => void }) {
+  return onClick ? (
+    <Button variant="link" size="sm" className="h-auto whitespace-normal p-0 text-left text-xs" aria-label={`${label}：${value}`} onClick={onClick}>
+      {value}<ArrowRight aria-hidden="true" className="size-3" />
+    </Button>
+  ) : <span>{value}</span>
 }

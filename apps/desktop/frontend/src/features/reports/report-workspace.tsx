@@ -38,6 +38,10 @@ import { channelVerdict, reportListItems } from "./report-list-items"
 import { blobToBase64 } from "./report-export-encoding"
 import { copyReportPNGToClipboard } from "./report-clipboard"
 import { ExecutionOriginDetails } from "./execution-origin-details"
+import { formatReportTimestamp } from "./report-timestamp"
+import type { HistoryChanged, HistoryVisibilityChange } from "@/features/history-recycle/data"
+import { RecycleHistoryButton, type HistoryRecycleClient } from "@/features/history-recycle/recycle-history-button"
+import { historyVisibility } from "@/features/history-recycle/visibility"
 
 import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportMetric, type ReportSnapshot, type ReportSummary, type ReportEntryDetail, type ReportEntryStatus } from "./data"
 
@@ -47,7 +51,8 @@ const TimeSliceVisibility = createContext<{
 }>({ expanded: new Set(), setExpanded: () => {} })
 const ReportExportMode = createContext(false)
 
-export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, comparisonControl, preferredReportID, reportOpenSequence = 0, getDetail, exportReport, saveReportExport, copyReportPNG, renderRunShortcuts, exportVisualReport = createVisualReportExport }: {
+export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, comparisonControl, preferredReportID, reportOpenSequence = 0, getDetail, exportReport, saveReportExport, copyReportPNG, renderRunShortcuts, exportVisualReport = createVisualReportExport,
+  recycleClient, onOpenRecycleBin, onHistoryChanged, historyChanges = [] }: {
   comparisonControl?: ReactNode
   snapshot: ReportSnapshot
   comparisons?: ComparisonSnapshot
@@ -59,8 +64,17 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   copyReportPNG: (dataBase64: string) => Promise<void>
   renderRunShortcuts?: RunShortcutRenderer
   exportVisualReport?: typeof createVisualReportExport
+  recycleClient?: HistoryRecycleClient
+  onOpenRecycleBin?: () => void
+  onHistoryChanged?: HistoryChanged
+  historyChanges?: HistoryVisibilityChange[]
 }) {
   const { t, i18n } = useTranslation("reports")
+  const { t: tr } = useTranslation("historyRecycle")
+  const [localHistoryChanges, setLocalHistoryChanges] = useState<HistoryVisibilityChange[]>([])
+  const hidden = useMemo(() => historyVisibility([...localHistoryChanges, ...historyChanges]), [localHistoryChanges, historyChanges])
+  const visibleReports = useMemo(() => snapshot.reports.filter(report => !hidden.reports.has(report.id) && !hidden.runs.has(report.run_id ?? "")), [snapshot.reports, hidden])
+  const visibleComparisons = useMemo(() => comparisons.comparisons.filter(comparison => !hidden.comparisons.has(comparison.id)), [comparisons.comparisons, hidden])
   const [selectedID, setSelectedID] = useState(preferredReportID ?? "")
   const [viewingReportID, setViewingReportID] = useState(preferredReportID ?? "")
   const reportRequest = `${reportOpenSequence}:${preferredReportID ?? ""}`
@@ -94,15 +108,15 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   const exportDocumentReadyRef = useRef<((element: HTMLElement) => void) | null>(null)
   const detailCache = useRef<{ reportID: string; reader: typeof getDetail; detail: ReportDetail } | null>(null)
   const detailRequest = useRef<{ reportID: string; reader: typeof getDetail; promise: Promise<ReportDetail> } | null>(null)
-  const items = useMemo(() => reportListItems(snapshot.reports, comparisons.comparisons), [snapshot.reports, comparisons.comparisons])
-  const reportsByRun = useMemo(() => new Map(snapshot.reports.flatMap(report => report.run_id ? [[report.run_id, report] as const] : [])), [snapshot.reports])
+  const items = useMemo(() => reportListItems(visibleReports, visibleComparisons), [visibleReports, visibleComparisons])
+  const reportsByRun = useMemo(() => new Map(visibleReports.flatMap(report => report.run_id ? [[report.run_id, report] as const] : [])), [visibleReports])
   const search = useCatalogSearch(items, (item) => item.kind === "comparison" ? [
     item.id, t("comparison.title"), item.comparison.plan_name, item.comparison.model_name,
     ...item.comparison.channels.flatMap(channel => [channel.channel_name, channelVerdict(channel, t, reportsByRun.get(channel.run_id))]),
   ] : [item.report.id, item.report.run_id ?? "", displayReportVerdict(item.report, t), displayReportPlan(item.report, t),
     item.report.model_name, item.report.channel_name])
   // A run shortcut can still open its individual report after the list groups it.
-  const selectableItems = viewingReportID ? [...items, ...snapshot.reports.map(report => ({ id: report.id, kind: "report" as const, report }))] : search.rows
+  const selectableItems = viewingReportID ? [...items, ...visibleReports.map(report => ({ id: report.id, kind: "report" as const, report }))] : search.rows
   const selectedItem = selectableItems.find(item => item.id === selectedID) ?? selectableItems[0]
   const selected = selectedItem?.kind === "report" ? selectedItem.report : undefined
   const selectedComparison = selectedItem?.kind === "comparison" ? selectedItem.comparison : undefined
@@ -111,8 +125,16 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   const detailError = detailState.reportID === selectedReportID && detailState.error ? t("detailError") : ""
   const isViewingReport = viewingReportID !== "" && viewingReportID === selectedItem?.id
   const selectedVerdict = selectedComparison ? t("comparison.title") : selected ? displayReportVerdict(selected, t) : t("generic")
-  const comparisonReport = useComparisonReport({ comparison: selectedComparison, snapshot, getDetail,
+  const comparisonReport = useComparisonReport({ comparison: selectedComparison, snapshot: { schema_version: 1, reports: visibleReports }, getDetail,
     saveReportExport, copyReportPNG, exportVisualReport, active: isViewingReport })
+  const recycleAction = selectedItem && recycleClient ? <RecycleHistoryButton compact key={selectedItem.id} client={recycleClient}
+    target={{ kind: selectedItem.kind === "comparison" ? "comparison" : "report", id: selectedItem.id }}
+    disabled={!!exporting} onHistoryChanged={onHistoryChanged}
+    onRecycled={(entry, action) => {
+      setLocalHistoryChanges(current => [...current, { entry, action }])
+      setViewingReportID(""); setSelectedID(""); setDetailState({ reportID: "" })
+      detailCache.current = null; detailRequest.current = null
+    }} /> : null
 
   const loadDetail = useCallback((reportID: string): Promise<ReportDetail> => {
     const cached = detailCache.current
@@ -211,10 +233,10 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
     <PageFrame
       title={t(isViewingReport ? "detailTitle" : "title")}
       description={isViewingReport ? t("detailDescription", { name: selectedVerdict }) : t("description")}
-      actions={isViewingReport ? <Button variant="outline" size="sm" onClick={() => setViewingReportID("")}><ArrowLeftIcon />{t("back")}</Button> : (
-        <div className="flex items-center gap-2">{comparisonControl}<CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={t("count", { count: items.length })} /></div>
+      actions={isViewingReport ? <div className="flex items-center gap-2">{recycleAction}<Button variant="outline" size="sm" onClick={() => setViewingReportID("")}><ArrowLeftIcon />{t("back")}</Button></div> : (
+        <div className="flex items-center gap-2">{onOpenRecycleBin ? <Button size="sm" variant="ghost" onClick={onOpenRecycleBin}>{tr("title")}</Button> : null}{recycleAction}{comparisonControl}<CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={t("count", { count: items.length })} /></div>
       )}
-      inspector={selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={snapshot}
+      inspector={selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={{ schema_version: 1, reports: visibleReports }}
         onOpen={!isViewingReport ? () => setViewingReportID(selectedComparison.id) : undefined} exportControls={comparisonReport.controls} /> : selected ? (
         <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={() => handleExport("copy")}
           shortcuts={selected.source === "run" && selected.run_id ? renderRunShortcuts?.(selected.run_id, !isViewingReport) : null} />
@@ -228,7 +250,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
       ) : isViewingReport ? (
         <div className="flex min-h-0 flex-1 flex-col">
           {selectedComparison ? comparisonReport.content :
-            <ReportContent key={selectedReportID} detail={detail} error={detailError} />}
+            <ReportContent key={selectedReportID} summary={selected} detail={detail} error={detailError} />}
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -283,7 +305,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   </TimeSliceVisibility>
 }
 
-const ReportContent = memo(function ReportContent({ detail, error }: { detail: ReportDetail | null; error: string }) {
+const ReportContent = memo(function ReportContent({ summary, detail, error }: { summary?: ReportSummary; detail: ReportDetail | null; error: string }) {
   const { t } = useTranslation("reports")
   if (error) return <div role="alert" className="border-t px-4 py-3 text-xs text-destructive">{error}</div>
   if (!detail) {
@@ -303,18 +325,18 @@ const ReportContent = memo(function ReportContent({ detail, error }: { detail: R
     )
   }
   if (detail.source === "quick_performance") return <QuickPerformanceDetail detail={detail} />
-  return <RunReportDetail detail={detail} />
+  return <RunReportDetail detail={detail} summary={summary} />
 })
 
-function RunReportDetail({ detail }: { detail: Extract<ReportDetail, { source: "run" }> }) {
+function RunReportDetail({ detail, summary }: { detail: Extract<ReportDetail, { source: "run" }>; summary?: ReportSummary }) {
   return (
     <ScrollArea className="min-h-[180px] flex-[3] border-t [&>[data-slot=scroll-area-viewport]>div]:block!">
-      <RunReportBody detail={detail} />
+      <RunReportBody detail={detail} summary={summary} />
     </ScrollArea>
   )
 }
 
-function RunReportBody({ detail, paginate = true }: { detail: Extract<ReportDetail, { source: "run" }>; paginate?: boolean }) {
+function RunReportBody({ detail, summary, paginate = true }: { detail: Extract<ReportDetail, { source: "run" }>; summary?: ReportSummary; paginate?: boolean }) {
   const { t: tx } = useTranslation()
   const [selectedCase, setSelectedCase] = useState<ReportCaseTarget | null>(null)
   const [caseNavigationRequest, setCaseNavigationRequest] = useState(0)
@@ -333,6 +355,7 @@ function RunReportBody({ detail, paginate = true }: { detail: Extract<ReportDeta
         </div>
         <ConclusionBadge passed={detail.report.conclusion.passed} verdict={detail.report.conclusion.verdict} status={detail.report.run_status} />
       </header>
+      {summary ? <FunctionalReportHeadline report={summary} /> : null}
       {!paginate && <ExecutionOriginDetails origin={detail.report.execution_origin} />}
       <CaseOutcomeNavigator
         entries={entries}
@@ -494,6 +517,7 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false, showExec
   const hasPhaseThreeData = report.request_budget !== undefined || report.warmup !== undefined || report.ramp !== undefined || report.time_slices !== undefined ||
     report.profile.warmup_requests !== undefined || report.profile.ramp_duration_ms !== undefined || report.profile.ramp_request_cap !== undefined || report.profile.slice_duration_ms !== undefined
   return <section aria-label={tx("desktop:reports_archived_performance_report")} className="space-y-4 p-4">
+    <PerformanceReportHeadline report={report} />
     {showExecutionOrigin && <ExecutionOriginDetails origin={report.execution_origin} />}
     <div>
       <h4 className="mb-2 text-xs font-semibold">{t("performance.config")}</h4>
@@ -525,12 +549,6 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false, showExec
         <div>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-xs font-semibold">{tx("desktop:quick-test_slo_and_capacity")}</h4>
-            <div className="flex flex-wrap gap-1.5">
-              <Badge variant="outline" className={report.success ? "border-success/25 bg-success-soft text-success-strong" : "border-destructive/25 bg-destructive-soft text-destructive"}>
-                 {tx("desktop:quick-test_transport_and_protocol")}{report.success ? tx("desktop:quick-test_passed") : tx("desktop:quick-test_failed_301")}
-              </Badge>
-              {report.slo_assessment ? <SLOStatusBadge status={report.slo_assessment.status} /> : null}
-            </div>
           </div>
           {report.slo_assessment ? (
             <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
@@ -616,23 +634,66 @@ function ReportExportSurface({ ref, report, detail, watermark }: {
   detail: ReportDetail
   watermark: string
 }) {
-  const { t } = useTranslation("reports")
+  const { t, i18n } = useTranslation("reports")
   const label = watermark.trim() || "rhzs"
   return <div aria-hidden="true" className="pointer-events-none fixed left-[-10000px] top-0 z-[-1] w-[1200px]">
     <article ref={ref} data-report-export-document className="relative w-[1200px] overflow-hidden bg-background text-foreground">
       <header className="px-4 py-3">
         <h1 className="text-lg font-semibold tracking-tight">{t("detailTitle")}</h1>
         <p className="mt-1 text-[11px] text-muted-foreground">{t("detailDescription", { name: displayReportVerdict(report, t) })}</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">{t("inspector.generated")}: <time className="tabular-nums" dateTime={report.generated_at}>{formatReportTimestamp(report.generated_at, i18n.resolvedLanguage ?? i18n.language)}</time></p>
       </header>
       <ReportExportMode value={true}>
         <div className="border-t">
-          {detail.source === "quick_performance" ? <QuickPerformanceBody detail={detail} showExecutionOrigin /> : <RunReportBody detail={detail} paginate={false} />}
+          {detail.source === "quick_performance" ? <QuickPerformanceBody detail={detail} showExecutionOrigin /> : <RunReportBody detail={detail} summary={report} paginate={false} />}
         </div>
       </ReportExportMode>
       <div className="absolute inset-0 z-10 grid grid-cols-2 content-around overflow-hidden" data-report-watermark>
         {Array.from({ length: 8 }, (_, index) => <span key={index} className="-rotate-12 text-center text-4xl font-semibold text-muted-foreground/15">{label}</span>)}
       </div>
     </article>
+  </div>
+}
+
+function FunctionalReportHeadline({ report }: { report: ReportSummary }) {
+  const { t } = useTranslation("reports")
+  return <dl aria-label={t("headline.functional")} className="grid grid-cols-2 gap-x-5 gap-y-3 rounded-md bg-surface-subtle px-3 py-3 sm:grid-cols-4">
+    <HeadlineValue label={t("headline.failedCases")} value={formatMetric(report.failed_case_count)} tone={report.failed_case_count > 0 ? "failed" : undefined} />
+    <HeadlineValue label={t("headline.indeterminateCases")} value={formatMetric(report.indeterminate_case_count)} tone={report.indeterminate_case_count > 0 ? "review" : undefined} />
+    <HeadlineValue label={t("headline.passedCases")} value={formatMetric(report.passed_case_count)} />
+    <HeadlineValue label={t("headline.observedCases")} value={formatMetric(report.observed_case_count)} tone={report.observed_case_count > 0 ? "review" : undefined} />
+  </dl>
+}
+
+function PerformanceReportHeadline({ report }: { report: QuickPerformanceReport }) {
+  const { t: tx } = useTranslation()
+  const { t } = useTranslation("reports")
+  return <section aria-label={t("headline.performance")} className="space-y-2">
+    <header className="flex flex-wrap items-center justify-between gap-2">
+      <h3 className="text-sm font-semibold">{t("headline.performance")}</h3>
+      <div className="flex flex-wrap gap-1.5">
+        <Badge variant="outline" className={report.success ? "border-success/25 bg-success-soft text-success-strong" : "border-destructive/25 bg-destructive-soft text-destructive"}>
+          {tx("desktop:quick-test_transport_and_protocol")}{report.success ? tx("desktop:quick-test_passed") : tx("desktop:quick-test_failed_301")}
+        </Badge>
+        {report.slo_assessment ? <PerformanceAssessmentBadge status={report.slo_assessment.status} label={performanceSLOStatusLabel(report.slo_assessment.status)} /> : null}
+        {report.capacity_result ? <PerformanceAssessmentBadge status={report.capacity_result.status} label={t(`headline.capacityStatus.${report.capacity_result.status}`)} /> : null}
+      </div>
+    </header>
+    <dl className="grid grid-cols-2 gap-x-5 gap-y-3 rounded-md bg-surface-subtle px-3 py-3 sm:grid-cols-4">
+      <HeadlineValue label={tx("desktop:quick-test_success_rate")} value={`${formatMetric(report.metrics.success_rate_percent)}%`} />
+      <HeadlineValue label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(report.metrics.successful_request_qps)} />
+      <HeadlineValue label={t("headline.ttftP95")} value={report.metrics.succeeded === 0 || report.metrics.ttft_samples === 0 ? "—" : `${formatPerformanceInteger(report.metrics.ttft_p95_ms)} ms`} />
+      <HeadlineValue label="E2E P95" value={report.metrics.succeeded === 0 ? "—" : `${formatPerformanceInteger(report.metrics.e2e_p95_ms)} ms`} />
+    </dl>
+    <p className="text-[10px] text-muted-foreground">{tx("desktop:reports_primary_metrics_cover_steady_state_only")}</p>
+  </section>
+}
+
+function HeadlineValue({ label, value, tone }: { label: string; value: string; tone?: "failed" | "review" }) {
+  const color = tone === "failed" ? "text-outcome-fail" : tone === "review" ? "text-outcome-review" : "text-foreground"
+  return <div className="min-w-0 [overflow-wrap:anywhere]">
+    <dt className="text-[11px] text-muted-foreground">{label}</dt>
+    <dd className={`mt-1 text-lg font-semibold tabular-nums ${color}`}>{value}</dd>
   </div>
 }
 
@@ -644,11 +705,11 @@ function InlineSummaryValue({ label, value }: { label: string; value: string }) 
   return <div className="min-w-0 px-3 py-2 font-medium tabular-nums" title={`${label} ${value}`}>{label} {value}</div>
 }
 
-function SLOStatusBadge({ status }: { status: NonNullable<QuickPerformanceReport["slo_assessment"]>["status"] }) {
+function PerformanceAssessmentBadge({ status, label }: { status: NonNullable<QuickPerformanceReport["slo_assessment"]>["status"]; label: string }) {
   return <Badge
     variant={status === "failed" ? "destructive" : "outline"}
     className={status === "passed" ? "border-success/25 bg-success-soft text-success-strong" : status === "not_evaluated" ? "border-warning/25 bg-warning-soft text-warning" : undefined}
-  >{performanceSLOStatusLabel(status)}</Badge>
+  >{label}</Badge>
 }
 
 function CapacityRungTable({ report }: { report: QuickPerformanceReport }) {

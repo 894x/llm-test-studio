@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { isJobTerminal, type JobPage, type JobView } from "@/features/jobs/data"
 import type { JobClient } from "@/features/jobs/execution"
+import type { HistoryChanged } from "@/features/history-recycle/data"
 
 // Read only the history pages the user has requested. Cursor pages are merged by
 // identity because a newly accepted execution can also occur in a loaded page.
@@ -16,6 +17,8 @@ export function useExecutionJobs(client: JobClient, preferredJob: JobView | null
   const observedRefresh = useRef(-1)
   const [observedPreferred, setObservedPreferred] = useState<JobView | null>(null)
   const preferredObservation = useRef<JobView | null>(null)
+  const hiddenIDs = useRef(new Set<string>())
+  const [hiddenJobIDs, setHiddenJobIDs] = useState<ReadonlySet<string>>(() => new Set())
   useEffect(() => {
     if (pendingReads.current?.client !== client) {
       pendingReads.current = { client, requests: new Map() }
@@ -41,9 +44,9 @@ export function useExecutionJobs(client: JobClient, preferredJob: JobView | null
       const next = new Map(retained.current)
       reads.forEach((read, index) => { if (read.status === "fulfilled") next.set(needed[index], read.value) })
       const byID = new Map([...next.values()].flatMap(page => page.jobs.map(job => [job.job_id, job] as const)))
-      if (preferredJob && !byID.has(preferredJob.job_id)) byID.set(preferredJob.job_id, preferredObservation.current?.job_id === preferredJob.job_id ? preferredObservation.current : preferredJob)
-      const pendingJobs = [...byID.values()].filter(job => !job.execution || !isJobTerminal(job.execution.status) ||
-        (job.kind === "performance" && !job.performance_result_ready))
+      if (preferredJob && !hiddenIDs.current.has(preferredJob.job_id) && !byID.has(preferredJob.job_id)) byID.set(preferredJob.job_id, preferredObservation.current?.job_id === preferredJob.job_id ? preferredObservation.current : preferredJob)
+      const pendingJobs = [...byID.values()].filter(job => !hiddenIDs.current.has(job.job_id) && (!job.execution || !isJobTerminal(job.execution.status) ||
+        (job.kind === "performance" && !job.performance_result_ready)))
       // Newly fetched pages already contain current observations. Subsequent
       // ticks read only unsettled jobs, regardless of the loaded history size.
       const updates = !initial || needed.length === 0
@@ -54,7 +57,7 @@ export function useExecutionJobs(client: JobClient, preferredJob: JobView | null
         preferredObservation.current = changed.get(preferredJob.job_id)!
         setObservedPreferred(preferredObservation.current)
       }
-      for (const [cursor, page] of next) next.set(cursor, { ...page, jobs: page.jobs.map(job => changed.get(job.job_id) ?? job) })
+      for (const [cursor, page] of next) next.set(cursor, { ...page, jobs: page.jobs.filter(job => !hiddenIDs.current.has(job.job_id)).map(job => changed.get(job.job_id) ?? job) })
       retained.current = next
       setPages(next)
       const failed = [...reads, ...updates].find(read => read.status === "rejected")
@@ -81,13 +84,26 @@ export function useExecutionJobs(client: JobClient, preferredJob: JobView | null
         byID.set(job.job_id, job)
       }
     }
-    if (preferredJob && !byID.has(preferredJob.job_id)) byID.set(preferredJob.job_id, observedPreferred?.job_id === preferredJob.job_id ? observedPreferred : preferredJob)
-    return [...byID.values()]
-  }, [cursors, pages, preferredJob, observedPreferred])
+    if (preferredJob && !hiddenJobIDs.has(preferredJob.job_id) && !byID.has(preferredJob.job_id)) byID.set(preferredJob.job_id, observedPreferred?.job_id === preferredJob.job_id ? observedPreferred : preferredJob)
+    return [...byID.values()].filter(job => !hiddenJobIDs.has(job.job_id))
+  }, [cursors, pages, preferredJob, observedPreferred, hiddenJobIDs])
   const last = pages.get(cursors[cursors.length - 1])
   const hasMore = !!last?.has_more
+  const applyHistoryChange = useCallback<HistoryChanged>((entry, action) => {
+    entry.job_ids.forEach(id => { if (action === "recycle") hiddenIDs.current.add(id); else hiddenIDs.current.delete(id) })
+    setHiddenJobIDs(new Set(hiddenIDs.current))
+    const next = new Map([...retained.current].map(([cursor, page]) => [cursor, { ...page, jobs: page.jobs.filter(job => !hiddenIDs.current.has(job.job_id)) }]))
+    retained.current = next
+    setPages(next)
+    if (action === "restore") {
+      // A page started while this Job was hidden cannot prove its restored
+      // visibility. The next effect owns fresh requests and its own cleanup.
+      pendingReads.current = null
+      setPending(true); setRefresh(value => value + 1)
+    }
+  }, [])
   return {
-    jobs, pending, error, hasMore,
+    jobs, pending, error, hasMore, applyHistoryChange,
     retry: () => { setPending(true); setRefresh(value => value + 1) },
     loadMore: () => {
       if (!last?.has_more || cursors.includes(last.next_cursor)) return

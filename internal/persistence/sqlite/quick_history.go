@@ -26,7 +26,7 @@ func (repository *Repository) ListQuickHistory(ctx context.Context, after string
 		return quickhistory.Projection{}, err
 	}
 	defer tx.Rollback()
-	ids, err := quickHistoryIDs(ctx, tx, cursor)
+	ids, err := repository.quickHistoryIDs(ctx, tx, cursor)
 	if err != nil {
 		return quickhistory.Projection{}, err
 	}
@@ -49,7 +49,8 @@ func (repository *Repository) ListQuickHistory(ctx context.Context, after string
 		if err != nil {
 			return quickhistory.Projection{}, err
 		}
-		page.Runs, err = readWorkspaceProjections(ctx, tx, quickHistoryRunQuery, string(document))
+		query := repository.visibleRunProjectionQuery(quickHistoryRunQuery)
+		page.Runs, err = readWorkspaceProjections(ctx, tx, query, string(document))
 		if err != nil {
 			return quickhistory.Projection{}, err
 		}
@@ -69,7 +70,11 @@ func (repository *Repository) ListQuickHistory(ctx context.Context, after string
 	return page, nil
 }
 
-func quickHistoryIDs(ctx context.Context, tx *sql.Tx, cursor quickhistory.Cursor) ([]quickhistory.Cursor, error) {
+func (repository *Repository) quickHistoryIDs(
+	ctx context.Context,
+	tx *sql.Tx,
+	cursor quickhistory.Cursor,
+) ([]quickhistory.Cursor, error) {
 	beforeNanos := int64(math.MaxInt64)
 	if cursor.Time != "" {
 		stamp, err := time.Parse(quickhistory.TimeLayout, cursor.Time)
@@ -85,7 +90,22 @@ func quickHistoryIDs(ctx context.Context, tx *sql.Tx, cursor quickhistory.Cursor
 			beforeNanos = stamp.UnixNano()
 		}
 	}
-	rows, err := tx.QueryContext(ctx, quickHistoryIDQuery, cursor.Time, cursor.Kind, cursor.ID, quickhistory.PageSize+1, beforeNanos)
+	query := quickHistoryIDQuery
+	if repository.hideRecycled {
+		query = strings.Replace(query, " AND json_type(revision.snapshot_json", " AND "+
+			repository.historyVisibleSQL("run", "root.id")+"\n AND json_type(revision.snapshot_json", 1)
+		query = strings.Replace(query, " WHERE generated_at_unix_nano", " WHERE "+
+			repository.historyVisibleSQL("report", "quick_performance_reports.id")+" AND generated_at_unix_nano", 1)
+	}
+	rows, err := tx.QueryContext(
+		ctx,
+		query,
+		cursor.Time,
+		cursor.Kind,
+		cursor.ID,
+		quickhistory.PageSize+1,
+		beforeNanos,
+	)
 	if err != nil {
 		return nil, reportProjectionReadError(ctx, "quick history IDs", err)
 	}

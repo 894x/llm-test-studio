@@ -39,9 +39,12 @@ export interface QuickTestHistoryItem {
   reportID?: string
   runID?: string
   jobID?: string
+  cancelDisabled?: boolean
+  cancelHint?: string
+  controlStatus?: string
 }
 
-export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore, onOpenReport, onOpenExecution, onCancel, onRefresh }: {
+export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore, onOpenReport, onOpenExecution, onCancel, onRefresh, renderRecycleAction }: {
   items: QuickTestHistoryItem[]
   selectedID: string
   busy: boolean
@@ -49,8 +52,9 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
   onRestore: (id: string) => void
   onOpenReport: (id: string) => void
   onOpenExecution?: (item: QuickTestHistoryItem) => void
-  onCancel: (id: string) => void
+  onCancel: (item: QuickTestHistoryItem) => void
   onRefresh: () => void
+  renderRecycleAction?: (item: QuickTestHistoryItem) => ReactNode
 }) {
   const { t, i18n } = useTranslation("quickTest")
   const currentYear = new Date().getFullYear()
@@ -120,12 +124,13 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
                   </div>
                   <div className="pointer-events-auto relative flex shrink-0 items-center gap-1">
                     {(item.jobID || item.runID) && onOpenExecution ? <HistoryAction label={t("jobs:details")} name={item.title} onClick={() => onOpenExecution(item)}><ArrowRightIcon /></HistoryAction> : null}
-                    {item.active && item.runID ? <>
+                    {item.active && (item.jobID || item.runID) ? <>
                       <HistoryAction label={t("task.refresh")} name={item.title} onClick={onRefresh}><RefreshCwIcon /></HistoryAction>
-                      <HistoryAction label={t("task.cancel")} name={item.title} disabled={busy} onClick={() => onCancel(item.runID!)}><SquareIcon /></HistoryAction>
+                      <HistoryAction label={t("task.cancel")} name={item.title} aria-description={item.cancelHint ?? t("jobs:cancelDescription")} disabled={busy || item.cancelDisabled} onClick={() => onCancel(item)}><SquareIcon /></HistoryAction>
                     </> : null}
                     {item.reportID ? <HistoryAction label={t("task.report")} name={item.title} onClick={() => onOpenReport(item.reportID!)}><FileChartColumnIcon /></HistoryAction> : null}
                     {item.runID ? <HistoryAction label={t("task.restore")} name={item.title} disabled={busy} onClick={() => onRestore(item.runID!)}><SquarePenIcon /></HistoryAction> : null}
+                    {renderRecycleAction?.(item)}
                   </div>
                 </div>
                 {item.active ? (
@@ -166,6 +171,7 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
                   </div>
                 ) : null}
                 {item.error ? <p className="mt-2 text-[11px] text-destructive [overflow-wrap:anywhere]">{item.error}</p> : null}
+                {item.controlStatus || item.active && item.cancelDisabled && item.cancelHint ? <p role="status" className="mt-2 text-[11px] text-muted-foreground [overflow-wrap:anywhere]">{item.controlStatus ?? item.cancelHint}</p> : null}
                 {item.waitingForReport || item.reportError ? <div role="status" className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
                   {item.waitingForReport ? <Spinner className="size-3 shrink-0" /> : null}
                   <span>{t(item.reportError ? "workspace.reportUnavailable" : "workspace.waitingForReport")}</span>

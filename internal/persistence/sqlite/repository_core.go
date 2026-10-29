@@ -29,7 +29,8 @@ type RepositoryOptions struct {
 // Each Repository uses a one-connection pool. Desktop and runner history use a
 // separate read-only view, leaving execution's connection for critical work.
 type Repository struct {
-	db *sql.DB
+	db           *sql.DB
+	hideRecycled bool
 }
 
 type rowQueryer interface {

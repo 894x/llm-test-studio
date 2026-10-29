@@ -10,6 +10,113 @@ import type { QuickPerformanceSLOAssessment } from "@/features/quick-test/data"
 import { protocolReportFixture, protocolReportSnapshot, reportID } from "@/test/protocol-report-fixture"
 
 describe("ReportWorkspace", () => {
+  it("moves a viewed report's whole owning execution, clears its inspector and restores its list entry", async () => {
+    const user = userEvent.setup()
+    const detail = protocolReportFixture()
+    const snapshot = protocolReportSnapshot(detail)
+    const jobID = "11111111-1111-4111-8111-111111111111"
+    const entry = { kind: "job" as const, id: jobID, title: "Saved test", removed_at: "2026-10-30T00:00:00Z", run_ids: [detail.report.run_id], report_ids: [detail.report.id], comparison_ids: [], job_ids: [jobID], remote: false }
+    const recycleClient = { previewHistoryRecycle: vi.fn(async () => ({ schema_version: 1 as const, entry: { ...entry, removed_at: "" }, can_recycle: true, blocked_reason: "" as const })), recycleHistory: vi.fn(async () => entry) }
+    const onHistoryChanged = vi.fn()
+    const props = { snapshot, preferredReportID: detail.report.id, getDetail: vi.fn(async () => detail), exportReport: vi.fn(), saveReportExport: vi.fn(), copyReportPNG: vi.fn(), recycleClient, onHistoryChanged }
+    const view = render(<ReportWorkspace {...props} />)
+    await screen.findByRole("region", { name: "计划报告" })
+    await user.click(screen.getByRole("button", { name: "移入回收站" }))
+    const dialog = await screen.findByRole("alertdialog")
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "移入回收站" })).toBeEnabled())
+    await user.click(within(dialog).getByRole("button", { name: "移入回收站" }))
+    await waitFor(() => expect(onHistoryChanged).toHaveBeenCalledWith(entry, "recycle"))
+    expect(recycleClient.previewHistoryRecycle).toHaveBeenCalledWith({ kind: "report", id: detail.report.id })
+    expect(recycleClient.recycleHistory).toHaveBeenCalledWith({ kind: "job", id: jobID })
+    expect(screen.queryByRole("region", { name: "计划报告" })).not.toBeInTheDocument()
+    expect(screen.getByText("还没有测试报告")).toBeVisible()
+    view.rerender(<ReportWorkspace {...props} historyChanges={[{ entry, action: "recycle" }, { entry: { ...entry, removed_at: "" }, action: "restore" }]} />)
+    expect(screen.getByRole("table", { name: "测试报告目录" })).toBeVisible()
+  })
+  it.each(["HTML", "PNG", "PDF", "复制 PNG"])("includes the frozen generated time and timezone in %s exports", async format => {
+    const user = userEvent.setup()
+    const detail = protocolReportFixture()
+    const snapshot = protocolReportSnapshot(detail)
+    const visualExport = vi.fn(async (element: HTMLElement) => {
+      const timestamp = element.querySelector("header time")!
+      expect(timestamp).toHaveAttribute("datetime", detail.report.generated_at)
+      expect(timestamp).toHaveTextContent("2026")
+      expect(timestamp.textContent).toMatch(/GMT|UTC/)
+      expect(timestamp.parentElement).toHaveTextContent("生成时间")
+      expect(element).toHaveTextContent("失败用例0")
+      return { filename: "report.png", mediaType: "image/png", blob: new Blob(["png"]) }
+    })
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace
+      snapshot={snapshot} getDetail={async () => detail}
+      exportReport={vi.fn()} saveReportExport={vi.fn(async () => true)} copyReportPNG={vi.fn(async () => undefined)}
+      exportVisualReport={visualExport}
+    /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: format }))
+    await waitFor(() => expect(visualExport).toHaveBeenCalledOnce())
+    await waitFor(() => expect(document.querySelector("[data-report-export-document]")).toBeNull())
+  })
+
+  it("highlights authoritative failure and review counts without recalculating the archived conclusion", async () => {
+    const detail = protocolReportFixture("failed")
+    const snapshot = protocolReportSnapshot(detail)
+    Object.assign(snapshot.reports[0], { case_count: 14, failed_case_count: 2, indeterminate_case_count: 4,
+      passed_case_count: 5, verified_case_count: 7, observed_case_count: 3 })
+    const original = structuredClone(detail)
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace
+      snapshot={snapshot} preferredReportID={detail.report.id} getDetail={async () => detail}
+      exportReport={vi.fn()} saveReportExport={vi.fn()} copyReportPNG={vi.fn()}
+    /></I18nextProvider>)
+    const report = await screen.findByRole("region", { name: "计划报告" })
+    const headline = within(report).getByLabelText("用例关键结果")
+    const failed = within(headline).getByText("失败用例").nextElementSibling
+    const indeterminate = within(headline).getByText("无法判定").nextElementSibling
+    expect(failed).toHaveTextContent("2")
+    expect(failed).toHaveClass("text-outcome-fail")
+    expect(indeterminate).toHaveTextContent("4")
+    expect(indeterminate).toHaveClass("text-outcome-review")
+    expect(within(headline).getByText("通过用例").nextElementSibling).toHaveTextContent("5")
+    expect(within(headline).getByText("仅观测").nextElementSibling).toHaveTextContent("3")
+    expect(detail).toEqual(original)
+  })
+
+  it("puts stored performance metrics before configuration and colors only backend conclusions", async () => {
+    const detail = quickDetail(reportID(80))
+    detail.performance.metrics.successful_request_qps = 7.8
+    detail.performance.metrics.ttft_p95_ms = 4_500
+    detail.performance.metrics.e2e_p95_ms = 8_000
+    const original = structuredClone(detail)
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace
+      snapshot={quickSnapshot(reportID(80), "全部请求成功")} preferredReportID={reportID(80)}
+      getDetail={async () => detail as unknown as ReportDetail}
+      exportReport={vi.fn()} saveReportExport={vi.fn()} copyReportPNG={vi.fn()}
+    /></I18nextProvider>)
+    const report = await screen.findByRole("region", { name: "归档性能报告" })
+    const headline = within(report).getByRole("region", { name: "关键性能指标" })
+    expect(headline).toHaveTextContent("成功率100%")
+    expect(headline).toHaveTextContent("成功吞吐8 req/s")
+    expect(headline).toHaveTextContent("TTFT P95（含推理）4,500 ms")
+    expect(headline).toHaveTextContent("E2E P958,000 ms")
+    expect(headline).toHaveTextContent("传输与协议通过")
+    expect(headline.querySelector(".text-outcome-fail, .text-destructive")).toBeNull()
+    expect(headline.compareDocumentPosition(within(report).getByText("测试配置")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(report).getByRole("table", { name: "延迟分布统计" })).toBeInTheDocument()
+    expect(detail).toEqual(original)
+  })
+
+  it("leaves absent throughput and latency observations empty in the performance headline", async () => {
+    const detail = quickDetail(reportID(81)) as unknown as Extract<ReportDetail, { source: "quick_performance" }>
+    delete detail.performance.metrics.successful_request_qps
+    detail.performance.metrics.ttft_samples = 0
+    detail.performance.metrics.succeeded = 0
+    render(<I18nextProvider i18n={createAppI18n("en-US")}><ReportWorkspace
+      snapshot={quickSnapshot(reportID(81), "全部请求成功")} preferredReportID={reportID(81)}
+      getDetail={async () => detail} exportReport={vi.fn()} saveReportExport={vi.fn()} copyReportPNG={vi.fn()}
+    /></I18nextProvider>)
+    const headline = await screen.findByRole("region", { name: "Key performance metrics" })
+    expect(within(headline).getAllByText("—")).toHaveLength(3)
+    expect(headline).not.toHaveTextContent("0 ms")
+  })
+
   it("labels the preparation environment separately from the actual remote execution platform", async () => {
     const user = userEvent.setup()
     const detail = protocolReportFixture()
@@ -405,6 +512,10 @@ describe("ReportWorkspace", () => {
 
     const report = await screen.findByRole("region", { name: "归档性能报告" })
     expect(report).toHaveTextContent("SLO 与容量")
+    const headline = within(report).getByRole("region", { name: "关键性能指标" })
+    expect(within(headline).getByText("容量评估未通过")).toHaveClass("text-destructive")
+    expect(headline).toHaveTextContent("传输与协议通过")
+    expect(headline).toHaveTextContent("SLO 通过")
     expect(report).toHaveTextContent("TTFT ≤ 50 ms")
     expect(report).toHaveTextContent("目标达标率 90%")
     expect(report).toHaveTextContent("传输与协议通过")

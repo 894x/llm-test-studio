@@ -26,8 +26,8 @@ func TestMigrateFreshDatabaseCreatesOperationalSchemaCurrent(t *testing.T) {
 	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
 		t.Fatalf("PRAGMA user_version = %d, want current", got)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 3 {
-		t.Fatalf("schema migration count = %d, want 3", got)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != persistence.CurrentSchemaVersion {
+		t.Fatalf("schema migration count = %d, want %d", got, persistence.CurrentSchemaVersion)
 	}
 	for _, table := range []string{
 		"runs",
@@ -51,6 +51,8 @@ func TestMigrateFreshDatabaseCreatesOperationalSchemaCurrent(t *testing.T) {
 		"execution_job_commands",
 		"execution_performance_observations",
 		"execution_performance_results",
+		"history_recycle_entries",
+		"history_recycle_members",
 	} {
 		if !tableExists(t, db, table) {
 			t.Fatalf("fresh operational schema is missing table %q", table)

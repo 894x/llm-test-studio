@@ -34,7 +34,12 @@ func (repository *Repository) ComparisonHistory(
 		return page, err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, comparisonHistoryIDsQuery, cursor.Time, cursor.ID)
+	query := comparisonHistoryIDsQuery
+	if repository.hideRecycled {
+		query = strings.Replace(query, " ORDER BY stamp", " AND "+
+			repository.historyVisibleSQL("comparison", "comparisons.id")+" ORDER BY stamp", 1)
+	}
+	rows, err := tx.QueryContext(ctx, query, cursor.Time, cursor.ID)
 	if err != nil {
 		return page, err
 	}
@@ -66,7 +71,9 @@ func (repository *Repository) ComparisonHistory(
 	if err != nil {
 		return page, err
 	}
-	rows, err = tx.QueryContext(ctx, comparisonHistoryQuery, string(document))
+	query = strings.Replace(comparisonHistoryQuery, " ORDER BY root.id", " AND "+
+		repository.historyVisibleSQL("comparison", "root.id")+" ORDER BY root.id", 1)
+	rows, err = tx.QueryContext(ctx, query, string(document))
 	if err != nil {
 		return page, err
 	}

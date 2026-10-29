@@ -31,7 +31,10 @@ func TestMigrationReportsRealStagesForFreshUpgradeAndRepeatOpen(t *testing.T) {
 			}
 			want := []string{"checking", "initializing", "validating", "completed"}
 			if historical {
-				want = []string{"checking", "checking", "backing_up", "migrating", "validating", "migrating", "validating", "completed"}
+				want = []string{
+					"checking", "checking", "backing_up", "migrating", "validating",
+					"migrating", "migrating", "validating", "completed",
+				}
 			}
 			if !slices.Equal(stages, want) {
 				t.Fatalf("stages = %v, want %v", stages, want)
