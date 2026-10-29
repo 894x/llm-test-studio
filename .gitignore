@@ -3,6 +3,8 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.idea/
+.devtools/
 
 # Local state and potentially sensitive test output
 # Authored data is versioned; ignore only catalog locks and atomic-write files.
