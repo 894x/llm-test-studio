@@ -12,6 +12,14 @@
     "subtitle": "Local testing workspace"
   },
   "navigationAria": "Main navigation",
+  "zoom": {
+    "current": "Interface zoom {{percent}}%",
+    "increase": "Zoom in",
+    "decrease": "Zoom out",
+    "reset": "Reset to 100%",
+    "resetAria": "Current zoom {{percent}}%, reset to 100%",
+    "hint": "Ctrl / ⌘ with + or − to zoom, Ctrl / ⌘ with 0 to reset; Ctrl + wheel also works."
+  },
   "settings": {
     "trigger": "Interface settings, theme: {{theme}}",
     "tooltip": "Interface settings",

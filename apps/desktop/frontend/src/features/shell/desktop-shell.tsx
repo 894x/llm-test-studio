@@ -12,6 +12,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -26,8 +27,10 @@ import {
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { DESKTOP_PAGES, type DesktopPage } from "./navigation"
+import { useInterfaceZoom, type InterfaceZoom } from "./use-interface-zoom"
+import { ZoomFeedback } from "./zoom-feedback"
 
-function InterfaceSettingsMenu() {
+function InterfaceSettingsMenu({ zoom }: { zoom: InterfaceZoom }) {
   const { theme, setTheme } = useTheme()
   const { preference, setPreference } = useLanguage()
   const { t } = useTranslation("shell")
@@ -83,6 +86,12 @@ function InterfaceSettingsMenu() {
             <MoonIcon /> {t("theme.dark")}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>{t("zoom.current", { percent: zoom.percent })}</DropdownMenuLabel>
+        <DropdownMenuItem disabled={!zoom.canIncrease} onSelect={() => zoom.change(1)}>{t("zoom.increase")}</DropdownMenuItem>
+        <DropdownMenuItem disabled={!zoom.canDecrease} onSelect={() => zoom.change(-1)}>{t("zoom.decrease")}</DropdownMenuItem>
+        <DropdownMenuItem disabled={zoom.percent === 100} onSelect={() => zoom.change(0)}>{t("zoom.reset")}</DropdownMenuItem>
+        <p className="px-2 py-1 text-[11px] text-muted-foreground [overflow-wrap:anywhere]">{t("zoom.hint")}</p>
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -100,8 +109,9 @@ export function DesktopShell({
   children: ReactNode
 }) {
   const { t } = useTranslation("shell")
+  const zoom = useInterfaceZoom()
   return (
-    <div className="flex h-svh min-h-[640px] flex-col overflow-hidden bg-background text-foreground">
+    <div className="flex h-[calc(100svh/var(--interface-zoom,1))] min-h-0 flex-col overflow-hidden bg-background text-foreground">
       <header className="flex h-12 shrink-0 items-center bg-background px-4">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -142,11 +152,16 @@ export function DesktopShell({
         </nav>
 
         <div className="desktop-header-actions ml-2 flex shrink-0 items-center gap-1">
-          <InterfaceSettingsMenu />
+          {zoom.percent !== 100 ? <Tooltip>
+            <TooltipTrigger asChild><Button size="xs" variant="ghost" className="tabular-nums" aria-label={t("zoom.resetAria", { percent: zoom.percent })} onClick={() => zoom.change(0)}>{zoom.percent}%</Button></TooltipTrigger>
+            <TooltipContent>{t("zoom.reset")}</TooltipContent>
+          </Tooltip> : null}
+          <InterfaceSettingsMenu zoom={zoom} />
           {actions}
         </div>
       </header>
       {children}
+      <ZoomFeedback zoom={zoom} />
     </div>
   )
 }

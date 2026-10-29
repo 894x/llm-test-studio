@@ -40,8 +40,8 @@ export function SearchableSelect({ value, onValueChange, options, disabled, id, 
         </Combobox.Trigger>
       </Combobox.InputGroup>
       {!overlay.visibility.dismissed && <Combobox.Portal container={portalContainer}>
-        <Combobox.Positioner positionMethod="fixed" sideOffset={4} align="start" className="z-50 isolate">
-          <Combobox.Popup className="w-[var(--anchor-width)] max-w-[var(--available-width)] max-h-[var(--available-height)] overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10">
+        <Combobox.Positioner data-slot="select-positioner" positionMethod="fixed" sideOffset={4} align="start" className="z-50 isolate">
+          <Combobox.Popup data-slot="select-content" className="w-[calc(var(--anchor-width)/var(--interface-zoom,1))] max-w-[calc(var(--available-width)/var(--interface-zoom,1))] max-h-[calc(var(--available-height)/var(--interface-zoom,1))] overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10">
             <Combobox.Empty className="px-3 py-2 text-xs text-muted-foreground empty:hidden">{t("select.empty")}</Combobox.Empty>
             <Combobox.List className="max-h-60 overflow-y-auto overscroll-contain p-1 [scrollbar-width:thin] data-empty:p-0">
               {(id: string) => { const option = options.find(option => option.value === id)!; return <Combobox.Item key={id} value={id} disabled={option.disabled}

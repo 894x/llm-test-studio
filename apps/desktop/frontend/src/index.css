@@ -194,6 +194,7 @@
   body {
     @apply m-0 bg-background text-foreground;
     font-size: 13px;
+    overflow: hidden;
   }
 
   button,
@@ -204,7 +205,20 @@
 }
 
 #root {
-  min-height: 100svh;
+  min-height: calc(100svh / var(--interface-zoom, 1));
+}
+
+/* Floating positions use viewport pixels; scale the content after positioning. */
+[data-radix-popper-content-wrapper],
+[data-slot="select-positioner"],
+[data-slot="autocomplete-positioner"] {
+  zoom: calc(1 / var(--interface-zoom, 1));
+}
+
+[data-radix-popper-content-wrapper] > [data-slot],
+[data-slot="select-positioner"] > [data-slot],
+[data-slot="autocomplete-positioner"] > [data-slot] {
+  zoom: var(--interface-zoom, 1);
 }
 
 .plan-nav-item,

@@ -12,6 +12,14 @@
     "subtitle": "本地测试工作台"
   },
   "navigationAria": "主导航",
+  "zoom": {
+    "current": "界面缩放 {{percent}}%",
+    "increase": "放大",
+    "decrease": "缩小",
+    "reset": "恢复 100%",
+    "resetAria": "当前缩放 {{percent}}%，恢复 100%",
+    "hint": "Ctrl / ⌘ 加 + 或 − 调整，Ctrl / ⌘ 加 0 恢复；也可使用 Ctrl + 滚轮。"
+  },
   "settings": {
     "trigger": "界面设置，主题：{{theme}}",
     "tooltip": "界面设置",
