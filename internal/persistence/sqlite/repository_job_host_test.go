@@ -1,6 +1,7 @@
 package sqlite_test
 
 import (
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"reflect"
@@ -118,8 +119,38 @@ func TestLookupJobOnlyReadsMatchingImmutableAdmission(t *testing.T) {
 	}
 }
 
+// Progress journaling only accepts quick task runs whose spec declared
+// functional progress, so the rollback test needs that fixture shape.
+func openProgressJournalFixture(t *testing.T) (*persistence.Repository, *sql.DB, *jobcontract.Snapshot) {
+	t.Helper()
+	run := runWithCompleteSnapshot(t)
+	snapshot := run.Snapshot()
+	snapshot.QuickTask = &domain.QuickTaskSnapshot{}
+	snapshot.Plan.ID = run.Meta().ID
+	snapshot.PlanDocument.ID = run.Meta().ID
+	quick, err := domain.NewRun(run.Meta(), run.Meta().ID, snapshot)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	spec := jobSpecForRun(t, quick)
+	spec.FunctionalProgress = true
+	path := filepath.Join(t.TempDir(), "progress-journal.db")
+	if err := persistence.Migrate(t.Context(), path, persistence.MigrateOptions{AppVersion: "journal-test"}); err != nil {
+		t.Fatal(err)
+	}
+	repository := reopenHardeningRepository(t, path)
+	t.Cleanup(func() { _ = repository.Close() })
+	db := openDatabase(t, path)
+	t.Cleanup(func() { _ = db.Close() })
+	accepted, _, err := repository.AcceptJob(t.Context(), jobAcceptance(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repository, db, &accepted
+}
+
 func TestProgressEventAndCursorRollbackTogether(t *testing.T) {
-	repository, db, snapshot := openJournalFixture(t)
+	repository, db, snapshot := openProgressJournalFixture(t)
 	if _, err := db.ExecContext(t.Context(), `CREATE TRIGGER reject_progress BEFORE INSERT ON execution_job_events
 		WHEN NEW.kind = 'progress' BEGIN SELECT RAISE(ABORT, 'injected progress failure'); END`); err != nil {
 		t.Fatal(err)
