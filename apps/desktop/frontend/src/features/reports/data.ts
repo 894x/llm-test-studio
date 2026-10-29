@@ -337,7 +337,9 @@ function parseReport(value: unknown): ReportSummary {
     !isNonNegativeInteger(value.issue_count) ||
     !isNonNegativeInteger(value.case_count) ||
     !isNonNegativeInteger(value.failed_case_count) ||
-    value.failed_case_count > value.case_count ||
+    // Cancelled and failed runs keep request-level verdicts for cases that
+    // never reached a case-level summary, so failed verdicts may exceed the
+    // summarized case count.
     ![value.passed_case_count, value.verified_case_count, value.observed_case_count, value.indeterminate_case_count].every(isNonNegativeInteger) ||
     !isNonNegativeInteger(value.attachment_count) ||
     (value.passed && (value.run_status !== "completed" || value.failed_case_count !== 0))
