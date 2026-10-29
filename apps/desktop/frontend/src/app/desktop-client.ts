@@ -1,6 +1,7 @@
 import { parseHistoryRecyclePreview, parseHistoryRecycleTarget, parseRecycledHistoryEntry, parseRecycledHistoryPage, type HistoryRecycleTarget, type HistoryRecyclePreview, type RecycledHistoryEntry, type RecycledHistoryPage } from "@/features/history-recycle/data"
 import type { QuickHistoryPage } from "@/features/quick-test/history-data"
 import { parseStartupProgress, READY_STARTUP, type StartupProgress } from "./startup-progress"
+import { parseDatabaseRecoveryResult, type DatabaseRecoveryResult } from "./database-recovery-data"
 import { DesktopDataError } from "@/app/data-error"
 import { EMPTY_REMOTE_NODES, parseRemoteNodes, parseRemoteNodeUpgrade, parseNullableRemoteNodeUpgrade,
   type StartRemoteNodeUpgradeCommand, type RemoteNodeUpgradeAction, type RemoteNodeUpgradeView, type RemoteNodesSnapshot, type RemoteNodeDraft,
@@ -169,6 +170,8 @@ export interface DesktopClient extends CatalogActions {
   recycleHistory(target: HistoryRecycleTarget): Promise<RecycledHistoryEntry>
   restoreHistory(target: HistoryRecycleTarget): Promise<RecycledHistoryEntry>
   getStartupProgress(): Promise<StartupProgress>
+  backupAndCreateDatabase(): Promise<DatabaseRecoveryResult>
+  openDatabaseRecoveryDirectory(): Promise<void>
   createLocalFileSelection(command: CreateLocalFileSelectionCommand): Promise<LocalFileSelection>
   releaseLocalFileSelection(selectionID: string): Promise<void>
   getRemoteNodes(): Promise<RemoteNodesSnapshot>
@@ -257,6 +260,8 @@ type WailsDesktopBinding = {
   RecycleHistory(target: HistoryRecycleTarget): Promise<unknown>
   RestoreHistory(target: HistoryRecycleTarget): Promise<unknown>
   GetStartupProgress(): Promise<unknown>
+  BackupAndCreateDatabase(): Promise<unknown>
+  OpenDatabaseRecoveryDirectory(): Promise<void>
   CreateLocalFileSelection(document: string): Promise<unknown>
   ReleaseLocalFileSelection(selectionID: string): Promise<unknown>
   GetRemoteNodes(): Promise<unknown>
@@ -335,7 +340,7 @@ const REQUIRED_WAILS_BINDING_METHODS = [
   "RetryRemoteInstallation", "RemoveRemoteNode",
   "StartRemoteNodeUpgrade", "GetRemoteNodeUpgrade", "RetryRemoteNodeUpgrade", "RecoverRemoteNodeUpgrade",
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
-  "GetStartupProgress", "GetOverview", "GetAvailableReports", "GetRunHistory", "GetRunSummaries", "GetQuickTestHistory", "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
+  "GetStartupProgress", "BackupAndCreateDatabase", "OpenDatabaseRecoveryDirectory", "GetOverview", "GetAvailableReports", "GetRunHistory", "GetRunSummaries", "GetQuickTestHistory", "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
   "SaveReportExport", "CopyReportPNG", "GetComparisons", "GetComparisonHistory", "LaunchJob", "GetJobs", "GetJob", "GetJobPerformanceResult", "ControlJob", "GetJobControls", "RetryJobControl", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
   "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel", "SaveQuickTestTarget",
   "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
@@ -409,6 +414,8 @@ export function createFixtureClient(
     subscribeReportGeneration() { return () => {} },
     subscribeRemoteResults() { return () => {} },
     async getStartupProgress() { return { ...READY_STARTUP } },
+    async backupAndCreateDatabase() { throw new DesktopClientError("operation_failed") },
+    async openDatabaseRecoveryDirectory() { throw new DesktopClientError("operation_failed") },
     async getAvailableReports(ids) { return reports.reports.filter(report => ids.includes(report.id)).map(report => report.id) },
     async getOverview() { return createOverviewSnapshot(workspace, catalogState, reports) },
     async getRunHistory(after) {
@@ -630,6 +637,8 @@ function createLazyFixtureClient(): DesktopClient {
     openDiagnosticsDirectory: async () =>
       (await client).openDiagnosticsDirectory(),
     getStartupProgress: async () => (await client).getStartupProgress(),
+    backupAndCreateDatabase: async () => (await client).backupAndCreateDatabase(),
+    openDatabaseRecoveryDirectory: async () => (await client).openDatabaseRecoveryDirectory(),
     getAvailableReports: async ids => (await client).getAvailableReports(ids),
     getOverview: async () => (await client).getOverview(),
     getRunHistory: async after => (await client).getRunHistory(after),
@@ -793,6 +802,8 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       return view
     }),
     getStartupProgress: async () => callBinding(() => binding.GetStartupProgress(), parseStartupProgress),
+    backupAndCreateDatabase: async () => callBinding(() => binding.BackupAndCreateDatabase(), parseDatabaseRecoveryResult),
+    openDatabaseRecoveryDirectory: async () => { await callBinding(() => binding.OpenDatabaseRecoveryDirectory(), parseVoid) },
     getReportGeneration: async () => callBinding(() => binding.GetReportGeneration(), parseReportGenerationSnapshot),
     subscribeRemoteResults: (onChange) => {
       const runtime = (window as typeof window & {

@@ -9,6 +9,7 @@ import (
 // The desktop client depends on this method set. Host hooks must stay package-level.
 func TestDesktopBindingMethodSetSurvivesPackageMove(t *testing.T) {
 	want := []string{
+		"BackupAndCreateDatabase",
 		"ConfirmRemoteNodeHostKey",
 		"ControlJob",
 		"CopyReportPNG",
@@ -49,6 +50,7 @@ func TestDesktopBindingMethodSetSurvivesPackageMove(t *testing.T) {
 		"GetStartupProgress",
 		"GetWorkspace",
 		"LaunchJob",
+		"OpenDatabaseRecoveryDirectory",
 		"OpenDiagnosticsDirectory",
 		"PreviewHistoryRecycle",
 		"RecoverRemoteNodeUpgrade",

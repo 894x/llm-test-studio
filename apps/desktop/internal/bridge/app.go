@@ -23,6 +23,9 @@ type DesktopApp struct {
 	drained                  *sync.Cond
 	startupDone              *sync.Cond
 	initialize               Initializer
+	startupParent            context.Context
+	databaseRecovery         DatabaseRecovery
+	recoveryNeedsReopen      bool
 	starting                 bool
 	started                  bool
 	stopping                 bool

@@ -60,18 +60,23 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	}
 	app.lifecycleMu.Lock()
 	defer app.lifecycleMu.Unlock()
+	app.startLocked(ctx, app.initialize)
+}
+
+func (app *DesktopApp) startLocked(ctx context.Context, initialize Initializer) {
 	app.mu.Lock()
 	if app.started || app.stopping || app.stopped {
 		app.mu.Unlock()
 		return
 	}
 	app.starting = true
+	app.startupParent = ctx
 	app.startupStarted = time.Now()
 	app.startupProgress = StartupProgress{SchemaVersion: 1, Status: "running", Stage: "opening"}
 	app.mu.Unlock()
 
 	lifecycleContext, cancel := context.WithCancel(ctx)
-	if app.initialize == nil {
+	if initialize == nil {
 		app.mu.Lock()
 		app.starting = false
 		app.started = true
@@ -79,12 +84,13 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 		app.cancel = cancel
 		app.startupErr = ErrWorkspaceUnavailable
 		app.startupProgress.Status = "failed"
+		app.startupProgress.FailureCode = "unknown"
 		app.startupDone.Broadcast()
 		app.mu.Unlock()
 		return
 	}
 	lifecycleContext = app.startupContext(lifecycleContext)
-	dependencies, err := app.initialize(lifecycleContext)
+	dependencies, err := initialize(lifecycleContext)
 	app.mu.Lock()
 	app.starting = false
 	app.started = true
@@ -94,6 +100,7 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 		startupErr := fmt.Errorf("%w: %w", ErrDesktopStartup, err)
 		app.startupErr = startupErr
 		app.startupProgress.Status = "failed"
+		app.startupProgress.FailureCode = startupFailureCode(err, app.startupProgress)
 		app.startupProgress.ElapsedMS = time.Since(app.startupStarted).Milliseconds()
 		report := app.reportError
 		app.startupDone.Broadcast()

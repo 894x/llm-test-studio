@@ -1,6 +1,7 @@
 import { createComparisonHistoryResource } from "@/features/comparisons/history-resource"
 import { RetainedWorkspace } from "@/features/shell/retained-workspace"
 import { useStartupProgress } from "@/app/startup-progress"
+import { RecoverableStartupFailure } from "@/app/recoverable-startup-failure"
 import { RemoteNodesMenu } from "@/features/remote-nodes/remote-nodes-menu"
 import { launchAtDefault } from "@/features/jobs/execution"
 import type { JobView } from "@/features/jobs/data"
@@ -82,9 +83,11 @@ function persistDraft(draft: TaskDraft): void {
 function AppWorkspace({
   client,
   onRecreateClient,
+  onDatabaseRecovered,
 }: {
   client: DesktopClient
   onRecreateClient: () => boolean
+  onDatabaseRecovered: () => void
 }) {
   const startup = useStartupProgress(client)
   const { t: tx } = useTranslation()
@@ -585,30 +588,31 @@ function AppWorkspace({
     const requiredReads: readonly ResourceKey[] = PAGE_READS[page]
     const failedRead = requiredReads.find(key => states[key].error !== null && states[key].data === null)
     const loadError = startup?.status === "failed" ? new DesktopClientError("desktop_startup_failed") : failedRead ? states[failedRead].error : null
+    const startupFailed = startup?.status === "failed" || (loadError instanceof DesktopClientError && loadError.code === "desktop_startup_failed")
     const pageReady = startup?.status !== "running" && requiredReads.every(key => states[key].data !== null)
     const catalog = (page === "catalog" ? connectionState : page === "cases" ? definitionState : page === "quick-test" ? quickCatalogState : catalogState).data
 
+    const logActions = (
+      <>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {!startupFailed ? <Button size="sm" variant="outline" onClick={retryInitialLoad}>{tx("desktop:app_retry_opening")}</Button> : null}
+          <Button size="sm" variant="outline" disabled={openingLogs} aria-busy={openingLogs} onClick={() => void openLogs()}>
+            {openingLogs ? <Spinner /> : <FolderOpenIcon />}
+            {t(openingLogs ? "app:openingLogs" : "app:openLogs")}
+          </Button>
+        </div>
+        {openLogsError !== null ? <p role="status" className="mt-2 text-xs text-destructive">
+          {publicDesktopOperationErrorMessage(openLogsError, t("app:openLogs"), tx("shell:diagnostics.openError"))}
+        </p> : null}
+      </>
+    )
     const pageStatus = loadError ? (
         <div className="flex min-h-0 flex-1 items-center justify-center bg-background p-6 text-foreground">
-          <div role="alert" className="max-w-md border-l-2 border-destructive pl-4">
+          {startupFailed ? <RecoverableStartupFailure progress={startup?.status === "failed" ? startup : null} client={client} actions={logActions} onContinue={onDatabaseRecovered} /> : <div role="alert" className="max-w-md border-l-2 border-destructive pl-4">
             <div className="text-sm font-semibold">{tx("desktop:app_unable_to_open_the_local_workspace")}</div>
             <p className="mt-1 text-xs text-muted-foreground">{publicDesktopErrorMessage(loadError, t("app:loadError"))}</p>
-            {startup?.status === "failed" ? <p className="mt-2 text-xs text-muted-foreground">{t("app:startup.failedStage", { stage: t(`app:startup.stages.${startup.stage}`) })}</p> : null}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" onClick={retryInitialLoad}>
-                {tx("desktop:app_retry_opening")}
-              </Button>
-              <Button size="sm" variant="outline" disabled={openingLogs} aria-busy={openingLogs} onClick={() => void openLogs()}>
-                {openingLogs ? <Spinner /> : <FolderOpenIcon />}
-                {t(openingLogs ? "app:openingLogs" : "app:openLogs")}
-              </Button>
-            </div>
-            {openLogsError !== null && (
-              <p role="status" className="mt-2 text-xs text-destructive">
-                {publicDesktopOperationErrorMessage(openLogsError, t("app:openLogs"), tx("shell:diagnostics.openError"))}
-              </p>
-            )}
-          </div>
+            {logActions}
+          </div>}
         </div>
     ) : !pageReady ? (
       <div role="status" aria-live="polite" aria-busy="true" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
@@ -740,13 +744,13 @@ function AppWorkspace({
       {page === overviewDestination ? <div className="shrink-0 px-4 pb-1">
         <Button size="xs" variant="ghost" onClick={() => navigate("overview")}><ArrowLeftIcon />{t("overview:drilldown.back")}</Button>
       </div> : null}
-      {DESKTOP_PAGES.map(({ id }) => (
+      {startup?.status === "failed" ? renderWorkspace(page) : DESKTOP_PAGES.map(({ id }) => (
         <RetainedWorkspace key={id} active={page === id}
           fallback={<div role="status" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground"><Spinner />{t("app:loadingPage")}</div>}>
           {renderWorkspace(id)}
         </RetainedWorkspace>
       ))}
-      {page === "recycle-bin" ? <RetainedWorkspace active fallback={<Spinner />}>{renderWorkspace("recycle-bin")}</RetainedWorkspace> : null}
+      {startup?.status !== "failed" && page === "recycle-bin" ? <RetainedWorkspace active fallback={<Spinner />}>{renderWorkspace("recycle-bin")}</RetainedWorkspace> : null}
       <ReportGenerationStatus
         progress={Object.values(reportGeneration).filter((progress) =>
           !hiddenHistory.runs.has(progress.run_id) && !hiddenHistory.reports.has(progress.report_id ?? "") &&
@@ -779,7 +783,9 @@ function App({ client }: { client?: DesktopClient }) {
         <TooltipProvider delayDuration={250}>
         <TransientOverlayProvider>
         <AppWorkspace
+          key={clientGeneration}
           client={desktopClient}
+          onDatabaseRecovered={() => setClientGeneration(generation => generation + 1)}
           onRecreateClient={() => {
             if (client) return false
             setClientGeneration((generation) => generation + 1)

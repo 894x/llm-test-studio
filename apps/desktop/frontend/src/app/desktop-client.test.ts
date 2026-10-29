@@ -1253,6 +1253,8 @@ function installBinding(
     GetCatalog: vi.fn(async () => structuredClone(catalog)),
     GetReports: vi.fn(async () => structuredClone(reports)),
     GetStartupProgress: vi.fn(async () => ({ schema_version: 1 as const, status: "completed" as const, stage: "ready" as const, from_version: 0, to_version: 0, elapsed_ms: 0 })),
+    BackupAndCreateDatabase: vi.fn(async () => ({ schema_version: 1, status: "completed", workspace_ready: true })),
+    OpenDatabaseRecoveryDirectory: vi.fn(async () => undefined),
     GetReportGeneration: vi.fn(async () => ({ schema_version: 1, runs: [] })),
 		GetDiagnostics: vi.fn(async () => ({
 			schema_version: 1, available: true, format: "jsonl",

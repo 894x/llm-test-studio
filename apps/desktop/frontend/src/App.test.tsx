@@ -54,6 +54,8 @@ function desktopClient(): DesktopClient & {
     getCatalog: vi.fn(async (scope: CatalogScope) => structuredClone(selectCatalog(FIXTURE_CATALOG, scope))),
     getReports: vi.fn(async () => structuredClone(FIXTURE_REPORTS)),
     getStartupProgress: vi.fn(async () => ({ schema_version: 1 as const, status: "completed" as const, stage: "ready" as const, from_version: 0, to_version: 0, elapsed_ms: 0 })),
+    backupAndCreateDatabase: vi.fn<DesktopClient["backupAndCreateDatabase"]>(),
+    openDatabaseRecoveryDirectory: vi.fn(async () => undefined),
     getReportGeneration: vi.fn(async () => ({ schema_version: 1 as const, runs: [] })),
     subscribeReportGeneration: vi.fn((_receive: (progress: ReportGenerationProgress) => void) => () => {}),
     subscribeRemoteResults: vi.fn((_receive: () => void) => () => {}),
@@ -1073,7 +1075,7 @@ describe("desktop run workspace", () => {
     let rejectWorkspace!: (reason: unknown) => void
     client.getRunHistory = vi.fn(() => new Promise<Awaited<ReturnType<DesktopClient["getRunHistory"]>>>((_, reject) => { rejectWorkspace = reject }))
     let failed = false
-    client.getStartupProgress = vi.fn(async () => ({ schema_version: 1 as const, status: failed ? "failed" as const : "running" as const, stage: "database_migrating" as const, from_version: 1, to_version: 2, elapsed_ms: 2300 }))
+    client.getStartupProgress = vi.fn(async () => ({ schema_version: 1 as const, status: failed ? "failed" as const : "running" as const, stage: "database_migrating" as const, from_version: 1, to_version: 2, elapsed_ms: 2300, ...(failed ? { failure_code: "migration_failed" as const } : {}) }))
     render(<App client={client} />)
     expect(await screen.findByText("正在迁移历史数据")).toBeVisible()
     expect(screen.getByText(/已用时 2 秒/)).toBeVisible()
@@ -1081,7 +1083,52 @@ describe("desktop run workspace", () => {
     failed = true
     await act(async () => { rejectWorkspace?.(new DesktopClientError("desktop_startup_failed")) })
     expect(await screen.findByText(/停止于：正在迁移历史数据/)).toBeVisible()
-    expect(screen.getAllByText("无法打开本地工作台")).toHaveLength(1)
+    expect(screen.getAllByText("历史数据升级未完成")).toHaveLength(1)
+    expect(screen.queryByRole("button", { name: "重试打开" })).not.toBeInTheDocument()
+  })
+
+  it("shows actionable startup guidance and keeps the log action usable", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    client.getStartupProgress = vi.fn<DesktopClient["getStartupProgress"]>(async () => ({ schema_version: 1, status: "failed", stage: "opening", from_version: 0, to_version: 0, elapsed_ms: 10, failure_code: "workspace_busy" }))
+    vi.mocked(client.openDiagnosticsDirectory).mockRejectedValueOnce(new Error("private path sk-secret"))
+    render(<App client={client} />)
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("本地工作区正在被占用")
+    expect(alert).toHaveTextContent("退出当前窗口并重新启动应用")
+    expect(screen.queryByRole("button", { name: "重试打开" })).not.toBeInTheDocument()
+    await user.click(within(alert).getByRole("button", { name: "打开日志文件夹" }))
+    expect(await within(alert).findByRole("status")).toBeVisible()
+    expect(alert).not.toHaveTextContent("private path")
+    expect(alert).not.toHaveTextContent("sk-secret")
+    await user.click(within(alert).getByRole("button", { name: "打开日志文件夹" }))
+    expect(client.openDiagnosticsDirectory).toHaveBeenCalledTimes(2)
+    expect(within(alert).queryByRole("status")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "模型与渠道" }))
+    expect(screen.getAllByRole("alert")).toHaveLength(1)
+  })
+
+  it.each(["#runs", "#recycle-bin"])("recreates workspace reads only after a confirmed database recovery from %s", async (hash) => {
+    window.history.replaceState(null, "", hash)
+    const user = userEvent.setup()
+    const client = desktopClient()
+    let recovered = false
+    client.getStartupProgress = vi.fn<DesktopClient["getStartupProgress"]>(async () => recovered
+      ? { schema_version: 1, status: "completed", stage: "ready", from_version: 0, to_version: 0, elapsed_ms: 0 }
+      : { schema_version: 1, status: "failed", stage: "database_checking", failure_code: "database_unsupported", recovery_available: true, from_version: 0, to_version: 0, elapsed_ms: 0 })
+    client.backupAndCreateDatabase = vi.fn(async () => {
+      recovered = true
+      return { schema_version: 1 as const, status: "completed" as const, workspace_ready: true }
+    })
+    render(<App client={client} />)
+    await user.click(await screen.findByRole("button", { name: "备份并创建新数据库" }))
+    expect(client.backupAndCreateDatabase).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "确认备份并创建" }))
+    await screen.findByRole("button", { name: "进入新工作区" })
+    await user.click(screen.getByRole("button", { name: "模型与渠道" }))
+    await user.click(screen.getByRole("button", { name: "进入新工作区" }))
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "本地数据版本或结构无法通过校验" })).not.toBeInTheDocument())
+    expect(client.getStartupProgress).toHaveBeenCalledTimes(2)
   })
 
   it("authors a protocol plan and leaves runtime bindings out of the command", async () => {
@@ -1592,6 +1639,8 @@ describe("desktop run workspace", () => {
       getCatalog: vi.fn(),
       getReports: vi.fn(),
       getStartupProgress: vi.fn(async () => ({ schema_version: 1 as const, status: "completed" as const, stage: "ready" as const, from_version: 0, to_version: 0, elapsed_ms: 0 })),
+      backupAndCreateDatabase: vi.fn<DesktopClient["backupAndCreateDatabase"]>(),
+      openDatabaseRecoveryDirectory: vi.fn(async () => undefined),
       getReportGeneration: vi.fn(async () => ({ schema_version: 1 as const, runs: [] })),
       subscribeReportGeneration: vi.fn(() => () => {}),
       subscribeRemoteResults: vi.fn(() => () => {}),

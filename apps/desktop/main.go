@@ -38,6 +38,7 @@ func main() {
 	production.ReportRunDiagnostic = bridge.RunDiagnosticReporter(operator, log.Default())
 	production.ReportCredentialCleanup = report
 	app := bridge.New(bootstrap.NewInitializer(production))
+	bridge.ConfigureDatabaseRecovery(app, bootstrap.NewDatabaseRecovery(production))
 	bridge.SetEventEmitter(app, wailsruntime.EventsEmit)
 	bridge.ConfigureDiagnostics(app, operator, native.OpenDirectory)
 	if err := wails.Run(bridge.WailsOptions(app, frontendAssets, report)); err != nil {

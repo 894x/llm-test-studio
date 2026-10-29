@@ -16,6 +16,7 @@
       "database_backing_up": "Creating and verifying an upgrade backup",
       "database_migrating": "Migrating historical data",
       "database_validating": "Validating upgraded data",
+      "database_activating": "Switching the workspace",
       "database_completed": "Database check completed",
       "catalogs": "Loading test catalogs",
       "opening_repository": "Opening history",
@@ -25,6 +26,76 @@
     "elapsed": "Elapsed {{seconds}} s",
     "version": "Version {{from}} → {{to}}",
     "keepOpen": "Keep the app open. The workspace will open after validation.",
-    "failedStage": "Stopped at: {{stage}}. See the startup log for details."
+    "failedStage": "Stopped at: {{stage}}",
+    "recoveryTitle": "Recovery steps",
+    "errorCode": "Error code: {{code}}",
+    "logHelp": "For help, provide the startup error from the latest log and your application version.",
+    "databaseRecovery": {
+      "offer": "You can also back up the original database and continue with an empty workspace. The original database will be kept.",
+      "action": "Back up and create a new database",
+      "pending": "Backing up and preparing the new workspace…",
+      "confirmTitle": "Back up the original database and create a new one?",
+      "confirmDescription": "First stop other tools using this database. The application will create and verify a consistent backup before switching databases. The original database and its journal files will be kept. Previous history, tasks, and database settings will not be copied into the new workspace. This does not repair or migrate the old data.",
+      "sendToAdmin": "To investigate compatibility issues, you can send original.sqlite and backup.json from the backup folder to an administrator. Backups may contain sensitive data; send them only to a trusted administrator.",
+      "confirm": "Confirm backup and creation",
+      "cancel": "Cancel",
+      "failed": "The operation did not complete: {{reason}} The original database is kept. Resolve the issue before retrying.",
+      "transportFailed": "The recovery outcome could not be confirmed. The original database is kept. Check the startup log; restarting the application will confirm the selected workspace.",
+      "reopenRequired": "Durable database selection could not be confirmed. The original database and verified backup are kept. Quit and restart to confirm the selected workspace. Do not create another new database.",
+      "completedTitle": "Original database backed up; new database created",
+      "completed": "The new database is now selected for this workspace. Previous history remains in the original database and backup and will not automatically appear in the new workspace.",
+      "workspaceNotReady": "The new database is ready, but workspace startup still failed. View the current startup error.",
+      "continue": "Open the new workspace",
+      "viewFailure": "View the current startup error",
+      "openBackup": "Open backup folder",
+      "openFailed": "Unable to open the backup folder. The backup is kept. Contact an administrator with the diagnostic log."
+    },
+    "failures": {
+      "workspace_busy": {
+        "title": "The local workspace is in use",
+        "description": "Another application instance or process is using the local data, so this window cannot finish starting.",
+        "steps": ["Check the taskbar or system tray for another LLM Test Studio instance. Finish or stop active tasks in that window before quitting it.", "Close the process using the data, then quit this window and restart the application. There is no need to delete lock files."]
+      },
+      "permission_denied": {
+        "title": "Unable to read or write local data",
+        "description": "Your account lacks the required access, or system security settings are blocking file access.",
+        "steps": ["Check that your account can read and write the application data directory and that security software is not blocking the application.", "Restore access, then quit this window and restart the application."]
+      },
+      "disk_full": {
+        "title": "Not enough disk space to start",
+        "description": "There is not enough free space to write local data or create an upgrade backup.",
+        "steps": ["Free space on the disk containing application data, leaving room for the database and upgrade backup. Keep existing data and backups.", "Once sufficient space is available, quit this window and restart the application."]
+      },
+      "storage_unavailable": {
+        "title": "Local storage is unavailable",
+        "description": "A required directory or file cannot be accessed. The disk connection, file state, or storage device may be unavailable.",
+        "steps": ["Check that the data disk is connected and accessible. Reconnect external drives or network directories and check file access.", "Restore storage access, then quit this window and restart the application. If it still fails, provide the startup log."]
+      },
+      "database_unsupported": {
+        "title": "The local data version or structure could not be validated",
+        "description": "This application cannot safely recognize the data. Its version may be unsupported or its upgrade records may be invalid.",
+        "steps": ["Use an application version that matches the data. If you recently downgraded, first return to the newer version you were using.", "Keep existing data and backups and provide the startup log to a maintainer to confirm an upgrade path. Do not delete the database or edit its version."]
+      },
+      "database_corrupt": {
+        "title": "Unable to read the local database",
+        "description": "The database is damaged, or the file is not a valid database.",
+        "steps": ["Quit the application and preserve the entire data directory, including database sidecar files, to avoid overwriting it.", "Provide the startup log to a maintainer and confirm a recoverable backup and matching version before restoring. Restoration may lose records created after the backup."]
+      },
+      "backup_failed": {
+        "title": "The upgrade backup did not complete",
+        "description": "Creating or validating the upgrade backup failed, so startup has stopped.",
+        "steps": ["Check free space, read/write access, and connectivity for the data disk. Keep the existing database and backups.", "Restart after resolving storage issues. If it fails again, provide the startup log. Do not skip the backup or manually replace the database."]
+      },
+      "migration_failed": {
+        "title": "The historical data upgrade did not complete",
+        "description": "Data migration or validation of the upgraded data failed, so the workspace cannot open yet.",
+        "steps": ["Quit the application and keep current data and pre-upgrade backups. Do not delete the database, edit upgrade records, or overwrite it with an older version.", "Provide the startup log and application versions before and after the upgrade to a maintainer to confirm a repair or backup restoration plan."]
+      },
+      "unknown": {
+        "title": "Unable to open the local workspace",
+        "description": "Desktop initialization did not complete. The specific cause is not yet known.",
+        "steps": ["Quit and reopen the application once, and check that you are using a complete application installation.", "If it still fails, keep local data and provide the startup log, application version, and stage shown below to help locate the cause."]
+      }
+    }
   }
 }

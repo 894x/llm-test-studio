@@ -8,12 +8,14 @@ import (
 // StartupProgress is safe to query while ordinary bindings wait for startup.
 // Stage boundaries are real work events, not an estimated percentage.
 type StartupProgress struct {
-	SchemaVersion int    `json:"schema_version"`
-	Status        string `json:"status"`
-	Stage         string `json:"stage"`
-	FromVersion   int    `json:"from_version"`
-	ToVersion     int    `json:"to_version"`
-	ElapsedMS     int64  `json:"elapsed_ms"`
+	SchemaVersion     int    `json:"schema_version"`
+	Status            string `json:"status"`
+	Stage             string `json:"stage"`
+	FromVersion       int    `json:"from_version"`
+	ToVersion         int    `json:"to_version"`
+	ElapsedMS         int64  `json:"elapsed_ms"`
+	FailureCode       string `json:"failure_code,omitempty"`
+	RecoveryAvailable bool   `json:"recovery_available,omitempty"`
 }
 
 type startupObserverKey struct{}
@@ -35,6 +37,9 @@ func (app *DesktopApp) GetStartupProgress() StartupProgress {
 	if progress.Status == "running" {
 		progress.ElapsedMS = time.Since(app.startupStarted).Milliseconds()
 	}
+	failedIncompatible := progress.Status == "failed" && progress.FailureCode == "database_unsupported"
+	canPrepare := app.databaseRecovery.Prepare != nil && !app.recoveryNeedsReopen
+	progress.RecoveryAvailable = failedIncompatible && canPrepare
 	return progress
 }
 

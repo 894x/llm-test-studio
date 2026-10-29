@@ -40,7 +40,22 @@ import (
 )
 
 func NewInitializer(options Options) bridge.Initializer {
+	return newInitializer(options, nil)
+}
+
+func newInitializer(options Options, acquiredOwnership *fileconfig.ExclusiveLock) bridge.Initializer {
 	return func(ctx context.Context) (result bridge.Dependencies, initializeError error) {
+		defer func() {
+			if initializeError != nil {
+				initializeError = classifyStartupFailure(initializeError)
+			}
+		}()
+		ownership := acquiredOwnership
+		defer func() {
+			if initializeError != nil && ownership != nil {
+				initializeError = errors.Join(initializeError, ownership.Close())
+			}
+		}()
 		if ctx == nil {
 			ctx = context.Background()
 		}
@@ -61,15 +76,16 @@ func NewInitializer(options Options) bridge.Initializer {
 		if err := fileconfig.EnsurePrivateDirectory(ctx, directory); err != nil {
 			return bridge.Dependencies{}, fmt.Errorf("prepare desktop data directory: %w", err)
 		}
-		ownership, err := fileconfig.TryAcquireExclusiveLock(ctx, filepath.Join(directory, "desktop-executor.lock"))
-		if err != nil {
-			return bridge.Dependencies{}, fmt.Errorf("desktop execution data is already owned or unavailable: %w", err)
-		}
-		defer func() {
-			if initializeError != nil {
-				initializeError = errors.Join(initializeError, ownership.Close())
+		if ownership == nil {
+			ownership, err = fileconfig.TryAcquireExclusiveLock(ctx, filepath.Join(directory, "desktop-executor.lock"))
+			if err != nil {
+				return bridge.Dependencies{}, fmt.Errorf("desktop execution data is already owned or unavailable: %w", err)
 			}
-		}()
+		}
+		database, err = resolveDesktopDatabase(directory, database)
+		if err != nil {
+			return bridge.Dependencies{}, fmt.Errorf("resolve desktop database selection: %w", err)
+		}
 		if err := sqlite.Migrate(ctx, database, sqlite.MigrateOptions{
 			AppVersion: options.AppVersion,
 			Progress: func(progress sqlite.MigrationProgress) {
@@ -243,7 +259,7 @@ func NewInitializer(options Options) bridge.Initializer {
 		runService, err := runs.New(runs.Dependencies{
 			QuickTaskCredentials: quickTaskCredentials,
 			Repository:           runtimeRepository,
-			MissingRun:          sqlite.ErrNotFound,
+			MissingRun:           sqlite.ErrNotFound,
 			QuickTasks:           catalogRepository,
 			CaseTypes:            caseTypes,
 			Credentials:          credentialStore,
