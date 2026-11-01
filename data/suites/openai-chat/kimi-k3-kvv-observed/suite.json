@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "key": "kimi.k3.kvv.observed",
+  "name": "kimi-k3 · KVV KVV 兼容行为观察",
+  "protocol": "openai-chat",
+  "description": "只适用于 kimi-k3；显式选择后运行。包含上游 KVV 预期、尚未独立确认的拒绝行为，不应直接等同于官方契约。",
+  "cases": [
+    {
+      "case_id": "885ca61e-9386-5586-975c-38da7ca098f9"
+    },
+    {
+      "case_id": "72a63213-84de-5a4d-b5d7-9ad18cce7e09"
+    },
+    {
+      "case_id": "b5629801-fd99-5802-9719-c18ab038746b"
+    },
+    {
+      "case_id": "72e8af78-e838-5b60-b2a8-3b5847ccb750"
+    },
+    {
+      "case_id": "922ee6d1-d062-589d-9530-5da279e5d452"
+    },
+    {
+      "case_id": "ec2d0e43-db58-5b3c-a6e7-3bd7f284f263"
+    },
+    {
+      "case_id": "eafcecc7-fd90-5778-889d-248603f25fe6"
+    },
+    {
+      "case_id": "c4cae44a-de05-5b29-af68-86441a509c41"
+    },
+    {
+      "case_id": "13175ce7-62ba-51e0-9ae3-f2375a73a164"
+    },
+    {
+      "case_id": "099d4d9e-b1da-5bca-bc1c-9944d8467ae5"
+    },
+    {
+      "case_id": "7cd40d22-bffd-585b-a312-4132e6f89f11"
+    },
+    {
+      "case_id": "312b9c23-017a-51ac-8b4e-76cd038cad19"
+    },
+    {
+      "case_id": "292465b6-0031-54a5-b76f-ed42272e3712"
+    },
+    {
+      "case_id": "62bbea4c-7036-5578-bb7b-138ab11270e5"
+    },
+    {
+      "case_id": "ebf2b4da-eb8e-5d7f-ae44-cd1eb5cb0c81"
+    },
+    {
+      "case_id": "dcf6b34f-8ce5-5889-83d8-5d40c9a9bacd"
+    },
+    {
+      "case_id": "4f1292e5-7a15-599e-8e65-a796a335c0a9"
+    },
+    {
+      "case_id": "976132bd-3d40-501a-8c38-78cd7d300d59"
+    },
+    {
+      "case_id": "63d994b7-9232-504b-a268-a1446ded2110"
+    },
+    {
+      "case_id": "96d840bf-6eeb-531e-9128-8d8093e7c4db"
+    },
+    {
+      "case_id": "b8b3414d-797a-59f5-8da9-bbd9d5a4e90a"
+    },
+    {
+      "case_id": "12d914ea-f466-52d4-aa3d-a4948973cf81"
+    },
+    {
+      "case_id": "da0d3069-df58-5ab2-ac27-45309256b17f"
+    },
+    {
+      "case_id": "4103d000-6694-54eb-a7af-215b832567ed"
+    },
+    {
+      "case_id": "821ffe00-62e2-5d33-be4a-0116a82718bb"
+    },
+    {
+      "case_id": "7d0e6f0c-f0fd-5f7b-a28d-25419d58f04a"
+    },
+    {
+      "case_id": "fe1c7dd9-6226-5c5d-be7f-07e3fcebed4d"
+    },
+    {
+      "case_id": "e4f6cd93-df89-5b76-a35f-e4015fa1273c"
+    },
+    {
+      "case_id": "7d5cd511-abad-5655-b3df-22e6a005b25c"
+    },
+    {
+      "case_id": "fc2f6362-7f11-501d-8bd5-dade195dd7c6"
+    },
+    {
+      "case_id": "a8e46996-0250-5427-aca7-42b3426c45f8"
+    },
+    {
+      "case_id": "d67ce99a-dfe3-5f9c-822b-b37f3a4e1c25"
+    },
+    {
+      "case_id": "789a278c-6d24-519c-8f90-ab4550abcc98"
+    },
+    {
+      "case_id": "cb2a49e9-5407-56df-b77b-4cd0bf737192"
+    },
+    {
+      "case_id": "ebf506a2-7718-5343-af12-1d4b19c0baa2"
+    },
+    {
+      "case_id": "8748df98-09fc-5d40-adb3-097c0d8ad1af"
+    },
+    {
+      "case_id": "33cad2aa-871b-5a44-be7d-bd4f4cc931ff"
+    },
+    {
+      "case_id": "7f9586e6-a41a-576a-9db3-8f5f66e171ba"
+    },
+    {
+      "case_id": "6c242b60-4621-5590-8242-bc79a6b3c03f"
+    },
+    {
+      "case_id": "8b697d10-6b81-5ab1-aeda-401ede8f06d1"
+    },
+    {
+      "case_id": "3eedd14f-24c2-5a71-9fd0-fa7935df714c"
+    },
+    {
+      "case_id": "27f12f66-925f-5196-87b7-bdad8ddb3b29"
+    },
+    {
+      "case_id": "4b8bd81c-0716-53b4-8748-e40a4b0e7ddd"
+    },
+    {
+      "case_id": "154b9fbb-46be-5ea7-ab8d-8ec6f2b671fb"
+    },
+    {
+      "case_id": "be26ffe4-12ab-53ef-a573-bfd8be6a082f"
+    },
+    {
+      "case_id": "23bf51ed-a5a1-57e2-b499-6e5bafad386a"
+    }
+  ],
+  "inputs": []
+}

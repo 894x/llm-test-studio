@@ -56,10 +56,25 @@ class BuildScenarioSuitesTest(unittest.TestCase):
         self.case["schema_version"] = 1
         self.save()
         before = self.case_path.read_bytes()
-        with self.assertRaisesRegex(builder.SuiteBuildError, "schema_version 2"):
+        with self.assertRaisesRegex(builder.SuiteBuildError, "schema_version 2 or 3"):
             self.build()
         self.assertEqual(before, self.case_path.read_bytes())
         self.assertFalse((self.root / "suites").exists())
+
+    def test_case_schema_versions_preserve_description_boundary(self):
+        self.case["schema_version"] = 3
+        self.case["description"] = "Current Case description"
+        self.save()
+        self.assertEqual(len(self.build()), 1)
+        for version, description in [(3, " "), (3, None), (2, "legacy")]:
+            with self.subTest(version=version, description=description):
+                self.case["schema_version"] = version
+                self.case["description"] = description
+                self.save()
+                before = self.case_path.read_bytes()
+                with self.assertRaises(builder.SuiteBuildError):
+                    self.build()
+                self.assertEqual(before, self.case_path.read_bytes())
 
     def test_invalid_members_and_bindings(self):
         for field, value in [("cases", [{"case_id": str(uuid.uuid4())}]),

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "key": "kimi.k3.kvv.core",
+  "name": "kimi-k3 · KVV 动态工具基础",
+  "protocol": "openai-chat",
+  "description": "只适用于 kimi-k3；显式选择后运行。仅验证套件列出的断言，不代表完整契约。",
+  "cases": [
+    {
+      "case_id": "6f1ed31b-9759-5033-a360-84fb341c9cdb"
+    },
+    {
+      "case_id": "e5280550-a6ca-5d9d-bb65-efce43c73a7b"
+    },
+    {
+      "case_id": "634b8cc2-8dc6-538d-9d29-c18eb8620ad8"
+    },
+    {
+      "case_id": "28d60522-c7f4-5e42-b954-c743322c88e1"
+    },
+    {
+      "case_id": "50361472-cfbb-58a4-8f73-9bb3138a8ca0"
+    },
+    {
+      "case_id": "014dee74-a1f7-5539-abff-18522d477ca4"
+    },
+    {
+      "case_id": "88975a47-466b-5bc3-a362-9ec9aa2ad157"
+    },
+    {
+      "case_id": "4a71bfdf-27eb-54bf-ade6-e6dfbc8d080e"
+    },
+    {
+      "case_id": "d12b95c5-5e47-5d67-81e9-d1563573f098"
+    },
+    {
+      "case_id": "9654ba2b-1265-5bc1-b9b1-137e0414c968"
+    },
+    {
+      "case_id": "39897ef8-39c0-5367-908c-fffdbb822a47"
+    }
+  ],
+  "inputs": []
+}

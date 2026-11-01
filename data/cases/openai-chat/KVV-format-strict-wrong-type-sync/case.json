@@ -1,0 +1,55 @@
+{
+  "schema_version": 3,
+  "id": "4b8bd81c-0716-53b4-8748-e40a4b0e7ddd",
+  "key": "kvv.format_strict_wrong_type.sync",
+  "name": "KVV · json_schema strict 非布尔值应拒绝 · sync",
+  "description": "目的：strict 类型错误应拒绝。范围：KVV 行为观察，仅适用于 kimi-k3 和 kimi-k3.1-pro，需显式选择；不证明其他型号或完整 API 覆盖。模式：sync；不发送请求时无供应商执行证据。",
+  "dimension": "compatibility",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "查询北京天气。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048,
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "profile",
+              "strict": "yes",
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "stream": false
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

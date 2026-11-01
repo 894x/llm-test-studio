@@ -129,6 +129,9 @@ func (state *streamState) consume(event map[string]any, response runtime.Respons
 		if name == "choices" {
 			continue
 		}
+		if name == "usage" && value == nil && state.root[name] != nil {
+			continue
+		}
 		state.root[name] = value
 	}
 	if usage, exists := event["usage"]; exists && usage != nil {
@@ -162,6 +165,9 @@ func (state *streamState) consume(event map[string]any, response runtime.Respons
 		}
 		for name, value := range choice {
 			if name != "delta" && name != "index" {
+				if name == "usage" && value == nil && target[name] != nil {
+					continue
+				}
 				target[name] = value
 			}
 		}

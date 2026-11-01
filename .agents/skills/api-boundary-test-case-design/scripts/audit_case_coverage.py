@@ -40,8 +40,13 @@ def load_case(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"{path}: top-level JSON value must be an object")
     definitions = value.get("definitions")
-    if value.get("schema_version") != 2 or "definition" in value or "protocol" in value or "model_targets" in value:
-        raise ValueError(f"{path}: expected current Case schema_version 2 with id and definitions")
+    version = value.get("schema_version")
+    if version not in (2, 3) or isinstance(version, bool) or "definition" in value or "protocol" in value or "model_targets" in value:
+        raise ValueError(f"{path}: expected supported Case schema_version 2 or 3 with id and definitions")
+    if version == 2 and "description" in value:
+        raise ValueError(f"{path}: schema_version 2 cannot contain description")
+    if version == 3 and (not isinstance(value.get("description"), str) or not value["description"].strip()):
+        raise ValueError(f"{path}: schema_version 3 requires a non-empty description")
     if not isinstance(value.get("id"), str) or not isinstance(definitions, dict) or not definitions:
         raise ValueError(f"{path}: expected id and nonempty protocol-keyed definitions")
     for protocol, spec in definitions.items():

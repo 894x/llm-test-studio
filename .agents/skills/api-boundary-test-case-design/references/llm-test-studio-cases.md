@@ -6,7 +6,7 @@ Follow AGENTS.md graph discovery rules. Inspect `internal/casecodec`, `internal/
 
 ## Current artifact contract
 
-- Case file schema 2 has an explicit stable ID and `definitions` keyed by protocol. Each value is a complete native Spec with explicit inputs, request body and assertions, plus optional operation/workflow. Keep one logical Case and ID across protocols. Empty assertions mean observation only.
+- Current Case file schema 3 requires a description, explicit stable ID and `definitions` keyed by protocol; published schema 2 remains supported without a description. Each definition is a complete native Spec with explicit inputs, request body and assertions, plus optional operation/workflow. Keep one logical Case and ID across protocols. Empty assertions mean observation only.
 - Inputs use explicit template references. Cases do not own the runtime model, credential, URL or load policy. Do not add model targets, aliases or old kind-based dispatch.
 - Suite schema 1 holds ordered Case references and explicit input bindings. Plan entries target a Case or Suite with per-entry load, warmup and protocol settings. The Run binds one model/channel/credential.
 - Give each Case a primary contract claim. HTTP 2xx and task admission alone do not prove business success; waiting belongs in the workflow and terminal success belongs in assertions.

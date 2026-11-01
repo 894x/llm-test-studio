@@ -1,0 +1,127 @@
+{
+  "schema_version": 3,
+  "id": "f78469a9-5cc0-5a4d-bed9-d2fcd454c473",
+  "key": "kvv.tool_schema_flat.stream",
+  "name": "KVV · 工具参数符合严格平面 Schema · stream",
+  "description": "目的：工具参数恰含 city 字符串。范围：K3/K3.1 Pro 契约，仅适用于 kimi-k3 和 kimi-k3.1-pro，需显式选择；不证明其他型号或完整 API 覆盖。模式：stream；不发送请求时无供应商执行证据。",
+  "dimension": "compatibility",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "查询北京天气。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048,
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "weather",
+                "description": "查询天气",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ],
+                  "additionalProperties": false
+                },
+                "strict": true
+              }
+            }
+          ],
+          "tool_choice": "required",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "done",
+          "source": "stream.completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "no_data_after_done",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/stream_data_after_done",
+          "value": 0
+        },
+        {
+          "id": "no_content_after_finish",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/stream_content_after_finish",
+          "value": 0
+        },
+        {
+          "id": "finish",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/choices/0/finish_reason",
+          "value": "tool_calls"
+        },
+        {
+          "id": "calls",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices/0/message/tool_calls"
+        },
+        {
+          "id": "each_call",
+          "source": "response",
+          "pointer": "/choices/0/message/tool_calls",
+          "each": [
+            {
+              "id": "name",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/function/name",
+              "value": "weather"
+            },
+            {
+              "id": "arguments_shape",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/function/arguments",
+              "value": {
+                "city": "string"
+              },
+              "transform": "json_types"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

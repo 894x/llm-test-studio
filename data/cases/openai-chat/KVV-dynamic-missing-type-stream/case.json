@@ -1,0 +1,72 @@
+{
+  "schema_version": 3,
+  "id": "ec2d0e43-db58-5b3c-a6e7-3bd7f284f263",
+  "key": "kvv.dynamic_missing_type.stream",
+  "name": "KVV · 动态工具缺少 type 应拒绝 · stream",
+  "description": "目的：缺少必要字段应拒绝。范围：KVV 行为观察，仅适用于 kimi-k3 和 kimi-k3.1-pro，需显式选择；不证明其他型号或完整 API 覆盖。模式：stream；不发送请求时无供应商执行证据。",
+  "dimension": "compatibility",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "system",
+              "tools": [
+                {
+                  "function": {
+                    "name": "weather",
+                    "description": "查询天气",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "city": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "city"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "strict": true
+                  }
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": "查询北京天气。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048,
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

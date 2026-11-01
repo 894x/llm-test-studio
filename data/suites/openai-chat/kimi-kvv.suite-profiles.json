@@ -1,0 +1,612 @@
+{
+  "schema_version": 1,
+  "protocol": "openai-chat",
+  "profiles": [
+    {
+      "directory": "kimi-k3-kvv-core",
+      "schema_version": 1,
+      "key": "kimi.k3.kvv.core",
+      "name": "kimi-k3 · KVV 动态工具基础",
+      "protocol": "openai-chat",
+      "description": "只适用于 kimi-k3；显式选择后运行。仅验证套件列出的断言，不代表完整契约。",
+      "cases": [
+        {
+          "case_id": "6f1ed31b-9759-5033-a360-84fb341c9cdb"
+        },
+        {
+          "case_id": "e5280550-a6ca-5d9d-bb65-efce43c73a7b"
+        },
+        {
+          "case_id": "634b8cc2-8dc6-538d-9d29-c18eb8620ad8"
+        },
+        {
+          "case_id": "28d60522-c7f4-5e42-b954-c743322c88e1"
+        },
+        {
+          "case_id": "50361472-cfbb-58a4-8f73-9bb3138a8ca0"
+        },
+        {
+          "case_id": "014dee74-a1f7-5539-abff-18522d477ca4"
+        },
+        {
+          "case_id": "88975a47-466b-5bc3-a362-9ec9aa2ad157"
+        },
+        {
+          "case_id": "4a71bfdf-27eb-54bf-ade6-e6dfbc8d080e"
+        },
+        {
+          "case_id": "d12b95c5-5e47-5d67-81e9-d1563573f098"
+        },
+        {
+          "case_id": "9654ba2b-1265-5bc1-b9b1-137e0414c968"
+        },
+        {
+          "case_id": "39897ef8-39c0-5367-908c-fffdbb822a47"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "directory": "kimi-k3-kvv-observed",
+      "schema_version": 1,
+      "key": "kimi.k3.kvv.observed",
+      "name": "kimi-k3 · KVV KVV 兼容行为观察",
+      "protocol": "openai-chat",
+      "description": "只适用于 kimi-k3；显式选择后运行。包含上游 KVV 预期、尚未独立确认的拒绝行为，不应直接等同于官方契约。",
+      "cases": [
+        {
+          "case_id": "885ca61e-9386-5586-975c-38da7ca098f9"
+        },
+        {
+          "case_id": "72a63213-84de-5a4d-b5d7-9ad18cce7e09"
+        },
+        {
+          "case_id": "b5629801-fd99-5802-9719-c18ab038746b"
+        },
+        {
+          "case_id": "72e8af78-e838-5b60-b2a8-3b5847ccb750"
+        },
+        {
+          "case_id": "922ee6d1-d062-589d-9530-5da279e5d452"
+        },
+        {
+          "case_id": "ec2d0e43-db58-5b3c-a6e7-3bd7f284f263"
+        },
+        {
+          "case_id": "eafcecc7-fd90-5778-889d-248603f25fe6"
+        },
+        {
+          "case_id": "c4cae44a-de05-5b29-af68-86441a509c41"
+        },
+        {
+          "case_id": "13175ce7-62ba-51e0-9ae3-f2375a73a164"
+        },
+        {
+          "case_id": "099d4d9e-b1da-5bca-bc1c-9944d8467ae5"
+        },
+        {
+          "case_id": "7cd40d22-bffd-585b-a312-4132e6f89f11"
+        },
+        {
+          "case_id": "312b9c23-017a-51ac-8b4e-76cd038cad19"
+        },
+        {
+          "case_id": "292465b6-0031-54a5-b76f-ed42272e3712"
+        },
+        {
+          "case_id": "62bbea4c-7036-5578-bb7b-138ab11270e5"
+        },
+        {
+          "case_id": "ebf2b4da-eb8e-5d7f-ae44-cd1eb5cb0c81"
+        },
+        {
+          "case_id": "dcf6b34f-8ce5-5889-83d8-5d40c9a9bacd"
+        },
+        {
+          "case_id": "4f1292e5-7a15-599e-8e65-a796a335c0a9"
+        },
+        {
+          "case_id": "976132bd-3d40-501a-8c38-78cd7d300d59"
+        },
+        {
+          "case_id": "63d994b7-9232-504b-a268-a1446ded2110"
+        },
+        {
+          "case_id": "96d840bf-6eeb-531e-9128-8d8093e7c4db"
+        },
+        {
+          "case_id": "b8b3414d-797a-59f5-8da9-bbd9d5a4e90a"
+        },
+        {
+          "case_id": "12d914ea-f466-52d4-aa3d-a4948973cf81"
+        },
+        {
+          "case_id": "da0d3069-df58-5ab2-ac27-45309256b17f"
+        },
+        {
+          "case_id": "4103d000-6694-54eb-a7af-215b832567ed"
+        },
+        {
+          "case_id": "821ffe00-62e2-5d33-be4a-0116a82718bb"
+        },
+        {
+          "case_id": "7d0e6f0c-f0fd-5f7b-a28d-25419d58f04a"
+        },
+        {
+          "case_id": "fe1c7dd9-6226-5c5d-be7f-07e3fcebed4d"
+        },
+        {
+          "case_id": "e4f6cd93-df89-5b76-a35f-e4015fa1273c"
+        },
+        {
+          "case_id": "7d5cd511-abad-5655-b3df-22e6a005b25c"
+        },
+        {
+          "case_id": "fc2f6362-7f11-501d-8bd5-dade195dd7c6"
+        },
+        {
+          "case_id": "a8e46996-0250-5427-aca7-42b3426c45f8"
+        },
+        {
+          "case_id": "d67ce99a-dfe3-5f9c-822b-b37f3a4e1c25"
+        },
+        {
+          "case_id": "789a278c-6d24-519c-8f90-ab4550abcc98"
+        },
+        {
+          "case_id": "cb2a49e9-5407-56df-b77b-4cd0bf737192"
+        },
+        {
+          "case_id": "ebf506a2-7718-5343-af12-1d4b19c0baa2"
+        },
+        {
+          "case_id": "8748df98-09fc-5d40-adb3-097c0d8ad1af"
+        },
+        {
+          "case_id": "33cad2aa-871b-5a44-be7d-bd4f4cc931ff"
+        },
+        {
+          "case_id": "7f9586e6-a41a-576a-9db3-8f5f66e171ba"
+        },
+        {
+          "case_id": "6c242b60-4621-5590-8242-bc79a6b3c03f"
+        },
+        {
+          "case_id": "8b697d10-6b81-5ab1-aeda-401ede8f06d1"
+        },
+        {
+          "case_id": "3eedd14f-24c2-5a71-9fd0-fa7935df714c"
+        },
+        {
+          "case_id": "27f12f66-925f-5196-87b7-bdad8ddb3b29"
+        },
+        {
+          "case_id": "4b8bd81c-0716-53b4-8748-e40a4b0e7ddd"
+        },
+        {
+          "case_id": "154b9fbb-46be-5ea7-ab8d-8ec6f2b671fb"
+        },
+        {
+          "case_id": "be26ffe4-12ab-53ef-a573-bfd8be6a082f"
+        },
+        {
+          "case_id": "23bf51ed-a5a1-57e2-b499-6e5bafad386a"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "directory": "kimi-k3-kvv-schema",
+      "schema_version": 1,
+      "key": "kimi.k3.kvv.schema",
+      "name": "kimi-k3 · KVV 严格 Schema 样例",
+      "protocol": "openai-chat",
+      "description": "只适用于 kimi-k3；显式选择后运行。仅验证套件列出的断言，不代表完整契约。",
+      "cases": [
+        {
+          "case_id": "9a0f3728-266d-5ee3-8442-545b51121b46"
+        },
+        {
+          "case_id": "f78469a9-5cc0-5a4d-bed9-d2fcd454c473"
+        },
+        {
+          "case_id": "b5c9778d-7be5-5a19-a1a5-d347e00feb72"
+        },
+        {
+          "case_id": "430db115-43db-5952-8a22-7a926d23f594"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "directory": "kimi-k3.1-pro-kvv-core",
+      "schema_version": 1,
+      "key": "kimi.k3.1.pro.kvv.core",
+      "name": "kimi-k3.1-pro · KVV 动态工具基础",
+      "protocol": "openai-chat",
+      "description": "只适用于 kimi-k3.1-pro；显式选择后运行。仅验证套件列出的断言，不代表完整契约。",
+      "cases": [
+        {
+          "case_id": "23acafdd-37b6-523b-b0a7-f03636cb576f"
+        },
+        {
+          "case_id": "dc737346-28d0-5c0b-a9d0-759a2d60f686"
+        },
+        {
+          "case_id": "45a761f3-5675-51f6-846d-78136760adfc"
+        },
+        {
+          "case_id": "7af4f7b8-8329-5ebd-bffd-0c0970268fd5"
+        },
+        {
+          "case_id": "2612eeb5-416e-56de-9a8e-918d16a7dffd"
+        },
+        {
+          "case_id": "3ca881ce-0822-537c-89ff-aa1edd976735"
+        },
+        {
+          "case_id": "5678e58f-2bb0-5f5c-81c5-913b16ef8dcb"
+        },
+        {
+          "case_id": "4a71bfdf-27eb-54bf-ade6-e6dfbc8d080e"
+        },
+        {
+          "case_id": "d12b95c5-5e47-5d67-81e9-d1563573f098"
+        },
+        {
+          "case_id": "9654ba2b-1265-5bc1-b9b1-137e0414c968"
+        },
+        {
+          "case_id": "39897ef8-39c0-5367-908c-fffdbb822a47"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "directory": "kimi-k3.1-pro-kvv-observed",
+      "schema_version": 1,
+      "key": "kimi.k3.1.pro.kvv.observed",
+      "name": "kimi-k3.1-pro · KVV KVV 兼容行为观察",
+      "protocol": "openai-chat",
+      "description": "只适用于 kimi-k3.1-pro；显式选择后运行。包含上游 KVV 预期、尚未独立确认的拒绝行为，不应直接等同于官方契约。",
+      "cases": [
+        {
+          "case_id": "885ca61e-9386-5586-975c-38da7ca098f9"
+        },
+        {
+          "case_id": "72a63213-84de-5a4d-b5d7-9ad18cce7e09"
+        },
+        {
+          "case_id": "b5629801-fd99-5802-9719-c18ab038746b"
+        },
+        {
+          "case_id": "72e8af78-e838-5b60-b2a8-3b5847ccb750"
+        },
+        {
+          "case_id": "922ee6d1-d062-589d-9530-5da279e5d452"
+        },
+        {
+          "case_id": "ec2d0e43-db58-5b3c-a6e7-3bd7f284f263"
+        },
+        {
+          "case_id": "eafcecc7-fd90-5778-889d-248603f25fe6"
+        },
+        {
+          "case_id": "c4cae44a-de05-5b29-af68-86441a509c41"
+        },
+        {
+          "case_id": "13175ce7-62ba-51e0-9ae3-f2375a73a164"
+        },
+        {
+          "case_id": "099d4d9e-b1da-5bca-bc1c-9944d8467ae5"
+        },
+        {
+          "case_id": "7cd40d22-bffd-585b-a312-4132e6f89f11"
+        },
+        {
+          "case_id": "312b9c23-017a-51ac-8b4e-76cd038cad19"
+        },
+        {
+          "case_id": "292465b6-0031-54a5-b76f-ed42272e3712"
+        },
+        {
+          "case_id": "62bbea4c-7036-5578-bb7b-138ab11270e5"
+        },
+        {
+          "case_id": "ebf2b4da-eb8e-5d7f-ae44-cd1eb5cb0c81"
+        },
+        {
+          "case_id": "dcf6b34f-8ce5-5889-83d8-5d40c9a9bacd"
+        },
+        {
+          "case_id": "4f1292e5-7a15-599e-8e65-a796a335c0a9"
+        },
+        {
+          "case_id": "976132bd-3d40-501a-8c38-78cd7d300d59"
+        },
+        {
+          "case_id": "63d994b7-9232-504b-a268-a1446ded2110"
+        },
+        {
+          "case_id": "96d840bf-6eeb-531e-9128-8d8093e7c4db"
+        },
+        {
+          "case_id": "b8b3414d-797a-59f5-8da9-bbd9d5a4e90a"
+        },
+        {
+          "case_id": "12d914ea-f466-52d4-aa3d-a4948973cf81"
+        },
+        {
+          "case_id": "da0d3069-df58-5ab2-ac27-45309256b17f"
+        },
+        {
+          "case_id": "4103d000-6694-54eb-a7af-215b832567ed"
+        },
+        {
+          "case_id": "821ffe00-62e2-5d33-be4a-0116a82718bb"
+        },
+        {
+          "case_id": "7d0e6f0c-f0fd-5f7b-a28d-25419d58f04a"
+        },
+        {
+          "case_id": "fe1c7dd9-6226-5c5d-be7f-07e3fcebed4d"
+        },
+        {
+          "case_id": "e4f6cd93-df89-5b76-a35f-e4015fa1273c"
+        },
+        {
+          "case_id": "7d5cd511-abad-5655-b3df-22e6a005b25c"
+        },
+        {
+          "case_id": "fc2f6362-7f11-501d-8bd5-dade195dd7c6"
+        },
+        {
+          "case_id": "a8e46996-0250-5427-aca7-42b3426c45f8"
+        },
+        {
+          "case_id": "d67ce99a-dfe3-5f9c-822b-b37f3a4e1c25"
+        },
+        {
+          "case_id": "789a278c-6d24-519c-8f90-ab4550abcc98"
+        },
+        {
+          "case_id": "cb2a49e9-5407-56df-b77b-4cd0bf737192"
+        },
+        {
+          "case_id": "ebf506a2-7718-5343-af12-1d4b19c0baa2"
+        },
+        {
+          "case_id": "8748df98-09fc-5d40-adb3-097c0d8ad1af"
+        },
+        {
+          "case_id": "33cad2aa-871b-5a44-be7d-bd4f4cc931ff"
+        },
+        {
+          "case_id": "7f9586e6-a41a-576a-9db3-8f5f66e171ba"
+        },
+        {
+          "case_id": "6c242b60-4621-5590-8242-bc79a6b3c03f"
+        },
+        {
+          "case_id": "8b697d10-6b81-5ab1-aeda-401ede8f06d1"
+        },
+        {
+          "case_id": "3eedd14f-24c2-5a71-9fd0-fa7935df714c"
+        },
+        {
+          "case_id": "27f12f66-925f-5196-87b7-bdad8ddb3b29"
+        },
+        {
+          "case_id": "4b8bd81c-0716-53b4-8748-e40a4b0e7ddd"
+        },
+        {
+          "case_id": "154b9fbb-46be-5ea7-ab8d-8ec6f2b671fb"
+        },
+        {
+          "case_id": "be26ffe4-12ab-53ef-a573-bfd8be6a082f"
+        },
+        {
+          "case_id": "23bf51ed-a5a1-57e2-b499-6e5bafad386a"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "directory": "kimi-k3.1-pro-kvv-schema",
+      "schema_version": 1,
+      "key": "kimi.k3.1.pro.kvv.schema",
+      "name": "kimi-k3.1-pro · KVV 严格 Schema 样例",
+      "protocol": "openai-chat",
+      "description": "只适用于 kimi-k3.1-pro；显式选择后运行。仅验证套件列出的断言，不代表完整契约。",
+      "cases": [
+        {
+          "case_id": "9a0f3728-266d-5ee3-8442-545b51121b46"
+        },
+        {
+          "case_id": "f78469a9-5cc0-5a4d-bed9-d2fcd454c473"
+        },
+        {
+          "case_id": "b5c9778d-7be5-5a19-a1a5-d347e00feb72"
+        },
+        {
+          "case_id": "430db115-43db-5952-8a22-7a926d23f594"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "directory": "kimi-k3-kvv-token",
+      "schema_version": 1,
+      "key": "kimi.k3.kvv.token",
+      "name": "kimi-k3 · KVV Prompt Token 基准",
+      "protocol": "openai-chat",
+      "description": "按上游 KVV 固定请求观察 prompt token 基准；模型或模板差异可能影响结果，需显式选择。",
+      "cases": [
+        {
+          "case_id": "41db0c87-991b-5040-adc0-5fa80588e9e1"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "directory": "kimi-k3-kvv-parameters",
+      "schema_version": 1,
+      "key": "kimi.k3.kvv.parameters",
+      "name": "kimi-k3 · KVV 参数和推理强度",
+      "protocol": "openai-chat",
+      "description": "复用已有参数、推理强度和 JSON 模式 Case；含成功请求和预期 400 的请求，需要显式选择。",
+      "cases": [
+        {
+          "case_id": "2d2995c3-9766-52e4-be29-72a137d9b55d"
+        },
+        {
+          "case_id": "6c855673-6922-5312-964f-5761179befff"
+        },
+        {
+          "case_id": "b3f4ad68-bba6-5b4a-8f24-fd0b69c4e843"
+        },
+        {
+          "case_id": "21aa488a-faca-55b0-b3ea-bb38e7cbfb15"
+        },
+        {
+          "case_id": "fa3dffab-2d9b-5ee7-a13e-ee1373b4e1f1"
+        },
+        {
+          "case_id": "68dd2502-9621-5dd2-a2cd-632d4549bd95"
+        },
+        {
+          "case_id": "938445fb-a68e-5c2c-9ba7-201a807aac98"
+        },
+        {
+          "case_id": "3ead7ae5-aef0-5f89-87e2-196941e2f448"
+        },
+        {
+          "case_id": "2f0d47ff-a16f-5d4b-bf9b-9c3320dafd15"
+        },
+        {
+          "case_id": "7e2327a4-9f1f-5afd-90c7-4f231dfc0c97"
+        },
+        {
+          "case_id": "6bb8af63-4d83-54d0-89f5-ff661ee93007"
+        },
+        {
+          "case_id": "e613c90c-b2ac-5fff-aebf-5299f67d06b3"
+        },
+        {
+          "case_id": "e07aa24b-e46f-5943-bec6-82b3907e201e"
+        },
+        {
+          "case_id": "d2f682b3-b1d4-595a-a87e-74f3e25a2d92"
+        },
+        {
+          "case_id": "b9b0a69b-a588-5b1b-82e6-ade147b02b8b"
+        },
+        {
+          "case_id": "84a9c36f-74aa-5d59-b2b0-20993f121cf8"
+        },
+        {
+          "case_id": "e7958fd9-7c92-527d-a1d4-4010ccd9e89c"
+        },
+        {
+          "case_id": "4d87e691-dbe0-54be-b81b-c7c9669b4745"
+        },
+        {
+          "case_id": "34e241fa-9d4d-55d0-b3c2-49413480e8e9"
+        },
+        {
+          "case_id": "6a7a187d-d556-5d2c-b4b6-29f961621c49"
+        },
+        {
+          "case_id": "68273e8a-309a-5f7c-9250-f44c5f4541ef"
+        },
+        {
+          "case_id": "18ed9e4f-9572-53ca-952c-24ef738261e3"
+        },
+        {
+          "case_id": "57d07366-b7bf-57cc-a36e-886febee83ea"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "directory": "kimi-k3.1-pro-kvv-parameters",
+      "schema_version": 1,
+      "key": "kimi.k3.1.pro.kvv.parameters",
+      "name": "kimi-k3.1-pro · KVV 参数和推理强度",
+      "protocol": "openai-chat",
+      "description": "复用已有参数、推理强度和 JSON 模式 Case；含成功请求和预期 400 的请求，需要显式选择。",
+      "cases": [
+        {
+          "case_id": "7db2c266-6593-5eff-958b-98c3845d3193"
+        },
+        {
+          "case_id": "26223297-164a-5b44-999b-944418b76969"
+        },
+        {
+          "case_id": "b3be7097-ef96-5175-9843-30dee0e3c6e3"
+        },
+        {
+          "case_id": "6a97657a-4eb2-5bdf-910c-0ba968635b74"
+        },
+        {
+          "case_id": "5d9e0e67-e01e-5676-827e-3882b271c719"
+        },
+        {
+          "case_id": "72e0e016-f475-543d-97ca-b96b1217af45"
+        },
+        {
+          "case_id": "0613b4be-9594-5230-8b70-68199c412ddc"
+        },
+        {
+          "case_id": "6b5512fc-010f-5339-9be5-1daa6843167d"
+        },
+        {
+          "case_id": "72957bb7-aa7f-5e8d-ba23-d5aef360846b"
+        },
+        {
+          "case_id": "f4a76415-ca63-5e09-9cdf-7a08339d3d28"
+        },
+        {
+          "case_id": "110dfb9f-396a-5e16-a63c-fa06102d9efa"
+        },
+        {
+          "case_id": "5305647f-6b4c-5ce5-8ac7-4094b0ebc17b"
+        },
+        {
+          "case_id": "76caff5e-3f38-5d3b-aa1c-e9a289a6af25"
+        },
+        {
+          "case_id": "9ca25181-566b-5b4a-b466-7b8a98b6c525"
+        },
+        {
+          "case_id": "dc471237-85e8-52e7-b953-fddf2bfa9366"
+        },
+        {
+          "case_id": "d043b039-20b1-576b-9254-8190984aad6b"
+        },
+        {
+          "case_id": "17d2bb69-1b6b-5c42-add1-5e72afa22fd4"
+        },
+        {
+          "case_id": "711b0114-e694-5bce-8459-470f9ab54139"
+        },
+        {
+          "case_id": "57eabcdc-7644-5895-b831-653ad9397521"
+        },
+        {
+          "case_id": "bfb4539e-2299-5b86-9eb7-37cca0f25013"
+        },
+        {
+          "case_id": "06db479b-b8ae-5f66-b89f-ea2f2e37c8e9"
+        },
+        {
+          "case_id": "8494305a-4e92-5eff-8337-9f87d6848b6b"
+        },
+        {
+          "case_id": "e4afd535-118b-542e-ab60-b3f4fb078fa4"
+        }
+      ],
+      "inputs": []
+    }
+  ]
+}

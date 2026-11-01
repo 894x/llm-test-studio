@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "key": "kimi.k3.kvv.token",
+  "name": "kimi-k3 · KVV Prompt Token 基准",
+  "protocol": "openai-chat",
+  "description": "按上游 KVV 固定请求观察 prompt token 基准；模型或模板差异可能影响结果，需显式选择。",
+  "cases": [
+    {
+      "case_id": "41db0c87-991b-5040-adc0-5fa80588e9e1"
+    }
+  ],
+  "inputs": []
+}

@@ -59,8 +59,13 @@ def load_cases(root: Path, protocol: str) -> dict[str, dict[str, Any]]:
     cases = {}
     for path in sorted(root.rglob("case.json")):
         document = load_object(path, "case")
-        if document.get("schema_version") != 2 or "model_targets" in document or "definition" in document or "protocol" in document:
-            raise SuiteBuildError(f"case {path} must use current schema_version 2 with id and definitions")
+        version = document.get("schema_version")
+        if version not in (2, 3) or isinstance(version, bool) or "model_targets" in document or "definition" in document or "protocol" in document:
+            raise SuiteBuildError(f"case {path} must use supported schema_version 2 or 3 with id and definitions")
+        if version == 2 and "description" in document:
+            raise SuiteBuildError(f"case {path} schema_version 2 cannot contain description")
+        if version == 3 and (not isinstance(document.get("description"), str) or not document["description"].strip()):
+            raise SuiteBuildError(f"case {path} schema_version 3 requires a non-empty description")
         key = required_string(document.get("key"), f"case {path} key", safe=True)
         definitions = document.get("definitions")
         if not isinstance(definitions, dict) or not definitions:

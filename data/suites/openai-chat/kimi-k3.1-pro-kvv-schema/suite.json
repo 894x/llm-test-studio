@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "key": "kimi.k3.1.pro.kvv.schema",
+  "name": "kimi-k3.1-pro · KVV 严格 Schema 样例",
+  "protocol": "openai-chat",
+  "description": "只适用于 kimi-k3.1-pro；显式选择后运行。仅验证套件列出的断言，不代表完整契约。",
+  "cases": [
+    {
+      "case_id": "9a0f3728-266d-5ee3-8442-545b51121b46"
+    },
+    {
+      "case_id": "f78469a9-5cc0-5a4d-bed9-d2fcd454c473"
+    },
+    {
+      "case_id": "b5c9778d-7be5-5a19-a1a5-d347e00feb72"
+    },
+    {
+      "case_id": "430db115-43db-5952-8a22-7a926d23f594"
+    }
+  ],
+  "inputs": []
+}

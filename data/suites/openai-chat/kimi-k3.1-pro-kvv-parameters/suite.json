@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "key": "kimi.k3.1.pro.kvv.parameters",
+  "name": "kimi-k3.1-pro · KVV 参数和推理强度",
+  "protocol": "openai-chat",
+  "description": "复用已有参数、推理强度和 JSON 模式 Case；含成功请求和预期 400 的请求，需要显式选择。",
+  "cases": [
+    {
+      "case_id": "7db2c266-6593-5eff-958b-98c3845d3193"
+    },
+    {
+      "case_id": "26223297-164a-5b44-999b-944418b76969"
+    },
+    {
+      "case_id": "b3be7097-ef96-5175-9843-30dee0e3c6e3"
+    },
+    {
+      "case_id": "6a97657a-4eb2-5bdf-910c-0ba968635b74"
+    },
+    {
+      "case_id": "5d9e0e67-e01e-5676-827e-3882b271c719"
+    },
+    {
+      "case_id": "72e0e016-f475-543d-97ca-b96b1217af45"
+    },
+    {
+      "case_id": "0613b4be-9594-5230-8b70-68199c412ddc"
+    },
+    {
+      "case_id": "6b5512fc-010f-5339-9be5-1daa6843167d"
+    },
+    {
+      "case_id": "72957bb7-aa7f-5e8d-ba23-d5aef360846b"
+    },
+    {
+      "case_id": "f4a76415-ca63-5e09-9cdf-7a08339d3d28"
+    },
+    {
+      "case_id": "110dfb9f-396a-5e16-a63c-fa06102d9efa"
+    },
+    {
+      "case_id": "5305647f-6b4c-5ce5-8ac7-4094b0ebc17b"
+    },
+    {
+      "case_id": "76caff5e-3f38-5d3b-aa1c-e9a289a6af25"
+    },
+    {
+      "case_id": "9ca25181-566b-5b4a-b466-7b8a98b6c525"
+    },
+    {
+      "case_id": "dc471237-85e8-52e7-b953-fddf2bfa9366"
+    },
+    {
+      "case_id": "d043b039-20b1-576b-9254-8190984aad6b"
+    },
+    {
+      "case_id": "17d2bb69-1b6b-5c42-add1-5e72afa22fd4"
+    },
+    {
+      "case_id": "711b0114-e694-5bce-8459-470f9ab54139"
+    },
+    {
+      "case_id": "57eabcdc-7644-5895-b831-653ad9397521"
+    },
+    {
+      "case_id": "bfb4539e-2299-5b86-9eb7-37cca0f25013"
+    },
+    {
+      "case_id": "06db479b-b8ae-5f66-b89f-ea2f2e37c8e9"
+    },
+    {
+      "case_id": "8494305a-4e92-5eff-8337-9f87d6848b6b"
+    },
+    {
+      "case_id": "e4afd535-118b-542e-ab60-b3f4fb078fa4"
+    }
+  ],
+  "inputs": []
+}

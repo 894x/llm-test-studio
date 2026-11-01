@@ -1,0 +1,110 @@
+{
+  "schema_version": 3,
+  "id": "41db0c87-991b-5040-adc0-5fa80588e9e1",
+  "key": "kvv.prompt_tokens_assistant_hello.stream",
+  "name": "KVV · Prompt Token 基准 assistant_hello · stream",
+  "description": "目的：比较 KVV assistant_hello 固定请求的 prompt token 基准，接受 99 至 102。来源：Moonshot KVV 66092cf。范围：仅建议在 kimi-k3 按上游基准显式运行；模型、模板或计数规则变化可能导致差异，不能单凭差异断言计费错误。",
+  "dimension": "compatibility",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": "你好"
+            }
+          ],
+          "max_tokens": 1024,
+          "reasoning_effort": "high",
+          "temperature": 1,
+          "top_p": 0.95,
+          "n": 1,
+          "stream": true
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "done",
+          "source": "stream.completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "token_count",
+          "any": [
+            {
+              "id": "top",
+              "all": [
+                {
+                  "id": "top_integer",
+                  "source": "response",
+                  "pointer": "/usage/prompt_tokens",
+                  "operator": "type",
+                  "value": "integer"
+                },
+                {
+                  "id": "top_min",
+                  "source": "response",
+                  "pointer": "/usage/prompt_tokens",
+                  "operator": "gte",
+                  "value": 99
+                },
+                {
+                  "id": "top_max",
+                  "source": "response",
+                  "pointer": "/usage/prompt_tokens",
+                  "operator": "lte",
+                  "value": 102
+                }
+              ]
+            },
+            {
+              "id": "choice",
+              "all": [
+                {
+                  "id": "choice_integer",
+                  "source": "response",
+                  "pointer": "/choices/0/usage/prompt_tokens",
+                  "operator": "type",
+                  "value": "integer"
+                },
+                {
+                  "id": "choice_min",
+                  "source": "response",
+                  "pointer": "/choices/0/usage/prompt_tokens",
+                  "operator": "gte",
+                  "value": 99
+                },
+                {
+                  "id": "choice_max",
+                  "source": "response",
+                  "pointer": "/choices/0/usage/prompt_tokens",
+                  "operator": "lte",
+                  "value": 102
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

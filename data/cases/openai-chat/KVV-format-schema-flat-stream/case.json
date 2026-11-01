@@ -1,0 +1,100 @@
+{
+  "schema_version": 3,
+  "id": "430db115-43db-5952-8a22-7a926d23f594",
+  "key": "kvv.format_schema_flat.stream",
+  "name": "KVV · 严格响应 Schema 字段类型与额外字段 · stream",
+  "description": "目的：JSON 对象恰含 name 字符串与 active 布尔值。范围：K3/K3.1 Pro 契约，仅适用于 kimi-k3 和 kimi-k3.1-pro，需显式选择；不证明其他型号或完整 API 覆盖。模式：stream；不发送请求时无供应商执行证据。",
+  "dimension": "compatibility",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "返回姓名和是否在职。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048,
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "profile",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "active": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "active"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "done",
+          "source": "stream.completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "no_data_after_done",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/stream_data_after_done",
+          "value": 0
+        },
+        {
+          "id": "no_content_after_finish",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/stream_content_after_finish",
+          "value": 0
+        },
+        {
+          "id": "json_shape",
+          "source": "text",
+          "operator": "equals",
+          "value": {
+            "name": "string",
+            "active": "boolean"
+          },
+          "transform": "json_types"
+        }
+      ]
+    }
+  }
+}
