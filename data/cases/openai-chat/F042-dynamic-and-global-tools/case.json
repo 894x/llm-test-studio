@@ -62,7 +62,7 @@
               }
             }
           ],
-          "max_completion_tokens": 128
+          "max_completion_tokens": 2560
         }
       },
       "assertions": [
@@ -84,7 +84,7 @@
       "inputs": {},
       "request": {
         "body": {
-          "max_output_tokens": 2048,
+          "max_output_tokens": 2560,
           "input": [
             {
               "type": "additional_tools",

@@ -39,7 +39,7 @@
           "reasoning": {
             "effort": "low"
           },
-          "max_output_tokens": 2048
+          "max_output_tokens": 2560
         }
       },
       "assertions": [

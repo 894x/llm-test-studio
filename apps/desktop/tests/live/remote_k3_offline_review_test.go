@@ -288,7 +288,8 @@ func readLiveK3OfflineInput(t *testing.T) liveK3OfflineInput {
 			t.Fatal("offline suite expectations require a fixed run identity")
 		}
 	}
-	if input.Jobs[0].SuiteKey != "kimi-k3.official-foundation" || input.Jobs[0].ExpectedCases != 84 ||
+	validChatCount := input.Jobs[0].ExpectedCases == 84 || input.Jobs[0].ExpectedCases == 86
+	if input.Jobs[0].SuiteKey != "kimi-k3.official-foundation" || !validChatCount ||
 		input.Jobs[1].SuiteKey != "openai-responses.kimi-k3.official-foundation" || input.Jobs[1].ExpectedCases != 230 {
 		t.Fatal("offline review requires both full authored suites")
 	}

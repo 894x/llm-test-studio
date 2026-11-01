@@ -559,7 +559,7 @@ func liveK3FullSuites(t *testing.T, app *bridge.DesktopApp) []liveK3Suite {
 		t.Fatal("cannot read the full authored catalog")
 	}
 	definitions := []liveK3Suite{
-		{key: "kimi-k3.official-foundation", protocol: domain.ProtocolOpenAIChat, count: 84, caseKeys: map[string]string{}},
+		{key: "kimi-k3.official-foundation", protocol: domain.ProtocolOpenAIChat, count: 86, caseKeys: map[string]string{}},
 		{key: "openai-responses.kimi-k3.official-foundation", protocol: domain.ProtocolOpenAIResponses, count: 230, caseKeys: map[string]string{}},
 	}
 	keys := map[string]string{}

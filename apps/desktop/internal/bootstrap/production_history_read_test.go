@@ -104,7 +104,7 @@ func verifyProductionHistoryReadDuringExecution(t *testing.T) {
 	for _, entry := range accepted.Prepared.Spec.Spec.Run.Snapshot.Entries {
 		caseCount += len(entry.CaseDefinitions)
 	}
-	if caseCount != 84 || len(accepted.Receipt.RunIDs) != 1 {
+	if caseCount != 86 || len(accepted.Receipt.RunIDs) != 1 {
 		t.Fatalf("prepared case count=%d run count=%d", caseCount, len(accepted.Receipt.RunIDs))
 	}
 	select {
@@ -215,8 +215,8 @@ func verifyProductionHistoryReadDuringExecution(t *testing.T) {
 			summaries++
 		}
 	}
-	if summaries != 84 {
-		t.Fatalf("persisted case summaries=%d, want 84", summaries)
+	if summaries != 86 {
+		t.Fatalf("persisted case summaries=%d, want 86", summaries)
 	}
 	reports, err := repository.ListReportsForRuns(ctx, []string{runID})
 	if err != nil || len(reports) != 1 {

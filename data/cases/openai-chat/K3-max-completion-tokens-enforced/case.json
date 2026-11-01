@@ -1,0 +1,34 @@
+{
+  "schema_version": 2,
+  "id": "7f449f13-c799-4084-a111-e15dbc86fd0c",
+  "key": "k3.max_completion_tokens_enforced",
+  "name": "输出长度 · max_completion_tokens 限额生效",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "请从 1 开始按顺序逐行列出所有整数，直到 10000，不要省略。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 64
+        }
+      },
+      "assertions": [
+        { "id": "http", "source": "http.status", "operator": "equals", "value": 200 },
+        { "id": "length", "source": "response", "pointer": "/choices/0/finish_reason", "operator": "equals", "value": "length" },
+        { "id": "completion_positive", "source": "usage", "pointer": "/completion_tokens", "operator": "gte", "value": 1 },
+        { "id": "completion_bounded", "source": "usage", "pointer": "/completion_tokens", "operator": "lte", "value": 64 }
+      ]
+    }
+  }
+}
