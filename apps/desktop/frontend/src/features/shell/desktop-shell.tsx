@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import ActivityIcon from "lucide-react/dist/esm/icons/activity.mjs"
+import ArchiveRestoreIcon from "lucide-react/dist/esm/icons/archive-restore.mjs"
 import ContrastIcon from "lucide-react/dist/esm/icons/contrast.mjs"
 import MoonIcon from "lucide-react/dist/esm/icons/moon.mjs"
 import SunIcon from "lucide-react/dist/esm/icons/sun.mjs"
@@ -100,15 +101,18 @@ function InterfaceSettingsMenu({ zoom }: { zoom: InterfaceZoom }) {
 export function DesktopShell({
   activePage,
   onNavigate,
+  onOpenRecycleBin,
   actions,
   children,
 }: {
   activePage: DesktopPage
   onNavigate: (page: DesktopPage) => void
+  onOpenRecycleBin?: () => void
   actions?: ReactNode
   children: ReactNode
 }) {
   const { t } = useTranslation("shell")
+  const { t: tr } = useTranslation("historyRecycle")
   const zoom = useInterfaceZoom()
   return (
     <div className="flex h-[calc(100svh/var(--interface-zoom,1))] min-h-0 flex-col overflow-hidden bg-background text-foreground">
@@ -152,6 +156,15 @@ export function DesktopShell({
         </nav>
 
         <div className="desktop-header-actions ml-2 flex shrink-0 items-center gap-1">
+          {onOpenRecycleBin ? <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label={tr("title")}
+                aria-current={activePage === "recycle-bin" ? "page" : undefined}
+                className={cn(activePage === "recycle-bin" && "bg-accent text-accent-foreground")}
+                onClick={onOpenRecycleBin}><ArchiveRestoreIcon /></Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{tr("title")}</TooltipContent>
+          </Tooltip> : null}
           {zoom.percent !== 100 ? <Tooltip>
             <TooltipTrigger asChild><Button size="xs" variant="ghost" className="tabular-nums" aria-label={t("zoom.resetAria", { percent: zoom.percent })} onClick={() => zoom.change(0)}>{zoom.percent}%</Button></TooltipTrigger>
             <TooltipContent>{t("zoom.reset")}</TooltipContent>

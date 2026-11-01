@@ -120,6 +120,7 @@ type Detail struct {
 	Entries                  []EntryDetail                `json:"entries"`
 	UnassignedRequestResults []domain.Result              `json:"unassigned_request_results"`
 	Performance              *quicktest.PerformanceReport `json:"performance,omitempty"`
+	PerformanceSummary       *PerformanceSummary          `json:"performance_summary,omitempty"`
 }
 
 type EntryDetail struct {
@@ -220,6 +221,10 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 	if err != nil {
 		return Detail{}, classified(ErrInconsistent, err)
 	}
+	performanceSummary, err := summarizePerformance(suites)
+	if err != nil {
+		return Detail{}, classified(ErrInconsistent, err)
+	}
 	return Detail{
 		SchemaVersion:            CurrentDetailSchemaVersion,
 		Source:                   SourceRun,
@@ -227,6 +232,7 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 		RequestResults:           requestResults,
 		Entries:                  suites,
 		UnassignedRequestResults: unassigned,
+		PerformanceSummary:       performanceSummary,
 	}, nil
 }
 

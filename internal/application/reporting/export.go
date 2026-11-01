@@ -106,17 +106,18 @@ func normalizeWatermark(value string) (string, error) {
 }
 
 type htmlReport struct {
-	Detail       Detail
-	Watermark    string
-	Language     string
-	Labels       htmlLabels
-	Conclusion   string
-	Metrics      []namedMetric
-	SLA          []namedMetric
-	Issues       []string
-	Suites       []htmlEntryReport
-	Unassigned   []resultRow
-	GeneratedUTC string
+	Detail             Detail
+	Watermark          string
+	Language           string
+	Labels             htmlLabels
+	Conclusion         string
+	Metrics            []namedMetric
+	SLA                []namedMetric
+	Issues             []string
+	Suites             []htmlEntryReport
+	Unassigned         []resultRow
+	GeneratedUTC       string
+	PerformanceMetrics []namedMetric
 }
 
 type htmlEntryReport struct {
@@ -155,6 +156,7 @@ type htmlLabels struct {
 	CoreMetrics, RequestDetails, RequestSamples, SuccessRate, RequestRate          string
 	Passed, Failed, StatusPassed, StatusFailed, Samples, Footer, QuickFooter       string
 	Suite, Entry, Cases, Case, Type, Revision, Severity, Unassigned                string
+	PerformanceSummary, PerformanceSummaryScope                                    string
 }
 
 type namedMetric struct {
@@ -209,8 +211,9 @@ func reportHTMLView(detail Detail, watermark, locale string) htmlReport {
 		Detail: detail, Watermark: watermark, Language: locale, Labels: exportHTMLLabels(locale), Conclusion: localizedVerdict(detail.Report.Conclusion.Verdict, locale),
 		Metrics: sortedMetrics(detail.Report.Metrics), SLA: sortedMetrics(detail.Report.SLA),
 		Issues: append([]string(nil), detail.Report.Conclusion.Issues...), Suites: htmlEntryReports(detail.Entries, locale),
-		Unassigned:   resultRows(detail.UnassignedRequestResults),
-		GeneratedUTC: detail.Report.GeneratedAt.Format("2006-01-02 15:04:05 UTC"),
+		Unassigned:         resultRows(detail.UnassignedRequestResults),
+		GeneratedUTC:       detail.Report.GeneratedAt.Format("2006-01-02 15:04:05 UTC"),
+		PerformanceMetrics: sortedMetrics(performanceSummaryMetrics(detail.PerformanceSummary)),
 	}
 }
 
@@ -249,26 +252,30 @@ func renderJSON(detail Detail, watermark string) ([]byte, error) {
 		performance = detail.Performance
 	}
 	return json.MarshalIndent(struct {
-		Watermark      string          `json:"watermark"`
-		SchemaVersion  int             `json:"schema_version"`
-		Source         ReportSource    `json:"source"`
-		Report         domain.Report   `json:"report"`
-		RequestResults []domain.Result `json:"request_results"`
-		Suites         []EntryDetail   `json:"entries"`
-		Unassigned     []domain.Result `json:"unassigned_request_results"`
-		Performance    any             `json:"performance,omitempty"`
+		Watermark          string              `json:"watermark"`
+		SchemaVersion      int                 `json:"schema_version"`
+		Source             ReportSource        `json:"source"`
+		Report             domain.Report       `json:"report"`
+		RequestResults     []domain.Result     `json:"request_results"`
+		Suites             []EntryDetail       `json:"entries"`
+		Unassigned         []domain.Result     `json:"unassigned_request_results"`
+		Performance        any                 `json:"performance,omitempty"`
+		PerformanceSummary *PerformanceSummary `json:"performance_summary,omitempty"`
 	}{
 		Watermark: watermark, SchemaVersion: detail.SchemaVersion, Source: detail.Source,
 		Report: detail.Report, RequestResults: detail.RequestResults,
 		Suites: detail.Entries, Unassigned: detail.UnassignedRequestResults,
-		Performance: performance,
+		Performance:        performance,
+		PerformanceSummary: detail.PerformanceSummary,
 	}, "", "  ")
 }
 
 func exportHTMLLabels(locale string) htmlLabels {
 	if locale == "en-US" {
 		return htmlLabels{
-			Request: "Request", Status: "Status", Input: "Input", Output: "Output", Error: "Error", Queue: "Queue", Metric: "Metric", Average: "Average", StreamingTiming: "Streaming timing distributions", TTFTAny: "TTFT Any (includes reasoning)", TTFTVisible: "TTFT Visible (visible content)", TTST: "TTST (second semantic chunk)", ObservedICL: "Observed ICL (semantic inter-chunk latency, not Token ITL)", SemanticChunks: "Semantic chunks",
+			PerformanceSummary:      "Overall performance statistics",
+			PerformanceSummaryScope: "Available steady-state observations only; excludes warmup, ramp and functional cases. Cache rate is weighted by input tokens; throughput uses summed steady-state durations.",
+			Request:                 "Request", Status: "Status", Input: "Input", Output: "Output", Error: "Error", Queue: "Queue", Metric: "Metric", Average: "Average", StreamingTiming: "Streaming timing distributions", TTFTAny: "TTFT Any (includes reasoning)", TTFTVisible: "TTFT Visible (visible content)", TTST: "TTST (second semantic chunk)", ObservedICL: "Observed ICL (semantic inter-chunk latency, not Token ITL)", SemanticChunks: "Semantic chunks",
 			Title: "LLM Test Studio Test Report", QuickTitle: "LLM Test Studio Quick Performance Test Report", Conclusion: "Conclusion",
 			Plan: "Plan", Run: "Run", Report: "Report", Phase: "Phase", CoreMetrics: "Core metrics", RequestDetails: "Request details",
 			RequestSamples: "Request samples", SuccessRate: "Success rate", RequestRate: "Request rate", Passed: "All requests passed", Failed: "Performance test failed", StatusPassed: "passed", StatusFailed: "failed",
@@ -277,7 +284,9 @@ func exportHTMLLabels(locale string) htmlLabels {
 		}
 	}
 	return htmlLabels{
-		Request: "请求", Status: "状态", Input: "输入", Output: "输出", Error: "错误", Queue: "排队", Metric: "指标", Average: "平均", StreamingTiming: "流式时序分布", TTFTAny: "TTFT（含推理）", TTFTVisible: "TTFT（可见内容）", TTST: "TTST（第二语义块）", ObservedICL: "Observed ICL（语义块间隔，非 Token ITL）", SemanticChunks: "语义块数",
+		PerformanceSummary:      "性能总统计",
+		PerformanceSummaryScope: "仅汇总已有性能稳态观测，不含预热、爬坡及功能用例。缓存命中率按输入 Token 加权；吞吐按累计稳态用时计算。",
+		Request:                 "请求", Status: "状态", Input: "输入", Output: "输出", Error: "错误", Queue: "排队", Metric: "指标", Average: "平均", StreamingTiming: "流式时序分布", TTFTAny: "TTFT（含推理）", TTFTVisible: "TTFT（可见内容）", TTST: "TTST（第二语义块）", ObservedICL: "Observed ICL（语义块间隔，非 Token ITL）", SemanticChunks: "语义块数",
 		Title: "LLM Test Studio 测试报告", QuickTitle: "LLM Test Studio 快速性能测试报告", Conclusion: "结论",
 		Plan: "计划", Run: "运行", Report: "报告", Phase: "阶段", CoreMetrics: "核心指标", RequestDetails: "请求明细",
 		RequestSamples: "请求样本", SuccessRate: "成功率", RequestRate: "请求速率", Passed: "全部请求成功", Failed: "性能测试未通过", StatusPassed: "通过", StatusFailed: "失败",
@@ -467,6 +476,7 @@ var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype h
 <h2 class="{{if .Detail.Report.Conclusion.Passed}}pass{{else}}fail{{end}}">{{.Labels.Conclusion}}: {{.Conclusion}}</h2>
 <p>{{.Labels.Plan}} {{.Detail.Report.PlanSnapshot.Plan.ID}} · {{.Labels.Run}} {{.Detail.Report.RunID}} · {{.Labels.Report}} {{.Detail.Report.ID}}</p>
 {{if .Issues}}<ul class="issues">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>{{end}}
+{{if .Detail.PerformanceSummary}}<h2>{{.Labels.PerformanceSummary}}</h2><p class="muted">{{.Labels.PerformanceSummaryScope}}</p><section class="grid">{{range .PerformanceMetrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}}</span></div>{{end}}</section>{{end}}
 <h2>{{.Labels.CoreMetrics}}</h2><section class="grid">{{range .Metrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
 <h2>SLA</h2><section class="grid">{{range .SLA}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} samples</span></div>{{end}}</section>
 {{range .Suites}}<section class="suite" data-suite-entry-id="{{.Detail.EntryID}}" data-suite-status="{{.Detail.Status}}" data-suite-conclusion="{{.Detail.Conclusion.Verdict}}">
@@ -577,6 +587,12 @@ const formalPNGResultLimitPerCase = 3
 
 func formalReportImageLines(detail Detail) []string {
 	lines := make([]string, 0)
+	if detail.PerformanceSummary != nil {
+		lines = append(lines, "OVERALL PERFORMANCE - AVAILABLE STEADY-STATE OBSERVATIONS")
+		for _, metric := range sortedMetrics(performanceSummaryMetrics(detail.PerformanceSummary)) {
+			lines = append(lines, imageMetricLine("TOTAL", metric))
+		}
+	}
 	for suiteIndex, suite := range detail.Entries {
 		lines = append(lines,
 			fmt.Sprintf("SUITE %d %s [%s]", suiteIndex+1, suite.Name, suite.Key),

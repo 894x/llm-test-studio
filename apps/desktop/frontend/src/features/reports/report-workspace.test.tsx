@@ -10,6 +10,55 @@ import type { QuickPerformanceSLOAssessment } from "@/features/quick-test/data"
 import { protocolReportFixture, protocolReportSnapshot, reportID } from "@/test/protocol-report-fixture"
 
 describe("ReportWorkspace", () => {
+  it("shows overall performance statistics and independently expands items in the view and visual export", async () => {
+    const detail = protocolReportFixture()
+    const quick = phaseFiveQuickDetail(reportID(20))
+    if (quick.source !== "quick_performance") throw new Error("performance fixture expected")
+    const seed = detail.entries[0]
+    detail.entries = ["缓存组 A", "缓存组 B"].map((name, index) => ({
+      ...seed, entry_id: reportID(30 + index), target_id: reportID(30 + index), target_kind: "performance", name,
+      cases: [], performance: structuredClone(quick.performance),
+    }))
+    detail.request_results = []; detail.report.case_results = []
+    const m = quick.performance.metrics
+    detail.performance_summary = {
+      item_count: 2, measured_item_count: 2, completed_item_count: 2,
+      completed: m.completed * 2, succeeded: m.succeeded * 2, failed: m.failed * 2, timed_out: m.timed_out * 2,
+      prompt_tokens: m.prompt_tokens * 2, completion_tokens: m.completion_tokens * 2, cached_tokens: m.cached_tokens * 2,
+      success_rate_percent: m.success_rate_percent, cache_rate_percent: 81,
+      total_duration_ms: 5_000, successful_request_qps: 1.2, samples_complete: true,
+      ttft: { count: 6, p50_ms: 20, p95_ms: 20, p99_ms: 20, average_ms: 20 },
+      e2e: { count: 6, p50_ms: 74, p95_ms: 86.6, p99_ms: 87.72, average_ms: 74 },
+    }
+    const user = userEvent.setup()
+    const exportVisualReport = vi.fn(async (element: HTMLElement) => {
+      expect(element).toHaveTextContent("性能总统计")
+      expect(element).toHaveTextContent("81%")
+      expect(within(element).getAllByRole("region", { name: "归档性能报告", hidden: true })).toHaveLength(1)
+      expect(within(element).queryByRole("button", { name: /计划项详情/, hidden: true })).not.toBeInTheDocument()
+      return { filename: "plan.html", mediaType: "text/html", blob: new Blob(["plan"]) }
+    })
+    render(<ReportWorkspace snapshot={protocolReportSnapshot(detail)} preferredReportID={detail.report.id}
+      getDetail={async () => detail} exportReport={vi.fn()} saveReportExport={vi.fn(async () => true)}
+      copyReportPNG={vi.fn()} exportVisualReport={exportVisualReport} />)
+    const total = await screen.findByRole("region", { name: "性能总统计" })
+    expect(total).toHaveTextContent("已观测 2 / 2 项")
+    expect(total).toHaveTextContent("81%")
+    expect(screen.queryByRole("region", { name: "归档性能报告" })).not.toBeInTheDocument()
+    const first = screen.getByRole("button", { name: "计划项详情：缓存组 A" })
+    const second = screen.getByRole("button", { name: "计划项详情：缓存组 B" })
+    await user.click(first)
+    expect(first).toHaveAttribute("aria-expanded", "true")
+    expect(second).toHaveAttribute("aria-expanded", "false")
+    expect(screen.getByRole("region", { name: "归档性能报告" })).toBeVisible()
+    await user.keyboard(" ")
+    expect(first).toHaveAttribute("aria-expanded", "false")
+    await user.keyboard("{Enter}")
+    expect(first).toHaveAttribute("aria-expanded", "true")
+    await user.click(screen.getByRole("button", { name: "HTML" }))
+    await waitFor(() => expect(exportVisualReport).toHaveBeenCalledTimes(1))
+  })
+
   it("moves a viewed report's whole owning execution, clears its inspector and restores its list entry", async () => {
     const user = userEvent.setup()
     const detail = protocolReportFixture()

@@ -24,6 +24,7 @@ import {
 } from "@/features/quick-test/performance-summary"
 import { QuickPerformanceRequestAnalysis } from "@/features/quick-test/quick-performance-request-analysis"
 import { PerformanceCharts } from "./performance-charts"
+import { PlanPerformanceSummary } from "./plan-performance-summary"
 import { PerformanceLatencyTable } from "./performance-latency-table"
 import { PerformanceStreamingTimingTable } from "./performance-streaming-timing-table"
 import { EntryCaseTable, ExecutionDetails, VerificationCounts, VerificationBadge } from "./entry-case-table"
@@ -45,14 +46,14 @@ import { historyVisibility } from "@/features/history-recycle/visibility"
 
 import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportMetric, type ReportSnapshot, type ReportSummary, type ReportEntryDetail, type ReportEntryStatus } from "./data"
 
-const TimeSliceVisibility = createContext<{
+const ReportSectionVisibility = createContext<{
   expanded: ReadonlySet<string>
   setExpanded: (id: string, open: boolean) => void
 }>({ expanded: new Set(), setExpanded: () => {} })
 const ReportExportMode = createContext(false)
 
 export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, comparisonControl, preferredReportID, reportOpenSequence = 0, getDetail, exportReport, saveReportExport, copyReportPNG, renderRunShortcuts, exportVisualReport = createVisualReportExport,
-  recycleClient, onOpenRecycleBin, onHistoryChanged, historyChanges = [] }: {
+  recycleClient, onHistoryChanged, historyChanges = [] }: {
   comparisonControl?: ReactNode
   snapshot: ReportSnapshot
   comparisons?: ComparisonSnapshot
@@ -65,12 +66,10 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   renderRunShortcuts?: RunShortcutRenderer
   exportVisualReport?: typeof createVisualReportExport
   recycleClient?: HistoryRecycleClient
-  onOpenRecycleBin?: () => void
   onHistoryChanged?: HistoryChanged
   historyChanges?: HistoryVisibilityChange[]
 }) {
   const { t, i18n } = useTranslation("reports")
-  const { t: tr } = useTranslation("historyRecycle")
   const [localHistoryChanges, setLocalHistoryChanges] = useState<HistoryVisibilityChange[]>([])
   const hidden = useMemo(() => historyVisibility([...localHistoryChanges, ...historyChanges]), [localHistoryChanges, historyChanges])
   const visibleReports = useMemo(() => snapshot.reports.filter(report => !hidden.reports.has(report.id) && !hidden.runs.has(report.run_id ?? "")), [snapshot.reports, hidden])
@@ -88,16 +87,16 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   }
   const [detailState, setDetailState] = useState<{ reportID: string; detail?: ReportDetail; error?: boolean }>({ reportID: "" })
   const [exporting, setExporting] = useState<ReportExportFormat | "copy" | "">("")
-  const [expandedTimeSlices, setExpandedTimeSlices] = useState<ReadonlySet<string>>(() => new Set())
-  const setTimeSliceExpanded = useCallback((id: string, open: boolean) => {
-    setExpandedTimeSlices(previous => {
+  const [expandedSections, setExpandedSections] = useState<ReadonlySet<string>>(() => new Set())
+  const setSectionExpanded = useCallback((id: string, open: boolean) => {
+    setExpandedSections(previous => {
       const next = new Set(previous)
       if (open) next.add(id)
       else next.delete(id)
       return next
     })
   }, [])
-  const timeSliceVisibility = useMemo(() => ({ expanded: expandedTimeSlices, setExpanded: setTimeSliceExpanded }), [expandedTimeSlices, setTimeSliceExpanded])
+  const sectionVisibility = useMemo(() => ({ expanded: expandedSections, setExpanded: setSectionExpanded }), [expandedSections, setSectionExpanded])
   const [exportError, setExportError] = useState("")
   const [watermark, setWatermark] = useState("rhzs")
   const [exportDocument, setExportDocument] = useState<{
@@ -229,17 +228,17 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
     }
   }
 
-  return <TimeSliceVisibility value={timeSliceVisibility}>
+  return <ReportSectionVisibility value={sectionVisibility}>
     <PageFrame
       title={t(isViewingReport ? "detailTitle" : "title")}
       description={isViewingReport ? t("detailDescription", { name: selectedVerdict }) : t("description")}
-      actions={isViewingReport ? <div className="flex items-center gap-2">{recycleAction}<Button variant="outline" size="sm" onClick={() => setViewingReportID("")}><ArrowLeftIcon />{t("back")}</Button></div> : (
-        <div className="flex items-center gap-2">{onOpenRecycleBin ? <Button size="sm" variant="ghost" onClick={onOpenRecycleBin}>{tr("title")}</Button> : null}{recycleAction}{comparisonControl}<CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={t("count", { count: items.length })} /></div>
+      actions={isViewingReport ? <Button variant="outline" size="sm" onClick={() => setViewingReportID("")}><ArrowLeftIcon />{t("back")}</Button> : (
+        <div className="flex items-center gap-2">{comparisonControl}<CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={t("count", { count: items.length })} /></div>
       )}
       inspector={selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={{ schema_version: 1, reports: visibleReports }}
-        onOpen={!isViewingReport ? () => setViewingReportID(selectedComparison.id) : undefined} exportControls={comparisonReport.controls} /> : selected ? (
+        onOpen={!isViewingReport ? () => setViewingReportID(selectedComparison.id) : undefined} exportControls={comparisonReport.controls} recycleAction={recycleAction} /> : selected ? (
         <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={() => handleExport("copy")}
-          shortcuts={selected.source === "run" && selected.run_id ? renderRunShortcuts?.(selected.run_id, !isViewingReport) : null} />
+          shortcuts={selected.source === "run" && selected.run_id ? renderRunShortcuts?.(selected.run_id, !isViewingReport) : null} recycleAction={recycleAction} />
       ) : <EmptyInspector label={t("noneSelected")} />}
       inspectorLabel={t("detailTitle")}
     >
@@ -302,7 +301,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
         watermark={exportDocument.watermark}
       />
     ) : null}
-  </TimeSliceVisibility>
+  </ReportSectionVisibility>
 }
 
 const ReportContent = memo(function ReportContent({ summary, detail, error }: { summary?: ReportSummary; detail: ReportDetail | null; error: string }) {
@@ -355,7 +354,8 @@ function RunReportBody({ detail, summary, paginate = true }: { detail: Extract<R
         </div>
         <ConclusionBadge passed={detail.report.conclusion.passed} verdict={detail.report.conclusion.verdict} status={detail.report.run_status} />
       </header>
-      {summary ? <FunctionalReportHeadline report={summary} /> : null}
+      {summary && (!detail.performance_summary || entries.some(entry => entry.target_kind !== "performance")) ? <FunctionalReportHeadline report={summary} /> : null}
+      {detail.performance_summary ? <PlanPerformanceSummary summary={detail.performance_summary} /> : null}
       {!paginate && <ExecutionOriginDetails origin={detail.report.execution_origin} />}
       <CaseOutcomeNavigator
         entries={entries}
@@ -373,6 +373,7 @@ function RunReportBody({ detail, summary, paginate = true }: { detail: Extract<R
           selectedCaseID={selectedCase?.entryID === suite.entry_id ? selectedCase.caseID : ""}
           caseNavigationRequest={caseNavigationRequest}
           paginate={paginate}
+          collapsePerformance={detail.performance_summary !== undefined}
         />
       ))}
       {unassignedResults.length ? (
@@ -393,30 +394,44 @@ function SuiteReportSection({
   selectedCaseID,
   caseNavigationRequest,
   paginate = true,
+  collapsePerformance = false,
 }: {
   suite: ReportEntryDetail
   timeSliceID: string
   selectedCaseID: string
   caseNavigationRequest: number
   paginate?: boolean
+  collapsePerformance?: boolean
 }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("reports")
   const displayName = suite.name
+  const visibility = useContext(ReportSectionVisibility)
+  const exporting = useContext(ReportExportMode)
+  const collapsible = collapsePerformance && suite.target_kind === "performance"
+  const visibilityID = `performance:${timeSliceID}`
+  const open = !collapsible || visibility.expanded.has(visibilityID)
   return (
+    <Collapsible.Root open={open} onOpenChange={value => visibility.setExpanded(visibilityID, value)} asChild>
     <section aria-label={tx("desktop:reports_suite_aria", { value1: displayName })} className="min-w-0 overflow-hidden">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 py-2.5">
+      <header className={`flex flex-wrap items-center justify-between gap-2 py-2.5${collapsible ? "" : " border-b bg-muted/30"}`}>
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold">{displayName}</h3>
+          <h3 className="text-sm font-semibold [overflow-wrap:anywhere]">{collapsible && !exporting ? (
+            <Collapsible.Trigger asChild><Button variant="ghost" size="sm" className="group h-auto max-w-full whitespace-normal text-left" aria-label={t("performanceSummary.itemDetails", { name: displayName })}>
+              <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 group-data-[state=open]:rotate-90" />{displayName}
+            </Button></Collapsible.Trigger>
+          ) : displayName}</h3>
           <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
             {suite.protocol}
           </p>
+          {collapsible && suite.performance ? <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">{t("performanceSummary.itemMetrics", { count: suite.performance.metrics.completed, rate: suite.performance.metrics.prompt_tokens > 0 ? `${formatMetric(suite.performance.metrics.cache_rate_percent)}%` : "—" })}</p> : null}
         </div>
         <div className="flex items-center gap-2">
           <SuiteStatusBadge status={suite.status} label={suiteStatusLabel(suite.status, t)} />
           {suite.status === "completed" ? <VerificationBadge status={suite.verification.status} /> : null}
         </div>
       </header>
+      <Collapsible.Content forceMount={exporting && open ? true : undefined} hidden={exporting && !open}>
       {suite.conclusion.issues.length ? (
         <ul className="border-b py-2 text-[11px] text-destructive">
           {suite.conclusion.issues.map((issue) => <li key={issue}>{suiteIssueLabel(issue, t)}</li>)}
@@ -435,7 +450,9 @@ function SuiteReportSection({
         <div className="grid gap-3 pt-2 md:grid-cols-2"><SuiteMetricSummary title={t("inspector.coreMetrics")} metrics={suite.metrics} /><SuiteMetricSummary title="SLA" metrics={suite.sla} /></div>
       </details> : null}
       {suite.performance ? <QuickPerformanceBody detail={{schema_version:1,source:"quick_performance",performance:suite.performance}} timeSliceID={timeSliceID} includeRequestAnalysis /> : <EntryCaseTable entry={suite} selectedCaseID={selectedCaseID} caseNavigationRequest={caseNavigationRequest} paginate={paginate} />}
+      </Collapsible.Content>
     </section>
+    </Collapsible.Root>
   )
 }
 
@@ -755,7 +772,7 @@ function ContextValue({ label, value, mono = false }: { label: string; value: st
   return <div className="min-w-0"><dt className="text-[10px] text-muted-foreground">{label}</dt><dd className={`mt-0.5 truncate font-medium ${mono ? "font-mono text-[11px]" : "tabular-nums"}`} title={value}>{value}</dd></div>
 }
 
-function ReportInspector({ report, detail, detailError, exporting, exportError, watermark, onWatermarkChange, onExport, onCopyPNG, shortcuts }: {
+function ReportInspector({ report, detail, detailError, exporting, exportError, watermark, onWatermarkChange, onExport, onCopyPNG, shortcuts, recycleAction }: {
   report: ReportSummary
   detail: ReportDetail | null
   detailError: string
@@ -766,6 +783,7 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
   onExport: (format: ReportExportFormat) => Promise<void>
   onCopyPNG: () => Promise<void>
   shortcuts?: ReactNode
+  recycleAction?: ReactNode
 }) {
   const { t: tx } = useTranslation()
   const { t, i18n } = useTranslation("reports")
@@ -773,7 +791,12 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
   const metrics = useMemo(() => detail?.source === "run" ? Object.entries(detail.report.metrics).slice(0, 8) : [], [detail])
   const quick = detail?.source === "quick_performance" ? detail.performance : null
   return <>
-    <InspectorHeader title={displayReportVerdict(report, t)} subtitle={report.id} trailing={<ConclusionBadge passed={report.passed} verdict={report.verdict} status={report.run_status} />} />
+    <InspectorHeader title={displayReportVerdict(report, t)} subtitle={report.id} trailing={
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        <ConclusionBadge passed={report.passed} verdict={report.verdict} status={report.run_status} />
+        {recycleAction}
+      </div>
+    } />
     {shortcuts}
     <Separator />
     <dl className="space-y-1 px-4 py-2">
@@ -825,7 +848,7 @@ function performanceArrivalPattern(report: QuickPerformanceReport): string {
 
 function PerformanceTimeSliceTable({ slices, visibilityID }: { slices: NonNullable<QuickPerformanceReport["time_slices"]>; visibilityID: string }) {
   const { t: tx } = useTranslation()
-  const visibility = useContext(TimeSliceVisibility)
+  const visibility = useContext(ReportSectionVisibility)
   const exporting = useContext(ReportExportMode)
   const open = visibility.expanded.has(visibilityID)
   if (exporting && !open) return null

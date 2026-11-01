@@ -26,6 +26,7 @@ export function RecycleHistoryButton({ client, target, onHistoryChanged, onRecyc
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const [refreshError, setRefreshError] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const inFlight = useRef(false)
   const request = useRef(0)
   const inspect = async () => {
@@ -57,10 +58,14 @@ export function RecycleHistoryButton({ client, target, onHistoryChanged, onRecyc
       setError(publicDesktopErrorMessage(reason, t("moveFailed")))
     } finally { inFlight.current = false; setPending(false) }
   }
+  const trigger = <Button ref={triggerRef} type="button" variant="ghost" size={compact ? "icon-sm" : "sm"} disabled={disabled || pending}
+    aria-label={name ? t("moveAria", { title: name }) : t("move")}
+    onClick={event => { event.stopPropagation(); void inspect() }}><Trash2Icon />{compact ? null : t("move")}</Button>
   return <>
-    <Button type="button" variant="ghost" size={compact ? "icon-sm" : "sm"} disabled={disabled || pending}
-      aria-label={name ? t("moveAria", { title: name }) : t("move")} title={compact ? t("move") : undefined}
-      onClick={event => { event.stopPropagation(); void inspect() }}><Trash2Icon />{compact ? null : t("move")}</Button>
+    {compact ? <TooltipProvider><Tooltip>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+      <TooltipContent>{t("move")}</TooltipContent>
+    </Tooltip></TooltipProvider> : trigger}
     {refreshError ? compact ? <TooltipProvider><Tooltip><TooltipTrigger asChild>
       <span role="status" tabIndex={0} className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-warning-strong outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <TriangleAlertIcon className="size-4" /><span className="sr-only">{t("movedRefreshFailed")}</span>
@@ -72,7 +77,10 @@ export function RecycleHistoryButton({ client, target, onHistoryChanged, onRecyc
       setOpen(next)
       if (!next) { request.current++; inFlight.current = false; setPending(false) }
     }}>
-      <AlertDialogContent>
+      <AlertDialogContent onCloseAutoFocus={event => {
+        event.preventDefault()
+        triggerRef.current?.focus()
+      }}>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("confirmTitle")}</AlertDialogTitle>
           <AlertDialogDescription>{t("confirmDescription")}</AlertDialogDescription>

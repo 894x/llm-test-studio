@@ -85,6 +85,21 @@
     "error": "Error",
     "empty": "This report has no request-level results"
   },
+  "performanceSummary": {
+    "title": "Overall performance statistics",
+    "items": "Measured {{measured}} / {{count}} items · {{completed}} completed",
+    "scope": "Steady-state observations from performance items only. Warmup, ramp and functional cases are excluded. Cache rate is weighted by input tokens; throughput uses the summed steady-state durations.",
+    "partial": "Some items did not complete. Totals include only the observations available.",
+    "missingSamples": "Some request samples are unavailable; combined latency percentiles are not shown.",
+    "requests": "Completed requests",
+    "input": "Input tokens",
+    "output": "Output tokens",
+    "cached": "Cached input tokens",
+    "duration": "Summed steady-state duration",
+    "throughput": "Successful request throughput",
+    "itemDetails": "Item details: {{name}}",
+    "itemMetrics": "{{count}} requests · Cache rate {{rate}}"
+  },
   "performance": {
     "aria": "Archived performance report",
     "config": "Test configuration",

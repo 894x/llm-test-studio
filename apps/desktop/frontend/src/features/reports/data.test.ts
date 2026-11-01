@@ -4,6 +4,29 @@ import { parseReportDetail } from "./data"
 import type { ExecutionOrigin } from "./execution-origin"
 
 describe("current protocol report contract", () => {
+  it("accepts an optional Go-owned performance summary and rejects malformed values without changing input", () => {
+    const source = protocolReportFixture()
+    const entry = source.entries[0]
+    source.entries = [0, 1].map(index => ({ ...entry, entry_id: reportID(30 + index), target_kind: "performance", cases: [] }))
+    source.request_results = []; source.report.case_results = []
+    const summary = {
+      item_count: 2, measured_item_count: 1, completed_item_count: 0, completed: 2, succeeded: 1, failed: 1, timed_out: 1,
+      prompt_tokens: 100, completion_tokens: 10, cached_tokens: 80, success_rate_percent: 50, cache_rate_percent: 80,
+      total_duration_ms: 1_000, successful_request_qps: 1, samples_complete: false, ttft: null, e2e: null,
+    }
+    const value = { ...source, performance_summary: summary }
+    const parsed = parseReportDetail(value)
+    if (parsed.source !== "run") throw new Error("run expected")
+    expect(parsed.performance_summary).toEqual(summary)
+    expect(parsed.performance_summary).not.toBe(summary)
+    expect(parseReportDetail(source)).not.toHaveProperty("performance_summary", summary)
+    for (const patch of [{ cached_tokens: -1 }, { cache_rate_percent: NaN }, { success_rate_percent: 101 }, { item_count: 3 }, { succeeded: 3 }, { ttft: { count: 1 } }]) {
+      const invalid = { ...value, performance_summary: { ...summary, ...patch } }
+      const before = structuredClone(invalid)
+      expect(() => parseReportDetail(invalid)).toThrow()
+      expect(invalid).toEqual(before)
+    }
+  })
   it.each(["local", "remote", null] as const)("preserves the current %s execution origin independently of preparation environment", kind => {
     const source = protocolReportFixture()
     const origin: ExecutionOrigin | null = kind === null ? null : { kind, node_id: reportID(20), installation_id: reportID(21),

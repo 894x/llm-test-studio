@@ -443,7 +443,8 @@ function AppWorkspace({
   }, [navigate])
 
   const openRecycleBin = useCallback(() => {
-    setRecycleReturnPage(pageRef.current === "recycle-bin" ? "runs" : pageRef.current)
+    if (pageRef.current === "recycle-bin") return
+    setRecycleReturnPage(pageRef.current)
     navigate("recycle-bin")
   }, [navigate])
 
@@ -651,7 +652,6 @@ function AppWorkspace({
           onOpenReport={openReport}
           historyChanges={historyChanges}
           onHistoryChanged={receiveHistoryChange}
-          onOpenRecycleBin={openRecycleBin}
         />
       ) : page === "catalog" ? (
         <ModelChannelWorkspace catalog={catalog!} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} navigationIntent={catalogNavigation} />
@@ -688,7 +688,6 @@ function AppWorkspace({
           recycleClient={client}
           historyChanges={historyChanges}
           onHistoryChanged={receiveHistoryChange}
-          onOpenRecycleBin={openRecycleBin}
         />
       ) : page === "recycle-bin" ? (
         <HistoryRecycleWorkspace client={client} onHistoryChanged={receiveHistoryChange} onBack={() => navigate(recycleReturnPage)} />
@@ -707,7 +706,6 @@ function AppWorkspace({
           onOpenReport={openReport}
           historyChanges={historyChanges}
           onHistoryChanged={receiveHistoryChange}
-          onOpenRecycleBin={openRecycleBin}
           onOpenComparison={async id => {
             setShowComparisons(true)
             setPendingComparisonIDs(ids => ids.includes(id) ? ids : [...ids, id])
@@ -720,8 +718,9 @@ function AppWorkspace({
 
   return (
     <DesktopShell
-      activePage={page === "recycle-bin" ? recycleReturnPage : page}
+      activePage={page}
       onNavigate={navigate}
+      onOpenRecycleBin={openRecycleBin}
       actions={
 				<div className="flex items-center gap-1">
 					<DiagnosticsSheet client={client} />

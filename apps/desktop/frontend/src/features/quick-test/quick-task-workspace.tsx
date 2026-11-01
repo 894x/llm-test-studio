@@ -108,7 +108,6 @@ export function QuickTaskWorkspace({
   onOpenReport,
   onPerformanceArchived,
   onSaveChannel,
-  onOpenRecycleBin,
   onHistoryChanged,
   historyChanges = [],
 }: {
@@ -130,12 +129,10 @@ export function QuickTaskWorkspace({
   onOpenReport: (id: string) => void | Promise<void>
   onPerformanceArchived: (id: string) => void | Promise<void>
   onSaveChannel: (command: SaveQuickTestTargetCommand) => Promise<SavedQuickTestTarget>
-  onOpenRecycleBin?: () => void
   onHistoryChanged?: HistoryChanged
   historyChanges?: HistoryVisibilityChange[]
 }) {
   const { t } = useTranslation("quickTest")
-  const { t: tr } = useTranslation("historyRecycle")
   const [localHistoryChanges, setLocalHistoryChanges] = useState<HistoryVisibilityChange[]>([])
   const hidden = historyVisibility([...localHistoryChanges, ...historyChanges])
   const { t: tj } = useTranslation("jobs")
@@ -676,7 +673,6 @@ export function QuickTaskWorkspace({
             <QuickTestModeSwitch performance={mode === "performance"} onChange={checked => setMode(checked ? "performance" : "functional")} />
             <div className="flex flex-wrap items-center justify-between gap-1"><h2 className="text-sm font-semibold">{t("workspace.history")}</h2><span className="text-[11px] text-muted-foreground">{t("workspace.active", { count: history.filter(item => item.active).length })}</span>
               {history.some(item => item.waitingForReport) ? <span role="status" className="text-[11px] text-muted-foreground">{t("workspace.syncingReports", { count: history.filter(item => item.waitingForReport).length })}</span> : null}
-              {onOpenRecycleBin ? <Button size="sm" variant="ghost" onClick={onOpenRecycleBin}>{tr("title")}</Button> : null}
             </div>
           </div>
           <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">

@@ -70,6 +70,7 @@ export interface ReportEntryDetail {
 }
 export interface FormalReportDetail {
   schema_version: 1; source: "run"
+  performance_summary?: ReportPerformanceSummary
   report: {
     id: string; run_id: string; protocol: CatalogProtocol; run_status: ReportSummary["run_status"]; generated_at: string
     model: { id: string; name: string }; channel: { id: string; name: string }
@@ -80,6 +81,19 @@ export interface FormalReportDetail {
     distributions?: ReportDistribution[]; case_results: ReportResult[]
   }
   request_results: ReportResult[]; entries: ReportEntryDetail[]; unassigned_request_results: ReportResult[]
+}
+
+export interface ReportPerformanceSummary {
+  item_count: number; measured_item_count: number; completed_item_count: number
+  completed: number; succeeded: number; failed: number; timed_out: number
+  prompt_tokens: number; completion_tokens: number; cached_tokens: number
+  success_rate_percent: number | null; cache_rate_percent: number | null
+  total_duration_ms: number; successful_request_qps: number | null; samples_complete: boolean
+  ttft: ReportSummaryLatency | null; e2e: ReportSummaryLatency | null
+}
+
+interface ReportSummaryLatency {
+  count: number; p50_ms: number; p95_ms: number; p99_ms: number; average_ms: number
 }
 
 export interface QuickPerformanceReportDetail {
@@ -159,6 +173,8 @@ export function parseReportDetail(value: unknown): ReportDetail {
   }))
   const ids = [...owned, ...unassigned].map(result => result.id)
   if (new Set(ids).size !== ids.length || ids.length !== requestResults.length || requestResults.some(result => !ids.includes(result.id))) throw invalidReport()
+  const performanceSummary = value.performance_summary === undefined ? undefined : parsePerformanceSummary(value.performance_summary)
+  if (performanceSummary && performanceSummary.item_count !== entries.filter(entry => entry.target_kind === "performance").length) throw invalidReport()
   return { schema_version: 1, source: "run", report: {
     id: report.id, run_id: report.run_id, protocol: report.protocol, run_status: report.run_status,
     generated_at: report.generated_at, model: { id: report.model.id, name: report.model.name },
@@ -166,7 +182,53 @@ export function parseReportDetail(value: unknown): ReportDetail {
     environment: { ...report.environment },
     conclusion: copyConclusion(report.conclusion), sla: parseMetricMap(report.sla), metrics: parseMetricMap(report.metrics),
     distributions: parseRecordArray(report.distributions ?? []), case_results: caseResults,
-  }, entries, request_results: requestResults, unassigned_request_results: unassigned }
+  }, entries, request_results: requestResults, unassigned_request_results: unassigned,
+    performance_summary: performanceSummary }
+}
+
+function parsePerformanceSummary(value: unknown): ReportPerformanceSummary {
+  if (!isRecord(value)) throw invalidReport()
+  const counts = ["item_count", "measured_item_count", "completed_item_count", "completed", "succeeded", "failed", "timed_out", "prompt_tokens", "completion_tokens", "cached_tokens"] as const
+  if (counts.some(key => !isNonNegativeInteger(value[key])) || typeof value.samples_complete !== "boolean" ||
+    !isNonNegativeNumber(value.total_duration_ms)) throw invalidReport()
+  const count = (key: typeof counts[number]) => value[key] as number
+  const nullableNumber = (key: string) => {
+    if (value[key] === null) return null
+    if (!isNonNegativeNumber(value[key])) throw invalidReport()
+    return value[key]
+  }
+  if (count("item_count") < 2 || count("measured_item_count") > count("item_count") ||
+    count("completed_item_count") > count("item_count") || count("succeeded") + count("failed") !== count("completed") ||
+    count("timed_out") > count("failed")) throw invalidReport()
+  const successRate = nullableNumber("success_rate_percent")
+  const cacheRate = nullableNumber("cache_rate_percent")
+  if ((successRate !== null && successRate > 100) ||
+    (count("completed") === 0) !== (successRate === null) ||
+    (count("prompt_tokens") === 0) !== (cacheRate === null)) throw invalidReport()
+  const ttft = parseSummaryLatency(value.ttft), e2e = parseSummaryLatency(value.e2e)
+  if ((!value.samples_complete && (ttft !== null || e2e !== null)) ||
+    (ttft !== null && ttft.count > count("succeeded")) || (e2e !== null && e2e.count > count("succeeded"))) throw invalidReport()
+  return {
+    item_count: count("item_count"), measured_item_count: count("measured_item_count"), completed_item_count: count("completed_item_count"),
+    completed: count("completed"), succeeded: count("succeeded"), failed: count("failed"), timed_out: count("timed_out"),
+    prompt_tokens: count("prompt_tokens"), completion_tokens: count("completion_tokens"), cached_tokens: count("cached_tokens"),
+    success_rate_percent: successRate, cache_rate_percent: cacheRate,
+    total_duration_ms: value.total_duration_ms, successful_request_qps: nullableNumber("successful_request_qps"),
+    samples_complete: value.samples_complete, ttft, e2e,
+  }
+}
+
+function parseSummaryLatency(value: unknown): ReportSummaryLatency | null {
+  if (value === null) return null
+  if (!isRecord(value) || !isPositiveInteger(value.count) ||
+    !isNonNegativeNumber(value.p50_ms) || !isNonNegativeNumber(value.p95_ms) ||
+    !isNonNegativeNumber(value.p99_ms) || !isNonNegativeNumber(value.average_ms)) throw invalidReport()
+  if (value.p50_ms > value.p95_ms || value.p95_ms > value.p99_ms) throw invalidReport()
+  return { count: value.count, p50_ms: value.p50_ms, p95_ms: value.p95_ms, p99_ms: value.p99_ms, average_ms: value.average_ms }
+}
+
+function isNonNegativeNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
 }
 function parseEntry(value: unknown): ReportEntryDetail {
   if (!isRecord(value) || !isUUID(value.entry_id) || !isUUID(value.target_id) ||

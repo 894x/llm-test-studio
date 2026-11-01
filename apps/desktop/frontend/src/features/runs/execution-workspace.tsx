@@ -55,7 +55,7 @@ const isDesktop = () => window.matchMedia(desktopQuery).matches
 
 export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, preferredJob, preferredRunID, commandError,
   renderRunShortcuts, onJobChange, onOpenReport, onOpenComparison, readStatus, historyRevision,
-  onOpenRecycleBin, onHistoryChanged, historyChanges = [] }: {
+  onHistoryChanged, historyChanges = [] }: {
   client: JobClient & Partial<RunHistoryClient> & Partial<HistoryRecycleClient>; snapshot: WorkspaceSnapshot; reports: ReportSnapshot
   preferredJob: JobView | null; preferredRunID?: string; commandError: string
   renderRunShortcuts?: RunShortcutRenderer
@@ -64,13 +64,11 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
   onOpenComparison?: (id: string) => void | Promise<void>
   historyRevision?: Record<string, ReportGenerationProgress>
   readStatus?: ReactNode
-  onOpenRecycleBin?: () => void
   onHistoryChanged?: HistoryChanged
   historyChanges?: HistoryVisibilityChange[]
 }) {
   const { t, i18n } = useTranslation("runs")
   const { t: tj } = useTranslation("jobs")
-  const { t: tr } = useTranslation("historyRecycle")
   const [localHistoryChanges, setLocalHistoryChanges] = useState<HistoryVisibilityChange[]>([])
   const history = useExecutionJobs(client, preferredJob)
   const runHistory = useRunHistory(client, history.jobs, preferredRunID)
@@ -165,7 +163,6 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
           <p className="mt-1 text-[11px] text-muted-foreground">{t("description")}</p></div>
         <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
           <span>{t("executions.shown", { count: visible.length })}</span>
-          {onOpenRecycleBin ? <Button size="sm" variant="ghost" onClick={onOpenRecycleBin}>{tr("title")}</Button> : null}
           {filtered ? <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setPlan("all") }}>{t("executions.clear")}</Button> : null}
           <Button size="sm" variant="ghost" disabled={history.pending} onClick={() => { history.retry(); void runHistory.refresh() }}>{history.pending ? <Spinner /> : null}{t("executions.refresh")}</Button>
           {!desktop && selected ? <Sheet><SheetTrigger asChild><Button variant="outline" size="sm"><PanelRightIcon />{t("mobile.details")}</Button></SheetTrigger>

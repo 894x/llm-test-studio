@@ -85,6 +85,21 @@
     "error": "错误",
     "empty": "此报告没有请求级结果"
   },
+  "performanceSummary": {
+    "title": "性能总统计",
+    "items": "已观测 {{measured}} / {{count}} 项 · 已完成 {{completed}} 项",
+    "scope": "仅汇总性能项的稳态观测，不含预热、爬坡及功能用例。缓存命中率按输入 Token 加权；吞吐按累计稳态用时计算。",
+    "partial": "部分计划项未完成，汇总仅包含已有观测。",
+    "missingSamples": "部分逐请求样本缺失，不展示合并延迟分位数。",
+    "requests": "已完成请求",
+    "input": "输入 Token",
+    "output": "输出 Token",
+    "cached": "缓存输入 Token",
+    "duration": "累计稳态用时",
+    "throughput": "成功请求吞吐",
+    "itemDetails": "计划项详情：{{name}}",
+    "itemMetrics": "{{count}} 次请求 · 缓存命中率 {{rate}}"
+  },
   "performance": {
     "aria": "归档性能报告",
     "config": "测试配置",
