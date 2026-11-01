@@ -10,6 +10,7 @@ import CircleHelpIcon from "lucide-react/dist/esm/icons/circle-help.mjs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { protocolPresentation } from "@/features/protocols/registry"
@@ -48,6 +49,7 @@ export function EntryCaseTable({
   }, 96)
   const minimumTableWidth = 280 + 88 + 80 + columnWidths.reduce((total, width) => total + width, 0) + summaryWidth
   const visible = paginate ? entry.cases.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : entry.cases
+  const TableContainer = paginate ? ScrollArea : "div"
 
   useEffect(() => {
     if (!selectedCaseID) return
@@ -69,7 +71,7 @@ export function EntryCaseTable({
   }, [caseNavigationRequest, entry.cases, entry.entry_id, page, selectedCaseID])
 
   return <>
-    <div className={paginate ? "overflow-x-auto" : "min-w-0"}>
+    <TableContainer className="min-w-0">
       <Table aria-label={t("protocolDesign.caseTable")} className="table-fixed"
         style={paginate ? { minWidth: minimumTableWidth } : undefined}>
         <colgroup>
@@ -123,7 +125,7 @@ export function EntryCaseTable({
           </Fragment>
         }) : <TableRow><TableCell colSpan={columns.length + 4} className="py-6 text-center text-xs text-muted-foreground">{t("hierarchy.noRecordedCases")}</TableCell></TableRow>}</TableBody>
       </Table>
-    </div>
+    </TableContainer>
     {paginate ? <ResultPagination page={page} count={entry.cases.length} size={PAGE_SIZE} onPage={setPage} /> : null}
   </>
 }
@@ -230,7 +232,7 @@ function ObservationDetails({ observation }: { observation: ProtocolObservation 
 
 function AssertionTable({ assertions }: { assertions: AssertionResult[] }) {
   const { t } = useTranslation("reports")
-  return <div className="overflow-x-auto"><Table aria-label={t("protocolDesign.assertions")}>
+  return <ScrollArea><Table aria-label={t("protocolDesign.assertions")}>
     <TableHeader><TableRow><TableHead>{t("protocolDesign.rule")}</TableHead><TableHead>{t("protocolDesign.expected")}</TableHead><TableHead>{t("protocolDesign.actual")}</TableHead><TableHead>{t("protocolDesign.verification")}</TableHead></TableRow></TableHeader>
     <TableBody>{assertions.map(assertion => <Fragment key={assertion.id}><TableRow>
       <TableCell className="max-w-60 whitespace-normal text-xs"><div>{assertion.id}</div><div className="break-all font-mono text-[10px] text-muted-foreground">{assertion.source}{assertion.pointer} {assertion.operator}</div></TableCell>
@@ -238,7 +240,7 @@ function AssertionTable({ assertions }: { assertions: AssertionResult[] }) {
       <TableCell className="max-w-60 whitespace-pre-wrap break-all font-mono text-[11px]">{boundedJSON(assertion.actual, 512)}{assertion.reason ? <div className="text-muted-foreground">{assertion.reason}</div> : null}</TableCell>
       <TableCell><VerificationBadge status={assertion.status} /></TableCell>
     </TableRow>{assertion.children?.length ? <TableRow><TableCell colSpan={4} className="pl-4"><AssertionTable assertions={assertion.children} /></TableCell></TableRow> : null}</Fragment>)}</TableBody>
-  </Table></div>
+  </Table></ScrollArea>
 }
 function JSONEvidence({ label, value, copyable = false }: { label: string; value: unknown; copyable?: boolean }) {
   const { t } = useTranslation("reports")
@@ -271,7 +273,7 @@ function JSONEvidence({ label, value, copyable = false }: { label: string; value
           <TooltipContent>{copyLabel}</TooltipContent>
         </Tooltip></TooltipProvider>
       </div> : null}
-      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all p-2 font-mono text-[11px]">{boundedJSON(value, 16000)}</pre>
+      <ScrollArea contentWidth="viewport" className="max-h-64"><pre className="whitespace-pre-wrap break-all p-2 font-mono text-[11px]">{boundedJSON(value, 16000)}</pre></ScrollArea>
     </div>
   </details>
 }

@@ -82,6 +82,7 @@ Do not use HTML `datalist` for suggestions in the desktop product. Its browser-o
 
 - Use a dialog for blocking decisions and a sheet/inspector for contextual editing that should preserve workspace context.
 - Keep every overlay titled, closeable, keyboard reachable, theme synchronized, and focus restoring.
+- Popup lists, suggestions, menus, and submenus use the same shared overlay scrollbar as workspaces. Compose `ScrollAreaRoot`, `ScrollAreaViewport`, and `ScrollBar` from the shared ScrollArea module; for Base UI lists, render the list as `ScrollAreaViewport` so ARIA, refs, filtering, and keyboard scrolling target the actual scroll owner. Bound viewport height by both the list limit and available popup height. Do not retain native scrollbar styling or a second vertical scroll owner.
 - Dropdowns inside sheets belong within the modal focus boundary but outside the scrolling form. Reuse the shared dropdown primitives and `apps/desktop/frontend/src/components/ui/use-floating-portal-container.ts`; retain their fixed positioning rather than switching coordinate systems or adding feature-specific animation workarounds.
 - Selecting an option must not dismiss the editor. Escape closes the active popup before the enclosing sheet; verify focus return, scrolling while open, and closing/reopening the sheet when changing nested overlays.
 - Keep a long-running task's start action, stage, progress, sent/in-flight/completed counts, stop-sending command, cancel command, error, and recovery in one stable surface.

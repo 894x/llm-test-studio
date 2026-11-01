@@ -4,6 +4,7 @@ import CheckIcon from "lucide-react/dist/esm/icons/check.mjs"
 import ChevronDownIcon from "lucide-react/dist/esm/icons/chevron-down.mjs"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
+import { ScrollAreaRoot, ScrollAreaViewport, ScrollBar } from "./scroll-area"
 import { useFloatingPortalContainer } from "./use-floating-portal-container"
 import { useTransientOverlay } from "./use-transient-overlay"
 
@@ -42,9 +43,9 @@ export function SearchableSelect({ value, onValueChange, options, disabled, id, 
       </Combobox.InputGroup>
       {!overlay.visibility.dismissed && <Combobox.Portal container={portalContainer}>
         <Combobox.Positioner data-slot="select-positioner" positionMethod="fixed" sideOffset={4} align="start" className="z-50 isolate">
-          <Combobox.Popup data-slot="select-content" className="w-[calc(var(--anchor-width)/var(--interface-zoom,1))] max-w-[calc(var(--available-width)/var(--interface-zoom,1))] max-h-[calc(var(--available-height)/var(--interface-zoom,1))] overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10">
+          <Combobox.Popup render={<ScrollAreaRoot />} data-slot="select-content" className="w-[calc(var(--anchor-width)/var(--interface-zoom,1))] max-w-[calc(var(--available-width)/var(--interface-zoom,1))] max-h-[calc(var(--available-height)/var(--interface-zoom,1))] overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10">
             <Combobox.Empty className="px-3 py-2 text-xs text-muted-foreground empty:hidden">{t("select.empty")}</Combobox.Empty>
-            <Combobox.List className="max-h-60 overflow-y-auto overscroll-contain p-1 [scrollbar-width:thin] data-empty:p-0">
+            <Combobox.List render={<ScrollAreaViewport contentWidth="viewport" />} data-slot="select-list" className="max-h-[min(15rem,calc(var(--available-height)/var(--interface-zoom,1)))] scroll-py-1 overscroll-contain p-1 data-empty:p-0">
               {(id: string) => { const option = options.find(option => option.value === id)!; return <Combobox.Item key={id} value={id} disabled={option.disabled}
                 className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs outline-none data-highlighted:bg-surface-hover data-selected:bg-surface-active data-disabled:opacity-50">
                 {option.icon && <span aria-hidden="true" className="flex shrink-0 items-center">{option.icon}</span>}
@@ -52,6 +53,7 @@ export function SearchableSelect({ value, onValueChange, options, disabled, id, 
                 <Combobox.ItemIndicator><CheckIcon className="size-3.5" /></Combobox.ItemIndicator>
               </Combobox.Item> }}
             </Combobox.List>
+            <ScrollBar />
           </Combobox.Popup>
         </Combobox.Positioner>
       </Combobox.Portal>}

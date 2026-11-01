@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next"
 
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { ScrollAreaRoot, ScrollAreaViewport, ScrollBar } from "./scroll-area"
 import { useFloatingPortalContainer } from "./use-floating-portal-container"
 import { TransientOverlayVisibility } from "./transient-overlays"
 import { useTransientOverlay, useTransientOverlayVisibility } from "./use-transient-overlay"
@@ -71,6 +72,7 @@ function AutocompleteInput({
 
 function AutocompleteContent({
   className,
+  children,
   side = "bottom",
   sideOffset = 4,
   align = "start",
@@ -93,13 +95,17 @@ function AutocompleteContent({
         className="isolate z-50"
       >
         <AutocompletePrimitive.Popup
+          render={<ScrollAreaRoot />}
           data-slot="autocomplete-content"
           className={cn(
             "relative max-h-[calc(var(--available-height)/var(--interface-zoom,1))] w-[calc(var(--anchor-width)/var(--interface-zoom,1))] max-w-[calc(var(--available-width)/var(--interface-zoom,1))] origin-[var(--transform-origin)] overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             className,
           )}
           {...props}
-        />
+        >
+          {children}
+          <ScrollBar />
+        </AutocompletePrimitive.Popup>
       </AutocompletePrimitive.Positioner>
     </AutocompletePrimitive.Portal>
   )
@@ -108,9 +114,10 @@ function AutocompleteContent({
 function AutocompleteList({ className, ...props }: AutocompletePrimitive.List.Props) {
   return (
     <AutocompletePrimitive.List
+      render={<ScrollAreaViewport contentWidth="viewport" />}
       data-slot="autocomplete-list"
       className={cn(
-        "max-h-60 scroll-py-1 overflow-y-auto overscroll-contain p-1 [scrollbar-color:color-mix(in_srgb,var(--foreground)_20%,transparent)_transparent] [scrollbar-width:thin] data-empty:p-0",
+        "max-h-[min(15rem,calc(var(--available-height)/var(--interface-zoom,1)))] scroll-py-1 overscroll-contain p-1 data-empty:p-0",
         className,
       )}
       {...props}

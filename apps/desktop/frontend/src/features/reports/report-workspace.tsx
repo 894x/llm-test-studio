@@ -734,7 +734,7 @@ function CapacityRungTable({ report }: { report: QuickPerformanceReport }) {
   const capacity = report.capacity_result
   if (!capacity) return null
   const unit = report.profile.load_mode === "open_loop" ? "RPS" : tx("desktop:quick-test_concurrency")
-  return <div className="mt-3 min-w-0 overflow-x-auto">
+  return <ScrollArea className="mt-3">
     <Table aria-label={tx("desktop:reports_capacity_ladder_results")} className="min-w-[1120px]">
       <TableHeader><TableRow className="hover:bg-transparent">
         <TableHead className="h-8 pl-3 text-[11px]">{tx("desktop:quick-test_step")}</TableHead>
@@ -765,7 +765,7 @@ function CapacityRungTable({ report }: { report: QuickPerformanceReport }) {
         </TableRow>
       ))}</TableBody>
     </Table>
-  </div>
+  </ScrollArea>
 }
 
 function ContextValue({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
@@ -864,7 +864,7 @@ function PerformanceTimeSliceTable({ slices, visibilityID }: { slices: NonNullab
       )}</h4>
       <span className="text-[10px] text-muted-foreground">{tx("desktop:reports_only_steady_state_windows_recorded_by_the_backend_are_listed")}</span>
     </div>
-    <Collapsible.Content className="mt-2 min-w-0 overflow-x-auto">
+    <Collapsible.Content className="mt-2 min-w-0"><ScrollArea>
       <Table aria-label={tx("desktop:quick-test_time_slices")} className="min-w-[1040px]">
         <TableHeader><TableRow className="hover:bg-transparent">
           <TableHead className="h-8 pl-3 text-[11px]">{tx("desktop:reports_slices")}</TableHead>
@@ -895,7 +895,7 @@ function PerformanceTimeSliceTable({ slices, visibilityID }: { slices: NonNullab
           </TableRow>
         )) : <TableRow><TableCell colSpan={11} className="h-20 text-center text-xs text-muted-foreground">{tx("desktop:reports_no_valid_time_slices_recorded")}</TableCell></TableRow>}</TableBody>
       </Table>
-    </Collapsible.Content>
+    </ScrollArea></Collapsible.Content>
   </Collapsible.Root>
 }
 function performanceWorkloadMode(report: QuickPerformanceReport): string {

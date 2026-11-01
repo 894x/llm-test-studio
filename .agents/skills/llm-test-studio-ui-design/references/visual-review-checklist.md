@@ -26,6 +26,7 @@
 - For dense forms, check actual panel width with long labels and inline errors, and empty/repeated groups. Column changes must preserve values, field associations, and reading order.
 - Check running tasks through queued, sending, draining, completed, failed, cancelled, stop-sending, and cancellation behavior where applicable.
 - Force vertical and horizontal overflow and confirm 5 px rails with 4 px inset do not change container geometry.
+- Include overflowing SearchableSelect, Autocomplete, menus, and submenus in scrollbar acceptance. Check short/empty/filtered lists, keyboard navigation to an offscreen item, wheel/drag scrolling, and Escape/focus return; reject native arrow buttons, native gutters, or `scrollbar-width: thin` substitutes.
 - Remove nested cards, decorative accent usage, duplicate explanatory text, fake controls, and presentation-side business inference.
 
 ## Rendered acceptance

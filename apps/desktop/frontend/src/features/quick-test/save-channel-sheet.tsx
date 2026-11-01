@@ -4,6 +4,7 @@ import { isCatalogSavedRefreshFailure, publicDesktopErrorMessage } from "@/app/d
 import { Button } from "@/components/ui/button"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import type { SavedQuickTestTarget, SaveQuickTestTargetCommand } from "@/features/catalog/data"
 import { PROTOCOL_LABELS } from "@/features/catalog/protocols"
@@ -48,7 +49,7 @@ export function SaveChannelSheet({ open, onOpenChange, onCloseAutoFocus, connect
         <SheetDescription>{t("saveChannel.hint")}</SheetDescription>
       </SheetHeader>
       <form className="flex min-h-0 flex-1 flex-col" onSubmit={event => { event.preventDefault(); void save() }}>
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3">
+        <ScrollArea contentWidth="viewport" className="flex-1"><div className="space-y-4 px-4 py-3">
           <Field className="block">
             <FieldLabel htmlFor="save-channel-name">{t("saveChannel.name")}</FieldLabel>
             <Input id="save-channel-name" autoFocus value={name} onChange={event => setName(event.target.value)} disabled={pending || committed} />
@@ -59,7 +60,7 @@ export function SaveChannelSheet({ open, onOpenChange, onCloseAutoFocus, connect
             <div><dt className="text-muted-foreground">{t("protocol")}</dt><dd>{PROTOCOL_LABELS[connection.protocol]}</dd></div>
           </dl>
           {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-        </div>
+        </div></ScrollArea>
         <SheetFooter className="flex-row justify-end border-t">
           <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>{t("saveChannel.cancel")}</Button>
           <Button type="submit" disabled={pending || committed || !name.trim()}>{pending ? t("saveChannel.saving") : t("saveChannel.title")}</Button>

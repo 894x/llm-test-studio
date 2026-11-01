@@ -33,6 +33,7 @@ Preserve established project tokens and interaction boundaries. Choose compositi
 - All tables are borderless: no outer frame, header/footer rule, row separator, or column grid. Headers have a default quiet 6 px rounded surface above an opaque backing. Body rows use a continuous 6 px rounded background only on hover or selection; selected state takes precedence. Keep keyboard focus visible.
 - Let layout determine column widths; content must adapt. Text wraps by default, including unbroken IDs and URLs (`overflow-wrap: anywhere`). Never let content widen an inspector or create page-level horizontal overflow. Truncation and local horizontal scrolling require a specific content need; they are not the default overflow response.
 - Use the shared overlay `ScrollArea`: 5 px rail and thumb, 4 px edge inset, no layout-consuming gutter, and explicit ownership for each bounded region.
+- Apply the same scrollbar to popup option lists, suggestions, menus, and submenus. Compose their primitive with the shared `ScrollAreaRoot`, `ScrollAreaViewport`, and `ScrollBar`; keep the list itself as the viewport when it owns keyboard scrolling. Native `overflow-auto` with `scrollbar-width: thin` is not an equivalent implementation.
 - Keep icon-only controls square or circular as established, with an accessible name, Tooltip when meaning is not universal, and visible focus.
 - Preserve stable geometry through loading, error, and selection changes.
 

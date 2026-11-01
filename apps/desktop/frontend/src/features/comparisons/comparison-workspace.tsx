@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { SearchableSelect } from "@/components/ui/searchable-select"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -91,7 +92,7 @@ export function NewComparisonSheet({
           <SheetTitle>{t("title")}</SheetTitle>
           <SheetDescription>{t("description")}</SheetDescription>
         </SheetHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
+        <ScrollArea contentWidth="viewport" className="flex-1"><div className="flex flex-col gap-4 px-4">
           {loading ? <p role="status" className="text-xs text-muted-foreground">{t("loading")}</p> : loadError ? <div role="alert" className="space-y-2 text-xs text-destructive">{loadError}<Button variant="outline" size="sm" onClick={loadCatalog}>{t("retry")}</Button></div> : eligiblePlans.length === 0 ? (
             <p className="text-xs text-muted-foreground">{t("noPlan")}</p>
           ) : (
@@ -120,7 +121,7 @@ export function NewComparisonSheet({
             </>
           )}
           {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
-        </div>
+        </div></ScrollArea>
         <SheetFooter className="flex-row justify-end border-t">
           <SheetClose asChild><Button variant="outline">{t("cancel")}</Button></SheetClose>
           <Button disabled={loading || !!loadError || pending || effectiveSelected.length < 2} onClick={() => void start()}>

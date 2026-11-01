@@ -16,6 +16,7 @@ import {
 import { Progress } from "@/components/ui/progress"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { SearchableSelect } from "@/components/ui/searchable-select"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Sheet,
   SheetClose,
@@ -231,7 +232,7 @@ export function NewRunSheet({
             {t("newRun.description")}
           </SheetDescription>
         </SheetHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4">
+        <ScrollArea contentWidth="viewport" className="flex-1"><div className="flex flex-col gap-3 px-4">
           {loading ? <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner />{tx("app:loadingPage")}</p> : loadError ? <div role="alert" className="space-y-2 text-xs text-destructive">{loadError}<Button variant="outline" size="sm" onClick={loadCatalog}>{tx("desktop:app_retry_opening")}</Button></div> : <>
           <div className="text-xs font-semibold">{t("newRun.selectPlan")}</div>
           <RadioGroup
@@ -292,7 +293,7 @@ export function NewRunSheet({
             </p>
           ) : null}
           </>}
-        </div>
+        </div></ScrollArea>
         <SheetFooter className="flex-row justify-end border-t">
           <SheetClose asChild>
             <Button variant="outline">{t("newRun.cancel")}</Button>

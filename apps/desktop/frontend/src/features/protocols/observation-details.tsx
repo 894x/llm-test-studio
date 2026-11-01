@@ -1,10 +1,11 @@
 import { useTranslation } from "react-i18next"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import type { ProtocolObservation } from "./types"
 
 export function ChatObservationDetails({ observation }: { observation: ProtocolObservation }) {
   const { t } = useTranslation("reports")
   return <div className="min-w-0 space-y-2">
-    {observation.text !== undefined ? <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs">{observation.text.slice(0, 16000)}</pre> : null}
+    {observation.text !== undefined ? <ScrollArea contentWidth="viewport" className="max-h-48"><pre className="whitespace-pre-wrap break-words text-xs">{observation.text.slice(0, 16000)}</pre></ScrollArea> : null}
     {observation.stream_completed !== undefined ? <p className="text-xs text-muted-foreground">{t(observation.stream_completed ? "protocolDesign.streamCompleted" : "protocolDesign.streamIncomplete")}</p> : null}
   </div>
 }

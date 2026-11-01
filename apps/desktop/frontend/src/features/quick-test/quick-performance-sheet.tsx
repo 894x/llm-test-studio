@@ -95,7 +95,7 @@ export function PlanPerformanceRunSheet({
           <SheetTitle>{t("performance.selectBinding")}</SheetTitle>
           <SheetDescription>{t("performance.selectBindingHint")}</SheetDescription>
         </SheetHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4">
+        <ScrollArea contentWidth="viewport" className="flex-1"><div className="flex flex-col gap-3 px-4">
           <Field className="block">
             <FieldLabel>{t("performance.model")}</FieldLabel>
             <FieldContent>
@@ -110,7 +110,7 @@ export function PlanPerformanceRunSheet({
           </Field>
           {models.length === 0 ? <p className="text-xs text-destructive">{t("performance.noModels")}</p> : null}
           {models.length > 0 && channels.length === 0 ? <p className="text-xs text-destructive">{t("performance.noChannels")}</p> : null}
-        </div>
+        </div></ScrollArea>
         <SheetFooter className="flex-row justify-end border-t">
           <SheetClose asChild><Button variant="outline">{t("performance.cancel")}</Button></SheetClose>
           <Button disabled={!effectiveModel || !effectiveChannel} onClick={() => { setSelectionOpen(false); setPerformanceOpen(true) }}>{t("performance.continue")}</Button>
