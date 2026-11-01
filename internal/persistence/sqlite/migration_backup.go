@@ -32,9 +32,8 @@ func backupMigrationSource(ctx context.Context, path string, baseline historical
 		return "", runnerBackupError(ctx, "open migration backup source", err)
 	}
 	defer source.close()
-	before, err := migrationFacts(ctx, source.conn, baseline.objects, false)
-	if err != nil {
-		return "", runnerBackupError(ctx, "read migration backup source", err)
+	if err := validateSchemaObjects(ctx, source.conn, baseline.objects); err != nil {
+		return "", err
 	}
 	directory, err := os.MkdirTemp(filepath.Dir(source.path), filepath.Base(source.path)+".upgrade-backup-")
 	if err != nil {
@@ -72,9 +71,9 @@ func backupMigrationSource(ctx context.Context, path string, baseline historical
 	if err := validateIntegrity(ctx, backup.conn); err != nil {
 		return "", runnerBackupError(ctx, "verify migration backup integrity", err)
 	}
-	if err := verifyMigrationFacts(ctx, backup.conn, before); err != nil {
-		return "", err
-	}
+	// The online backup API copies the complete, WAL-visible snapshot while
+	// Migrate holds the writer lock. Verify its structure and integrity above;
+	// rehashing every source and destination value duplicates that page copy.
 	if err := source.verifyIdentity(); err != nil {
 		return "", err
 	}

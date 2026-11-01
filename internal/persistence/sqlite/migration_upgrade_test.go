@@ -212,7 +212,7 @@ func TestUpgradeCompetingWriterAndCancellationDoNotMutate(t *testing.T) {
 	}
 }
 
-func historicalMigrationFixture(t *testing.T, baseline historicalBaseline, suffix ...string) string {
+func historicalMigrationFixture(t testing.TB, baseline historicalBaseline, suffix ...string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "historical.db")
 	db := migrationTestDB(t, path)
@@ -394,7 +394,7 @@ func assertMigratedJobsPreserved(t *testing.T, path string, baseline historicalB
 	}
 }
 
-func migrationTestDB(t *testing.T, path string) *sql.DB {
+func migrationTestDB(t testing.TB, path string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", path)
 	if err != nil {

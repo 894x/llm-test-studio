@@ -46,13 +46,6 @@ func recordV3Migration(ctx context.Context, conn *sql.Conn, appVersion string) e
 }
 
 func upgradeQueryIndexes(ctx context.Context, conn *sql.Conn, path string, options MigrateOptions, backup bool) error {
-	if err := validateIntegrity(ctx, conn); err != nil {
-		return err
-	}
-	facts, err := migrationFacts(ctx, conn, schemaV2Objects, false)
-	if err != nil {
-		return err
-	}
 	if backup {
 		options.progress("backing_up", 2)
 		if _, err := backupMigrationSource(ctx, path, historicalBaseline{objects: schemaV2Objects}); err != nil {
@@ -65,9 +58,7 @@ func upgradeQueryIndexes(ctx context.Context, conn *sql.Conn, path string, optio
 			return err
 		}
 	}
-	if err := verifyMigrationFacts(ctx, conn, facts); err != nil {
-		return err
-	}
+	// Index creation reads existing rows without rewriting their stored values.
 	return recordV3Migration(ctx, conn, options.AppVersion)
 }
 

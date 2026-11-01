@@ -90,8 +90,8 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 	if err := configureConnection(ctx, conn, busyTimeout); err != nil {
 		return err
 	}
-	// SQLite's documented table-rebuild procedure requires this before BEGIN.
-	// Both the source and the completed transaction are checked for FK integrity.
+	// SQLite's table-rebuild procedure requires this before BEGIN. The backup
+	// verifies source integrity; data-rewriting upgrades also validate the result.
 	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
 		return fmt.Errorf("prepare sqlite migration constraints: %w", err)
 	}
@@ -148,11 +148,15 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 		if err := upgradeHistoryRecycle(ctx, conn, path, options, state.version == 3); err != nil {
 			return err
 		}
+	}
+	options.progress("validating", state.version)
+	// Only v1 rewrites business data. Additive upgrades preserve its bytes and
+	// must not decode every historical document against today's domain rules.
+	if state.version == 1 {
 		if _, err := runnerSnapshotFacts(ctx, conn); err != nil {
 			return fmt.Errorf("validate upgraded documents: %w", err)
 		}
 	}
-	options.progress("validating", state.version)
 	if err := validateAppliedSchema(ctx, conn); err != nil {
 		return err
 	}

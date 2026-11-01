@@ -40,13 +40,6 @@ func upgradeHistoryRecycle(
 	options MigrateOptions,
 	backup bool,
 ) error {
-	if err := validateIntegrity(ctx, conn); err != nil {
-		return err
-	}
-	facts, err := migrationFacts(ctx, conn, schemaV3Objects, false)
-	if err != nil {
-		return err
-	}
 	if backup {
 		options.progress("backing_up", 3)
 		if _, err := backupMigrationSource(ctx, path, historicalBaseline{objects: schemaV3Objects}); err != nil {
@@ -59,11 +52,7 @@ func upgradeHistoryRecycle(
 			return fmt.Errorf("apply sqlite history recycle object %q: %w", object.name, err)
 		}
 	}
-	if err := verifyMigrationFacts(ctx, conn, facts); err != nil {
-		return err
-	}
-	if err := validateIntegrity(ctx, conn); err != nil {
-		return err
-	}
+	// These empty tables and their indexes cannot change historical rows.
+	// Migrate validates the target schema before committing the transaction.
 	return recordCurrentMigration(ctx, conn, options.AppVersion)
 }

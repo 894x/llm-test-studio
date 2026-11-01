@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func queryIndexesV2Fixture(t *testing.T) string {
+func queryIndexesV2Fixture(t testing.TB) string {
 	t.Helper()
 	raw, err := os.ReadFile("testdata/migrations/e72dc1fc.json")
 	if err != nil {

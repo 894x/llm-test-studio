@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func historyRecycleV3Fixture(t *testing.T) string {
+func historyRecycleV3Fixture(t testing.TB) string {
 	t.Helper()
 	raw, err := os.ReadFile("testdata/migrations/82e10184.json")
 	if err != nil {
