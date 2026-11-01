@@ -69,16 +69,16 @@ export function EntryCaseTable({
   }, [caseNavigationRequest, entry.cases, entry.entry_id, page, selectedCaseID])
 
   return <>
-    <div className="overflow-x-auto">
-      <Table aria-label={t("protocolDesign.caseTable")} className={paginate ? "table-fixed" : "min-w-[660px]"}
+    <div className={paginate ? "overflow-x-auto" : "min-w-0"}>
+      <Table aria-label={t("protocolDesign.caseTable")} className="table-fixed"
         style={paginate ? { minWidth: minimumTableWidth } : undefined}>
-        {paginate ? <colgroup>
+        <colgroup>
           <col />
           <col style={{ width: 88 }} />
           <col style={{ width: 80 }} />
           {columns.map((column, index) => <col key={column.id} style={{ width: columnWidths[index] }} />)}
           <col style={{ width: summaryWidth }} />
-        </colgroup> : null}
+        </colgroup>
         <TableHeader><TableRow className="hover:bg-transparent">
           <TableHead className="h-8 pl-3 text-[11px]">{t("protocolDesign.caseName")}</TableHead>
           <TableHead className="h-8 text-[11px]">{t("protocolDesign.severity")}</TableHead>
@@ -107,14 +107,14 @@ export function EntryCaseTable({
                 <TooltipTrigger asChild><Button type="button" variant="ghost" size="sm"
                   className={`h-auto min-h-7 max-w-full justify-start py-1 text-left ${paginate ? "w-full min-w-0" : "whitespace-normal"}`}
                   aria-expanded={open} aria-controls={detailID}>
-                  {open ? <ChevronDownIcon /> : <ChevronRightIcon />}<span className={paginate ? "min-w-0 truncate" : "break-words"}>{caseItem.name}</span>
+                  {open ? <ChevronDownIcon /> : <ChevronRightIcon />}<span className={paginate ? "min-w-0 truncate" : "min-w-0 [overflow-wrap:anywhere]"}>{caseItem.name}</span>
                 </Button></TooltipTrigger>
                 <TooltipContent className="whitespace-normal [overflow-wrap:anywhere]">{caseItem.name}</TooltipContent>
               </Tooltip></TooltipProvider></TableCell>
               <TableCell className="py-1"><CaseSeverityBadge severity={caseItem.severity} /></TableCell>
               <TableCell className="py-1"><VerificationBadge status={caseItem.verification.status} /></TableCell>
               {columns.map(column => <TableCell key={column.id} className="py-1 text-xs tabular-nums">{caseColumn(caseItem, column)}</TableCell>)}
-              <TableCell className="py-1 pr-3 text-[11px]"><VerificationCounts summary={caseItem.verification} compact={paginate} /></TableCell>
+              <TableCell className="py-1 pr-3 text-[11px]"><VerificationCounts summary={caseItem.verification} compact /></TableCell>
             </TableRow>
             {open ? <TableRow id={detailID} className="hover:bg-transparent"><TableCell colSpan={columns.length + 4} className="bg-muted/20 p-3">
               <div className="mb-2 break-all font-mono text-[10px] text-muted-foreground">{caseItem.key} · {caseItem.case_id}</div>

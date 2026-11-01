@@ -64,6 +64,10 @@ describe("compact protocol reports", () => {
       expect(element).toHaveTextContent("Case 0")
       expect(element).toHaveTextContent("Case 79")
       expect(element).toHaveTextContent("1 passed · 0 failed · 0 observed · 0 indeterminate")
+      const table = within(element).getByRole("table", { name: "Cases in execution entry", hidden: true })
+      expect(table).toHaveClass("table-fixed")
+      expect(table.parentElement).not.toHaveClass("overflow-x-auto")
+      expect(within(table).getAllByRole("group", { name: /1 passed/, hidden: true })).toHaveLength(80)
       return { filename: `${detail.report.id}.html`, mediaType: "text/html", blob: new Blob(["report"]) }
     })
     const user = userEvent.setup()
