@@ -10,6 +10,7 @@ export function PageFrame({
   count,
   children,
   inspector,
+  inspectorFooter,
   inspectorLabel,
   actions,
 }: {
@@ -18,6 +19,7 @@ export function PageFrame({
   count?: string
   children: ReactNode
   inspector?: ReactNode
+  inspectorFooter?: ReactNode
   inspectorLabel?: string
   actions?: ReactNode
 }) {
@@ -49,6 +51,7 @@ export function PageFrame({
                     <SheetTitle>{inspectorLabel ?? t("page.details", { title })}</SheetTitle>
                   </SheetHeader>
                   <ScrollArea contentWidth="viewport" className="flex-1 pt-8">{detailsOpen ? inspector : null}</ScrollArea>
+                  {detailsOpen && inspectorFooter ? <div className="shrink-0 border-t border-divider">{inspectorFooter}</div> : null}
                 </SheetContent>
               </Sheet>
             ) : null}
@@ -61,9 +64,10 @@ export function PageFrame({
       {inspector !== undefined ? (
         <aside
           aria-label={inspectorLabel ?? t("page.details", { title })}
-          className="hidden min-h-0 min-w-0 w-[320px] shrink-0 border-l border-divider bg-background min-[1180px]:flex"
+          className="hidden min-h-0 min-w-0 w-[320px] shrink-0 flex-col border-l border-divider bg-background min-[1180px]:flex"
         >
           <ScrollArea contentWidth="viewport" className="flex-1">{detailsOpen ? null : inspector}</ScrollArea>
+          {!detailsOpen && inspectorFooter ? <div className="shrink-0 border-t border-divider">{inspectorFooter}</div> : null}
         </aside>
       ) : null}
     </main>

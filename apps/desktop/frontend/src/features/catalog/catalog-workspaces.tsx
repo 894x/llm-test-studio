@@ -754,7 +754,6 @@ export function PlansWorkspace({
   mutationError,
   commandPending,
   onStartPlan,
-  executionClient,
 }: {
   catalog: CatalogSnapshot
   actions: CatalogActions
@@ -783,11 +782,16 @@ export function PlansWorkspace({
       count={t("plans.count", { count: catalog.plans.length })}
       inspector={
         selected ? (
-          <PlanInspector key={`${selected.id}:${selected.revision}`} catalog={catalog} plan={selected} commandPending={commandPending} onStartPlan={onStartPlan} executionClient={executionClient} />
+          <PlanInspector plan={selected} />
         ) : (
           <EmptyInspector label={t("plans.noneSelected")} />
         )
       }
+      inspectorFooter={selected ? (
+        <div className="px-4 py-3">
+          <NewRunSheet key={`${selected.id}:${selected.revision}`} plans={[{ id: selected.id, name: selected.name, description: selected.protocol, caseCount: selected.case_count, runCount: 0 }]} catalog={catalog} commandPending={commandPending} triggerLabel={t("plans.run")} onStartRun={onStartPlan} />
+        </div>
+      ) : undefined}
       inspectorLabel={t("plans.details")}
       actions={<><CatalogEditor kind="plan" catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} />{selected ? <CatalogEditor key={`plan-${selected.id}`} kind="plan" item={selected} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} /> : null}<DeleteCatalogButton kind="plan" item={selected?.builtin ? undefined : selected} action={actions.deletePlan} mutate={mutate} pending={mutationPending} /></>}
     >
@@ -804,7 +808,6 @@ export function PlansWorkspace({
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 pl-2 text-[11px]">{t("common.plan")}</TableHead>
                 <TableHead className="h-8 text-[11px]">{t("plans.objects")}</TableHead>
-                <TableHead className="h-8 text-[11px]">{t("plans.configuration")}</TableHead>
                 <TableHead className="h-8 text-[11px]">{t("plans.executionPolicy")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -825,8 +828,12 @@ export function PlansWorkspace({
                   </TableCell>
                   <TableCell className="py-1 text-[11px] text-muted-foreground">
                     {t("protocolDesign.entryCount", { entries: plan.entry_count, cases: plan.case_count })}
+                    {plan.entry_count === 1 && plan.entries[0]?.performance ? (
+                      <div className="mt-1 text-xs tabular-nums text-text-secondary">
+                        <PerformanceProfileSummary profile={plan.entries[0].performance} compact />
+                      </div>
+                    ) : null}
                   </TableCell>
-                  <TableCell className="py-1 text-xs">{plan.performance ? <PerformanceProfileSummary profile={plan.performance} compact /> : plan.entries.map((suite, index) => `${index + 1}. ${suite.target_name}`).join(" → ")}</TableCell>
                   <TableCell className="py-1 text-[11px] text-muted-foreground">{t("plans.sequentialItems")}</TableCell>
                 </TableRow>
               ))}
@@ -838,25 +845,38 @@ export function PlansWorkspace({
   )
 }
 
-function PlanInspector({ plan, catalog, commandPending, onStartPlan }: {
-  plan: CatalogPlan; catalog: CatalogSnapshot; commandPending: boolean
-  onStartPlan: (command: StartRunTargetCommand) => Promise<void>; executionClient?: DesktopClient
-}) {
+function PlanInspector({ plan }: { plan: CatalogPlan }) {
   const { t } = useTranslation("catalog")
   return <>
     <InspectorHeader title={plan.name} subtitle={plan.id} />
     <dl className="space-y-1 px-4 py-2">
       <InspectorRow label={t("plans.fixedVersion")} value={`r${plan.revision}`} />
-      <InspectorRow label={t("plans.objects")} value={t("protocolDesign.entryCount", {entries:plan.entry_count,cases:plan.case_count})} />
+      <InspectorRow label={t("plans.executionItems")} value={t("protocolDesign.entryCount", { entries: plan.entry_count, cases: plan.case_count })} />
     </dl>
-    <ol className="space-y-3 px-4 py-2">
-      {plan.entries.map((entry,index) => <li key={entry.entry_id} className="min-w-0 space-y-1">
-        <div className="text-xs font-medium [overflow-wrap:anywhere]">{index+1}. {entry.name || entry.target_name}</div>
-        <div className="text-[11px] text-muted-foreground">{t(entry.performance ? "plans.performancePlan" : "plans.protocolPlan")} · {t(entry.on_failure === "stop" ? "plans.stop" : "plans.continue")}</div>
-        {entry.performance ? <PerformanceProfileSummary profile={entry.performance} compact /> : <div className="text-[11px] text-muted-foreground">{entry.target_name}</div>}
-      </li>)}
-    </ol>
-    <div className="px-4 py-3"><NewRunSheet plans={[{id:plan.id,name:plan.name,description:plan.protocol,caseCount:plan.case_count,runCount:0}]} catalog={catalog} commandPending={commandPending} triggerLabel={t("plans.run")} onStartRun={onStartPlan} /></div>
+    <section className="min-w-0 px-4 pb-4 pt-3" aria-label={t("plans.executionOrder")}>
+      <h2 className="mb-4 text-sm font-semibold">{t("plans.executionOrder")}</h2>
+      <ol className="space-y-5">
+        {plan.entries.map((entry, index) => {
+          const name = entry.name || entry.target_name
+          return (
+            <li key={entry.entry_id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3">
+              <span aria-hidden="true" className="min-w-5 pt-0.5 font-mono text-xs tabular-nums text-muted-foreground">{String(index + 1).padStart(2, "0")}</span>
+              <div className="min-w-0 space-y-1 [overflow-wrap:anywhere]">
+                <h3 className="text-[13px] font-medium leading-5">{name}</h3>
+                <p className="text-[11px] leading-5 text-muted-foreground">
+                  {t(entry.performance ? "plans.performanceEntry" : "plans.protocolEntry")} · {t(entry.on_failure === "stop" ? "plans.failureStop" : "plans.failureContinue")}
+                </p>
+                {entry.performance ? (
+                  <div className="text-xs leading-5 tabular-nums text-text-secondary"><PerformanceProfileSummary profile={entry.performance} compact /></div>
+                ) : entry.target_name !== name ? (
+                  <p className="text-xs leading-5 text-text-secondary">{t(entry.target_kind === "case" ? "plans.caseTarget" : "plans.suiteTarget", { name: entry.target_name })}</p>
+                ) : null}
+              </div>
+            </li>
+          )
+        })}
+      </ol>
+    </section>
   </>
 }
 
