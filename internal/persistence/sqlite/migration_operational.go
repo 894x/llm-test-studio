@@ -179,7 +179,7 @@ func upgradeControlTargets(ctx context.Context, conn *sql.Conn) error {
 func upgradeControlTarget(ctx context.Context, conn *sql.Conn, commandID, jobID string, raw []byte) error {
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(raw, &fields) != nil || len(fields) != 8 || fields["target"] != nil {
-		return errors.New("unsupported historical control fields")
+		return fmt.Errorf("%w: unsupported historical control fields", ErrMigrationDataIncompatible)
 	}
 	submission, err := querySubmission(ctx, conn, jobID)
 	if err != nil {
@@ -193,7 +193,7 @@ func upgradeControlTarget(ctx context.Context, conn *sql.Conn, commandID, jobID 
 	}
 	target, err := read.ControlTarget()
 	if err != nil {
-		return errors.New("historical control destination cannot be preserved")
+		return fmt.Errorf("%w: historical control destination cannot be preserved", ErrMigrationDataIncompatible)
 	}
 	targetJSON, err := marshalCanonical(target)
 	if err != nil {
@@ -206,10 +206,10 @@ func upgradeControlTarget(ctx context.Context, conn *sql.Conn, commandID, jobID 
 	}
 	record, err := decodeControlRecord(updated)
 	if err != nil || record.Command.CommandID != commandID || record.Command.JobID != jobID {
-		return errors.New("historical control identity cannot be preserved")
+		return fmt.Errorf("%w: historical control identity cannot be preserved", ErrMigrationDataIncompatible)
 	}
 	if err := record.ValidateFor(read); err != nil {
-		return errors.New("historical control acceptance cannot be preserved")
+		return fmt.Errorf("%w: historical control acceptance cannot be preserved", ErrMigrationDataIncompatible)
 	}
 	if _, err := conn.ExecContext(
 		ctx,

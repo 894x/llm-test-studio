@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 )
 
 // These seven frozen producers predate executor provenance in report documents.
@@ -38,7 +39,7 @@ func upgradeReportOrigins(ctx context.Context, conn *sql.Conn) error {
 			var fields map[string]json.RawMessage
 			validJSON := json.Unmarshal([]byte(document), &fields) == nil
 			if !validJSON || fields["schema_version"] == nil || fields["execution_origin"] != nil {
-				return errors.New("unsupported historical report fields")
+				return fmt.Errorf("%w: unsupported historical report fields", ErrMigrationDataIncompatible)
 			}
 			fields["execution_origin"] = json.RawMessage("null")
 			updated, err := json.Marshal(fields)

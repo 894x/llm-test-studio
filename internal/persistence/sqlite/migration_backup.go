@@ -113,12 +113,17 @@ func migrationFacts(
 		}
 		fact.digest, err = migrationTableDigest(ctx, conn, fact)
 		if err != nil {
+			if errors.Is(err, errInvalidHistoricalDocument) {
+				return nil, fmt.Errorf("%w: %w", ErrMigrationDataIncompatible, err)
+			}
 			return nil, err
 		}
 		facts = append(facts, fact)
 	}
 	return facts, nil
 }
+
+var errInvalidHistoricalDocument = errors.New("invalid historical migration document")
 
 func migrationColumns(ctx context.Context, conn relationQueryer, table string) ([]string, error) {
 	rows, err := conn.QueryContext(ctx, `SELECT name FROM pragma_table_info(?) ORDER BY cid`, table)
@@ -196,11 +201,11 @@ func migrationTableDigest(ctx context.Context, conn *sql.Conn, fact migrationTab
 				case []byte:
 					document = typed
 				default:
-					return "", errors.New("invalid migration document storage type")
+					return "", fmt.Errorf("%w: invalid storage type", errInvalidHistoricalDocument)
 				}
 				var fields map[string]json.RawMessage
 				if err := json.Unmarshal(document, &fields); err != nil {
-					return "", errors.New("invalid control document")
+					return "", fmt.Errorf("%w: invalid JSON object", errInvalidHistoricalDocument)
 				}
 				if fact.stripTarget {
 					delete(fields, "target")

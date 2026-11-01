@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -91,18 +92,49 @@ func prepareDatabaseRecovery(
 			resultErr = errors.Join(resultErr, ownership.Close())
 		}
 	}()
+	defer func() {
+		if resultErr != nil && initializer != nil {
+			resultErr = &bridge.DatabaseActivationUncertain{Cause: resultErr}
+			initializer = nil
+		}
+	}()
 	// Resolve again under ownership: a different desktop may have recovered since
 	// this window failed. A current or damaged database must not be reset here.
 	_, source, err = recoveryStoragePaths(options)
 	if err != nil {
 		return nil, err
 	}
-	_, err = sqlite.SchemaVersion(ctx, source)
-	if err == nil {
-		return nil, errors.New("database is no longer an incompatible recovery candidate; reopen the application")
-	}
-	if !errors.Is(err, sqlite.ErrSchemaResetRequired) {
+	info, err := os.Stat(source)
+	if err != nil {
 		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("recovery source is not a regular database file")
+	}
+	db, err := sql.Open("sqlite", source)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { resultErr = errors.Join(resultErr, db.Close()) }()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { resultErr = errors.Join(resultErr, conn.Close()) }()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return nil, fmt.Errorf("lock recovery source: %w", err)
+	}
+	defer func() {
+		_, err := conn.ExecContext(context.Background(), "ROLLBACK")
+		resultErr = errors.Join(resultErr, err)
+	}()
+	version, err := sqlite.SchemaVersion(ctx, source)
+	schemaIncompatible := errors.Is(err, sqlite.ErrSchemaResetRequired)
+	if err != nil && !schemaIncompatible {
+		return nil, err
+	}
+	if err == nil && (version == 0 || version >= sqlite.CurrentSchemaVersion) {
+		return nil, errors.New("database is no longer an incompatible recovery candidate; reopen the application")
 	}
 	backupDirectory, err := os.MkdirTemp(directory, "database-recovery-")
 	if err != nil {
@@ -112,6 +144,11 @@ func prepareDatabaseRecovery(
 	backup, err := sqlite.BackupIncompatibleDatabase(ctx, source, filepath.Join(backupDirectory, "original.sqlite"))
 	if err != nil {
 		return nil, err
+	}
+	if !schemaIncompatible {
+		if err := verifyMigrationIncompatibility(ctx, backupDirectory, options.AppVersion); err != nil {
+			return nil, err
+		}
 	}
 	relativeSource, err := filepath.Rel(directory, source)
 	if err != nil {
@@ -163,6 +200,10 @@ func prepareDatabaseRecovery(
 		return nil, err
 	}
 	bridge.ReportStartupProgress(ctx, "database_activating", 0, sqlite.CurrentSchemaVersion)
+	currentSource, err := os.Stat(source)
+	if err != nil || !os.SameFile(info, currentSource) {
+		return nil, errors.New("recovery source file changed before activation")
+	}
 	if err := storage.write(ctx, filepath.Join(directory, databaseSelectionName), selection); err != nil {
 		current, exists, readErr := readDatabaseSelection(directory)
 		published := exists && current.DatabaseDirectory == filepath.Base(freshDirectory)
@@ -172,4 +213,26 @@ func prepareDatabaseRecovery(
 		return nil, err
 	}
 	return newInitializer(options, ownership), nil
+}
+
+// Reproduce content incompatibility on a disposable snapshot under desktop
+// ownership. A changed, now-compatible source must never be switched away.
+func verifyMigrationIncompatibility(ctx context.Context, backupDirectory, appVersion string) (resultErr error) {
+	probeDirectory, err := os.MkdirTemp(backupDirectory, "migration-probe-")
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, os.RemoveAll(probeDirectory)) }()
+	probe := filepath.Join(probeDirectory, "probe.sqlite")
+	if _, err := sqlite.BackupIncompatibleDatabase(ctx, filepath.Join(backupDirectory, "original.sqlite"), probe); err != nil {
+		return err
+	}
+	err = sqlite.Migrate(ctx, probe, sqlite.MigrateOptions{AppVersion: appVersion})
+	if errors.Is(err, sqlite.ErrMigrationDataIncompatible) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("recheck historical data incompatibility: %w", err)
+	}
+	return errors.New("database is no longer an incompatible recovery candidate; reopen the application")
 }

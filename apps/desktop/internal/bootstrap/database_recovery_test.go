@@ -3,7 +3,10 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -219,5 +222,200 @@ func TestDatabaseRecoveryReopensAfterPublicationReportedAnError(t *testing.T) {
 	}
 	if after, _ := os.ReadFile(original); string(after) != string(before) {
 		t.Fatal("recovery after publication changed original data")
+	}
+}
+
+// Start with the frozen v1 producer fixture, changing only a historical report
+// to exercise a format that the source schema accepts but migration cannot use.
+func historicalContentRecoveryFixture(t *testing.T) (Options, string, string) {
+	t.Helper()
+	options, directory, path := incompatibleRecoveryFixture(t)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join("..", "..", "..", "..", "internal", "persistence", "sqlite")
+	var catalog struct {
+		Objects map[string]struct {
+			DDL string `json:"ddl"`
+		} `json:"objects"`
+		Baselines []struct {
+			Commit  string   `json:"commit"`
+			Objects []string `json:"objects"`
+		} `json:"baselines"`
+	}
+	payload, err := os.ReadFile(filepath.Join(root, "migrations", "operational_baselines.json"))
+	if err != nil || json.Unmarshal(payload, &catalog) != nil {
+		t.Fatal("cannot load frozen migration catalog", err)
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, baseline := range catalog.Baselines {
+		if strings.HasPrefix(baseline.Commit, "8190caae") {
+			for _, key := range baseline.Objects {
+				if _, err := db.ExecContext(t.Context(), catalog.Objects[key].DDL); err != nil {
+					t.Fatal(err)
+				}
+			}
+			break
+		}
+	}
+	file, err := os.Open(filepath.Join(root, "testdata", "migrations", "8190caae.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	var fixture struct {
+		Tables []struct {
+			Table   string   `json:"table"`
+			Columns []string `json:"columns"`
+			Rows    [][]any  `json:"rows"`
+		} `json:"tables"`
+	}
+	decoder := json.NewDecoder(file)
+	decoder.UseNumber()
+	if err := decoder.Decode(&fixture); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range fixture.Tables {
+		query := fmt.Sprintf("INSERT INTO \"%s\" (\"%s\") VALUES (%s)", table.Table,
+			strings.Join(table.Columns, `","`), strings.TrimSuffix(strings.Repeat("?,", len(table.Columns)), ","))
+		for _, row := range table.Rows {
+			for index, value := range row {
+				switch value := value.(type) {
+				case json.Number:
+					integer, err := value.Int64()
+					if err == nil {
+						row[index] = integer
+					} else if row[index], err = value.Float64(); err != nil {
+						t.Fatal(err)
+					}
+				case map[string]any:
+					row[index], err = base64.StdEncoding.DecodeString(value["blob"].(string))
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if _, err := db.ExecContext(t.Context(), query, row...); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, err := db.ExecContext(t.Context(), `PRAGMA user_version = 1;
+		UPDATE reports SET document_json = json_set(document_json, '$.execution_origin', 'incompatible')`); err != nil {
+		t.Fatal(err)
+	}
+	return options, directory, path
+}
+
+func TestHistoricalContentFailureCanRecoverWithoutChangingOriginal(t *testing.T) {
+	options, directory, original := historicalContentRecoveryFixture(t)
+	before, err := os.ReadFile(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := bridge.New(NewInitializer(options))
+	bridge.ConfigureDatabaseRecovery(app, NewDatabaseRecovery(options))
+	bridge.Startup(app, t.Context())
+	defer bridge.Shutdown(app)
+	if progress := app.GetStartupProgress(); progress.FailureCode != "database_unsupported" || !progress.RecoveryAvailable {
+		t.Fatalf("historical content recovery unavailable: %+v", progress)
+	}
+	result, err := app.BackupAndCreateDatabase()
+	if err != nil || result.Status != "completed" || !result.WorkspaceReady {
+		t.Fatalf("recovery = %+v, %v", result, err)
+	}
+	selection, exists, err := readDatabaseSelection(directory)
+	if err != nil || !exists {
+		t.Fatal("missing selection", err)
+	}
+	backup := filepath.Join(directory, selection.BackupDirectory, "original.sqlite")
+	db, err := sql.Open("sqlite", backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var origin string
+	err = db.QueryRowContext(t.Context(), `SELECT json_extract(document_json, '$.execution_origin') FROM reports LIMIT 1`).Scan(&origin)
+	if closeErr := db.Close(); err != nil || closeErr != nil || origin != "incompatible" {
+		t.Fatal("backup lost historical report", origin, err, closeErr)
+	}
+	after, err := os.ReadFile(original)
+	if err != nil || string(before) != string(after) {
+		t.Fatal("recovery changed original", err)
+	}
+	if err := bridge.Shutdown(app); err != nil {
+		t.Fatal(err)
+	}
+	reopened := bridge.New(NewInitializer(options))
+	bridge.Startup(reopened, t.Context())
+	defer bridge.Shutdown(reopened)
+	if reopened.GetStartupProgress().Status != "completed" {
+		t.Fatal("new workspace did not survive reopening")
+	}
+}
+
+func TestHistoricalContentRecoveryRejectsSourceFixedAfterStartup(t *testing.T) {
+	options, directory, original := historicalContentRecoveryFixture(t)
+	app := bridge.New(NewInitializer(options))
+	bridge.ConfigureDatabaseRecovery(app, NewDatabaseRecovery(options))
+	bridge.Startup(app, t.Context())
+	defer bridge.Shutdown(app)
+	if !app.GetStartupProgress().RecoveryAvailable {
+		t.Fatal("expected recoverable failure")
+	}
+	db, err := sql.Open("sqlite", original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.ExecContext(t.Context(), `UPDATE reports SET document_json = json_remove(document_json, '$.execution_origin')`)
+	if closeErr := db.Close(); err != nil || closeErr != nil {
+		t.Fatal(err, closeErr)
+	}
+	result, err := app.BackupAndCreateDatabase()
+	if err != nil || result.Status != "failed" {
+		t.Fatalf("fixed source was switched: %+v %v", result, err)
+	}
+	if _, exists, err := readDatabaseSelection(directory); err != nil || exists {
+		t.Fatal("fixed source was replaced", err)
+	}
+	if version, err := sqlite.SchemaVersion(t.Context(), original); err != nil || version != 1 {
+		t.Fatal("source was migrated", version, err)
+	}
+}
+
+func TestRecoveryKeepsSourceWriteLockedUntilActivation(t *testing.T) {
+	options, _, original := incompatibleRecoveryFixture(t)
+	storage := defaultDatabaseRecoveryIO()
+	write := storage.write
+	checked := false
+	storage.write = func(ctx context.Context, path string, payload []byte) error {
+		if filepath.Base(path) == databaseSelectionName {
+			db, err := sql.Open("sqlite", original)
+			if err != nil {
+				return err
+			}
+			_, writeErr := db.ExecContext(ctx, "INSERT INTO customer_history VALUES ('concurrent writer')")
+			closeErr := db.Close()
+			if writeErr == nil {
+				return errors.New("recovery did not protect its source from a concurrent writer")
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+			checked = true
+		}
+		return write(ctx, path, payload)
+	}
+	initialize, err := prepareDatabaseRecovery(t.Context(), options, storage)
+	if err != nil || initialize == nil || !checked {
+		t.Fatalf("recovery lock verification failed: checked=%t err=%v", checked, err)
+	}
+	app := bridge.New(initialize)
+	bridge.Startup(app, t.Context())
+	if err := bridge.Shutdown(app); err != nil {
+		t.Fatal(err)
 	}
 }

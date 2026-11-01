@@ -72,8 +72,8 @@
         "steps": ["Check that the data disk is connected and accessible. Reconnect external drives or network directories and check file access.", "Restore storage access, then quit this window and restart the application. If it still fails, provide the startup log."]
       },
       "database_unsupported": {
-        "title": "The local data version or structure could not be validated",
-        "description": "This application cannot safely recognize the data. Its version may be unsupported or its upgrade records may be invalid.",
+        "title": "The local data is incompatible with this version",
+        "description": "The application cannot safely recognize or migrate the data. The version, upgrade records, or historical content may be incompatible.",
         "steps": ["Use an application version that matches the data. If you recently downgraded, first return to the newer version you were using.", "Keep existing data and backups and provide the startup log to a maintainer to confirm an upgrade path. Do not delete the database or edit its version."]
       },
       "database_corrupt": {

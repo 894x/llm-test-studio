@@ -33,7 +33,7 @@ func classifyStartupFailure(err error) error {
 	switch {
 	case errors.Is(err, fileconfig.ErrLockBusy):
 		code = "workspace_busy"
-	case errors.Is(err, sqlite.ErrSchemaResetRequired):
+	case errors.Is(err, sqlite.ErrSchemaResetRequired), errors.Is(err, sqlite.ErrMigrationDataIncompatible):
 		code = "database_unsupported"
 	case errors.Is(err, os.ErrPermission):
 		code = "permission_denied"

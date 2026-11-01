@@ -9,7 +9,7 @@ describe("startup recovery guidance", () => {
     ["permission_denied", "无法读写本地数据", "读写权限"],
     ["disk_full", "磁盘空间不足，无法继续启动", "释放"],
     ["storage_unavailable", "无法访问本地存储", "恢复连接"],
-    ["database_unsupported", "本地数据版本或结构无法通过校验", "不要删除数据库或修改版本号"],
+    ["database_unsupported", "本地数据无法兼容当前版本", "不要删除数据库或修改版本号"],
     ["database_corrupt", "本地数据库无法正常读取", "附属文件"],
     ["backup_failed", "升级备份未完成", "不要跳过备份"],
     ["migration_failed", "历史数据升级未完成", "升级前备份"],

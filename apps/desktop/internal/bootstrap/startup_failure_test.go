@@ -25,6 +25,7 @@ func TestStartupFailureClassificationPreservesCause(t *testing.T) {
 		{name: "disk full", err: syscall.ENOSPC, code: "disk_full"},
 		{name: "missing storage", err: os.ErrNotExist, code: "storage_unavailable"},
 		{name: "unsupported schema", err: sqlite.ErrSchemaResetRequired, code: "database_unsupported"},
+		{name: "incompatible historical data", err: sqlite.ErrMigrationDataIncompatible, code: "database_unsupported"},
 		{name: "unknown cause", err: errors.New("private path and credential"), code: "unknown"},
 	}
 	for _, test := range cases {

@@ -29,6 +29,10 @@ func CurrentSchemaIdentity() (version int, name, checksum string) {
 // The name is retained for callers; this error never authorizes a data reset.
 var ErrSchemaResetRequired = errors.New("unsupported sqlite schema; preserve this database and explicitly upgrade it before opening")
 
+// ErrMigrationDataIncompatible identifies historical content that a migration
+// cannot safely transform. It does not authorize overwriting the source.
+var ErrMigrationDataIncompatible = errors.New("historical sqlite data is incompatible with migration")
+
 // MigrateOptions identifies the application creating the operational schema
 // and controls how long SQLite waits for a competing writer.
 type MigrateOptions struct {
