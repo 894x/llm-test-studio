@@ -9,7 +9,7 @@ import { useTransientOverlay } from "./use-transient-overlay"
 
 export type SelectOption = { value: string; label: string; disabled?: boolean; icon?: ReactNode }
 
-export function SearchableSelect({ value, onValueChange, options, disabled, id, className, placeholder, ...aria }: AriaAttributes & {
+export function SearchableSelect({ value, onValueChange, options, disabled, id, className, placeholder, trailing, ...aria }: AriaAttributes & {
   value: string
   onValueChange: (value: string) => void
   options: SelectOption[]
@@ -17,6 +17,7 @@ export function SearchableSelect({ value, onValueChange, options, disabled, id, 
   id?: string
   className?: string
   placeholder?: string
+  trailing?: ReactNode
 }) {
   const { t } = useTranslation("common")
   const container = useRef<HTMLDivElement>(null)
@@ -35,9 +36,9 @@ export function SearchableSelect({ value, onValueChange, options, disabled, id, 
         {selectedOption?.icon && <span aria-hidden="true" className="ml-2.5 flex shrink-0 items-center">{selectedOption.icon}</span>}
         <Combobox.Input id={id} {...aria} placeholder={placeholder ?? t("select.search")}
           className={cn("h-full min-w-0 flex-1 bg-transparent px-2.5 text-xs outline-none disabled:cursor-not-allowed disabled:text-text-disabled disabled:placeholder:text-text-disabled", selectedOption?.icon && "pl-2")} />
-        <Combobox.Trigger aria-label={t("actions.showOptions")} className="mr-0.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring disabled:pointer-events-none">
+        {trailing ?? <Combobox.Trigger aria-label={t("actions.showOptions")} className="mr-0.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring disabled:pointer-events-none">
           <ChevronDownIcon className="size-4" />
-        </Combobox.Trigger>
+        </Combobox.Trigger>}
       </Combobox.InputGroup>
       {!overlay.visibility.dismissed && <Combobox.Portal container={portalContainer}>
         <Combobox.Positioner data-slot="select-positioner" positionMethod="fixed" sideOffset={4} align="start" className="z-50 isolate">

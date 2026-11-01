@@ -68,7 +68,7 @@ const HistoryRecycleWorkspace = lazy(() => import("@/features/history-recycle/hi
 
 const PAGE_READS = {
   overview: ["overview"],
-  "quick-test": ["quickCatalog"],
+  "quick-test": ["connections", "definitions"],
   catalog: ["connections"], cases: ["definitions"], plans: ["catalog"],
   runs: [], reports: ["reports"], "recycle-bin": [],
 } as const
@@ -135,6 +135,13 @@ function AppWorkspace({
   const connectionState = useResource(resources.connections)
   const definitionState = useResource(resources.definitions)
   const quickCatalogState = useResource(resources.quickCatalog)
+  const quickCatalog = useMemo<CatalogSnapshot>(() => ({
+    ...(definitionState.data ?? EMPTY_CATALOG),
+    models: connectionState.data?.models ?? [],
+    channels: connectionState.data?.channels ?? [],
+    channel_models: connectionState.data?.channel_models ?? [],
+    plans: quickCatalogState.data?.plans ?? [],
+  }), [connectionState.data, definitionState.data, quickCatalogState.data])
   const reportState = useResource(resources.reports)
   const comparisonState = useResource(resources.comparisons)
   const snapshot = useMemo(() => workspaceState.data && ({ ...workspaceState.data,
@@ -625,12 +632,18 @@ function AppWorkspace({
       </div>
     ) : null
 
-      return (page === "runs" && startup?.status !== "running" && startup?.status !== "failed" ? null : pageStatus) ?? (page === "overview" ? (
+      return ((page === "runs" || page === "quick-test") && startup?.status !== "running" && startup?.status !== "failed" ? null : pageStatus) ?? (page === "overview" ? (
         <OverviewWorkspace workspace={{ ...overviewState.data!.workspace, runs: overviewState.data!.workspace.runs.filter(run => !hiddenHistory.runs.has(run.id) && !hiddenHistory.jobs.has(run.job_id ?? "")) }} catalog={EMPTY_CATALOG} reports={{ ...overviewState.data!.reports, reports: overviewState.data!.reports.reports.filter(report => !hiddenHistory.reports.has(report.id) && !hiddenHistory.runs.has(report.run_id ?? "")) }} counts={overviewState.data!.catalog} runCount={overviewState.data!.run_count} reportCount={overviewState.data!.report_count} onOpenReport={openReport}
           onNavigate={openOverviewDestination} onOpenRun={id => { setPreferredJob(null); setPreferredRunID(id); setOverviewDestination("runs"); navigate("runs") }} />
       ) : page === "quick-test" ? (
         <QuickTaskPage
-          catalog={catalog!}
+          catalog={quickCatalog}
+          catalogResources={{
+            connections: { ready: connectionState.data !== null, failed: connectionState.error !== null, retry: resources.connections.refresh },
+            tasks: { ready: definitionState.data !== null, failed: definitionState.error !== null, retry: resources.definitions.refresh },
+            plans: { ready: quickCatalogState.data !== null, failed: quickCatalogState.error !== null, retry: resources.quickCatalog.refresh },
+          }}
+          loadPerformancePlans={resources.quickCatalog.load}
           historyRevision={reportGeneration}
           draft={quickDraft}
           onDraftChange={setQuickDraft}

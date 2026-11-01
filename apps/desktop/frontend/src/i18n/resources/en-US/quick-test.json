@@ -1,4 +1,15 @@
 {
+  "catalog": {
+    "connectionsLoading": "Loading channels and models…",
+    "connectionsFailed": "Channels and models could not be loaded. Your inputs have been kept.",
+    "connectionsRetry": "Retry loading channels and models",
+    "tasksLoading": "Loading test tasks…",
+    "tasksFailed": "Test tasks could not be loaded. Your inputs have been kept.",
+    "tasksRetry": "Retry loading test tasks",
+    "plansLoading": "Loading performance plans…",
+    "plansFailed": "Performance plans could not be loaded. You can still configure parameters manually.",
+    "plansRetry": "Retry loading performance plans"
+  },
   "historyPage": {
     "loading": "Loading records…",
     "error": "Could not load records. Loaded records are preserved.",
@@ -20,6 +31,7 @@
     "empty": "No matching model; keep the current input"
   },
   "performance": {
+    "loading": "Loading the performance test form…",
     "loadAndRouting": "Load and routing",
     "requestParameters": "Request parameters",
     "affinity": "Enable affinity",

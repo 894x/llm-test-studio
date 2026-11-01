@@ -7,7 +7,7 @@ import type { ReportGenerationProgress } from "@/features/reports/generation-pro
 import { QuickTaskWorkspace } from "./quick-task-workspace"
 import { useQuickHistory } from "./use-quick-history"
 
-type Props = Omit<ComponentProps<typeof QuickTaskWorkspace>, "workspace" | "reports" | "refresh" | "historyFooter"> & {
+type Props = Omit<ComponentProps<typeof QuickTaskWorkspace>, "workspace" | "reports" | "refresh" | "historyFooter" | "historyReady"> & {
   actions: DesktopClient
   historyRevision: Record<string, ReportGenerationProgress>
 }
@@ -55,7 +55,7 @@ export function QuickTaskPage({ actions, historyRevision, onJobChange, onPerform
   return <QuickTaskWorkspace {...props} actions={actions} historyChanges={historyChanges}
     onHistoryChanged={async (entry, action) => { await applyHistoryChange(entry, action); await onHistoryChanged?.(entry, action) }}
     workspace={{ schema_version: 1, plans: [], runs: data.runs }}
-    reports={{ schema_version: 1, reports: data.reports }} refresh={refresh} historyFooter={footer}
+    reports={{ schema_version: 1, reports: data.reports }} refresh={refresh} historyFooter={footer} historyReady={loaded}
     onJobChange={receiveJob}
     onPerformanceArchived={receiveArchive} />
 }

@@ -211,6 +211,7 @@ describe("Suite quick task workspace", () => {
     const jobs = [1, 2, 3].map(index => jobFixture({ job_id: `a1111111-1111-4111-8111-11111111111${index}`, report_ids: [] }))
     actions.getJob.mockImplementation(async id => jobs.find(job => job.job_id === id)!)
     await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await screen.findByRole("button", { name: "开始性能测试" })
     for (let index = 0; index < jobs.length; index++) {
       actions.launchJob.mockResolvedValueOnce(jobs[index])
       await user.clear(screen.getByLabelText("模型 ID"))
@@ -238,6 +239,20 @@ describe("Suite quick task workspace", () => {
     await user.click(within(failed).getByRole("button", { name: "执行详情 快速性能测试" }))
     await waitFor(() => expect(actions.onOpenExecution).toHaveBeenCalledWith(jobs[0]))
   }, 10_000)
+
+  it("unlocks the functional form when a performance submission finishes while its form is hidden", async () => {
+    const user = userEvent.setup()
+    const actions = setup({ ...createTaskDraft(FIXTURE_CATALOG.suites[1]), base_url: "https://example.test", api_key: "private-key", model: "model" })
+    let accept!: (job: ReturnType<typeof jobFixture>) => void
+    actions.launchJob.mockReturnValueOnce(new Promise(resolve => { accept = resolve }))
+    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await user.click(await screen.findByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(actions.launchJob).toHaveBeenCalledTimes(1))
+    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    expect(screen.getByRole("button", { name: "开启功能测试" })).toBeDisabled()
+    await act(async () => accept(jobFixture()))
+    await waitFor(() => expect(screen.getByRole("button", { name: "开启功能测试" })).toBeEnabled())
+  })
 
   it("lists a remote functional submission before a local run exists and follows its execution", async () => {
     const user = userEvent.setup()

@@ -1,6 +1,7 @@
 import { performanceProfilesEqual } from "./performance-profile"
 import { isQuickPerformanceProtocol, type QuickPerformanceCommand, type QuickPerformanceProfile, type QuickPerformanceReport } from "./data"
 import {
+  lazy,
   useCallback,
   useEffect,
   useRef,
@@ -13,6 +14,7 @@ import {
 import { useTranslation } from "react-i18next"
 import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
 import SaveIcon from "lucide-react/dist/esm/icons/save.mjs"
+import RotateCwIcon from "lucide-react/dist/esm/icons/rotate-cw.mjs"
 import { controlRun, jobControlRevision, jobControlStatus, launchAtDefault, type JobClient } from "@/features/jobs/execution"
 import { isJobTerminal, type ControlView, type JobView } from "@/features/jobs/data"
 import { useJobObservation } from "@/features/jobs/use-job-observation"
@@ -42,7 +44,8 @@ import type { CatalogProtocol, CatalogSnapshot, CatalogSuite, SaveQuickTestTarge
 import { DEFAULT_CASE_CONCURRENCY, isRunActive, type WorkspaceSnapshot } from "@/features/runs/data"
 import { CaseConcurrencyField } from "@/features/runs/case-concurrency-field"
 import type { ReportSnapshot } from "@/features/reports/data"
-import { QuickPerformancePanel, type QuickPerformanceConnection } from "./quick-performance-sheet"
+import type { QuickPerformanceConnection } from "./quick-performance-sheet"
+import { RetainedWorkspace } from "@/features/shell/retained-workspace"
 import { createTaskDraft, quickTaskCommand, restoreTaskDraft, type TaskDraft } from "./task-draft"
 import { cn } from "@/lib/utils"
 import { PROTOCOLS } from "@/features/catalog/protocols"
@@ -56,6 +59,8 @@ import { ModelIcon, ProtocolIcon } from "./model-icon"
 import type { HistoryChanged, HistoryVisibilityChange } from "@/features/history-recycle/data"
 import { RecycleHistoryButton, type HistoryRecycleClient } from "@/features/history-recycle/recycle-history-button"
 import { historyVisibility } from "@/features/history-recycle/visibility"
+
+const QuickPerformancePanel = lazy(() => import("./quick-performance-sheet").then(module => ({ default: module.QuickPerformancePanel })))
 
 type Actions = JobClient & Partial<HistoryRecycleClient> & Pick<
   DesktopClient,
@@ -71,6 +76,14 @@ type Actions = JobClient & Partial<HistoryRecycleClient> & Pick<
 type PerformanceHistorySettings = Pick<QuickPerformanceReport,
   "protocol" | "address_mode" | "base_url" | "endpoint" | "model_id" | "profile"
 > & { channel_id?: string; credential_run_id?: string; suite_id?: string }
+
+type CatalogResource = {
+  ready: boolean
+  failed: boolean
+  retry: () => Promise<unknown>
+}
+
+type CatalogResources = Record<"connections" | "tasks" | "plans", CatalogResource>
 
 // Session display metadata only; never retain the submitted API key or payload.
 export type QuickTaskJobEntry = {
@@ -91,7 +104,10 @@ function performanceProfile({
 
 export function QuickTaskWorkspace({
   catalog,
+  catalogResources,
+  loadPerformancePlans,
   historyFooter,
+  historyReady = true,
   workspace,
   reports,
   draft,
@@ -112,7 +128,10 @@ export function QuickTaskWorkspace({
   historyChanges = [],
 }: {
   catalog: CatalogSnapshot
+  catalogResources?: CatalogResources
+  loadPerformancePlans?: () => Promise<unknown>
   historyFooter?: ReactNode
+  historyReady?: boolean
   workspace: WorkspaceSnapshot
   reports: ReportSnapshot
   draft: TaskDraft
@@ -175,6 +194,14 @@ export function QuickTaskWorkspace({
   const [refreshError, setRefreshError] = useState(false)
   const refreshGeneration = useRef(0)
   const [mode, setMode] = useState<"functional" | "performance">("functional")
+  useEffect(() => {
+    if (mode === "performance") void loadPerformancePlans?.().catch(() => {})
+  }, [mode, loadPerformancePlans])
+  const connectionsReady = catalogResources?.connections.ready ?? true
+  const tasksReady = catalogResources?.tasks.ready ?? true
+  const plansReady = catalogResources?.plans.ready ?? true
+  const taskResource = mode === "performance" ? catalogResources?.plans : catalogResources?.tasks
+  const connectionResource = catalogResources?.connections
   const [performancePending, setPerformancePending] = useState(false)
   const [performanceHistory, setPerformanceHistory] = useState<QuickTestHistoryItem[]>([])
   const appliedVisibilityChanges = useRef(0)
@@ -216,6 +243,11 @@ export function QuickTaskWorkspace({
           base_url: draft.base_url,
           api_key: draft.api_key,
           model: draft.model,
+          channel_id: draft.channel_id,
+          credential_run_id: draft.credential_run_id,
+          source_run_id: draft.source_run_id,
+          seed: draft.seed,
+          request_timeout_seconds: draft.request_timeout_seconds,
         }
   const tasks =
     task && !currentTasks.some((item) => taskKey(item) === taskKey(task))
@@ -226,7 +258,7 @@ export function QuickTaskWorkspace({
       channel.enabled && channel.credential_configured,
   )
   const channel = channels.find((item) => item.id === form.channel_id)
-  const missingChannel = !!form.channel_id && !channel
+  const missingChannel = connectionsReady && !!form.channel_id && !channel
   const performanceDescriptor = PROTOCOLS.find(item => item.id === selectedProtocol)!
   const performanceURL = resolveConnectionURL(channel?.base_url ?? form.base_url, performanceDescriptor.request_paths[0].path, performanceDescriptor.request_paths)
   const connectionURLs = mode === "performance" ? (performanceURL ? [performanceURL] : []) : taskConnectionURLs(channel?.base_url ?? form.base_url, task, catalog)
@@ -443,6 +475,7 @@ export function QuickTaskWorkspace({
     return checked.command
   }
   const validPerformanceConnection = () => {
+    if (!connectionsReady) return undefined
     const connectionFields = ["base_url", "api_key", "model", "channel_id"]
     const nextErrors = Object.fromEntries(Object.entries(quickTaskCommand(form).errors).filter(([field]) => connectionFields.includes(field)))
     if (missingChannel) nextErrors.channel_id = t("task.missingChannel")
@@ -455,7 +488,7 @@ export function QuickTaskWorkspace({
   }
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (inFlight.current) return
+    if (inFlight.current || !connectionsReady || !tasksReady) return
     const command = validCommand()
     if (!command) return
     inFlight.current = true
@@ -692,7 +725,7 @@ export function QuickTaskWorkspace({
                   onRecycled={(entry, action) => { setLocalHistoryChanges(current => [...current, { entry, action }]); setSelectedHistoryID(""); if (entry.run_ids.includes(runID)) onRunSelected("") }} onHistoryChanged={onHistoryChanged} /> : null
               } : undefined}
               onOpenReport={id => void onOpenReport(id)} onCancel={item => void cancel(item)} onRefresh={() => void refreshProgress()} />
-              : <p className="py-4 text-xs leading-relaxed text-muted-foreground">{t("task.noHistory")}</p>}
+              : historyReady ? <p className="py-4 text-xs leading-relaxed text-muted-foreground">{t("task.noHistory")}</p> : null}
             {historyFooter}
             {runID && !hidden.runs.has(runID) && !history.some(item => item.runID === runID) ? <p role="status" className="flex items-center gap-2 py-4 text-xs text-muted-foreground"><Spinner />{t("task.waiting")}</p> : null}
           </ScrollArea>
@@ -709,7 +742,7 @@ export function QuickTaskWorkspace({
             </div>
             {error ? <Alert variant="destructive" className="mb-4"><AlertDescription>{error}</AlertDescription></Alert> : null}
             {refreshError ? <Alert className="mb-4"><AlertDescription>{t("task.refreshFailed")}</AlertDescription><Button size="sm" variant="outline" onClick={() => void refreshProgress()}>{t("task.refresh")}</Button></Alert> : null}
-            {!task && mode === "functional" ? (
+            {!task && mode === "functional" && tasksReady ? (
               <>
                 <div className="mb-4">{protocolField}</div>
                 <Empty>
@@ -732,7 +765,8 @@ export function QuickTaskWorkspace({
                         setSelectedPerformancePlanID(value); setRestoredPerformanceProfile(undefined)
                         setPerformanceFormRevision(current => current + 1)
                       }}
-                      disabled={busy}
+                      disabled={busy || !(mode === "performance" ? plansReady : tasksReady)}
+                      trailing={taskResource && (!taskResource.ready || taskResource.failed) ? <CatalogStatus resource={taskResource} kind={mode === "performance" ? "plans" : "tasks"} /> : undefined}
                       id="quick-task-task"
                       aria-label={t("task.label")}
                       aria-invalid={!!errors.task || undefined}
@@ -747,7 +781,9 @@ export function QuickTaskWorkspace({
                   </TaskField>
                   <div className="grid min-w-0 grid-cols-4 items-start gap-x-4 gap-y-2">
                     <TaskField id="channel_id" label={t("fillChannel")} error={errors.channel_id} className="row-span-2 grid grid-rows-subgrid">
-                      <SearchableSelect value={missingChannel ? "missing" : form.channel_id || "manual"} disabled={busy} onValueChange={(value) => {
+                      <SearchableSelect value={missingChannel ? "missing" : form.channel_id || "manual"} disabled={busy || !connectionsReady}
+                        trailing={connectionResource && (!connectionResource.ready || connectionResource.failed) ? <CatalogStatus resource={connectionResource} kind="connections" /> : undefined}
+                        onValueChange={(value) => {
                         const selected = channels.find((item) => item.id === value)
                         update({
                           ...form,
@@ -806,7 +842,7 @@ export function QuickTaskWorkspace({
                           placeholder={t("model.placeholder")}
                         />
                         <AutocompleteContent>
-                          <AutocompleteEmpty>{t("model.empty")}</AutocompleteEmpty>
+                          <AutocompleteEmpty>{t(connectionsReady ? "model.empty" : "catalog.connectionsLoading")}</AutocompleteEmpty>
                           <AutocompleteList>
                             {(value) => (
                               <AutocompleteItem key={value} value={value} className="gap-2">
@@ -1001,7 +1037,7 @@ export function QuickTaskWorkspace({
                   </fieldset>
                   {hasFileInputs ? <Alert><AlertDescription>{t("fileInput.launchUnavailable")}</AlertDescription></Alert> : null}
                   <div className="flex flex-wrap justify-end gap-2">
-                    <Button type="submit" disabled={busy || hasFileInputs}>
+                    <Button type="submit" disabled={busy || hasFileInputs || !connectionsReady || !tasksReady}>
                       {pending === "start" ? (
                         <Spinner data-icon="inline-start" />
                       ) : (
@@ -1012,14 +1048,16 @@ export function QuickTaskWorkspace({
                   </div>
                   </form>
                   <div hidden={mode !== "performance"}>
+                    <RetainedWorkspace active={mode === "performance"} fallback={<p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner />{t("performance.loading")}</p>}>
                     {isQuickPerformanceProtocol(performanceConnection.protocol) ? <QuickPerformancePanel
                       key={performanceFormRevision} plans={catalog.plans}
                       initialProfile={restoredPerformanceProfile} initialPlanID={selectedPerformancePlanID} onPlanChange={setSelectedPerformancePlanID}
-                      embedded showPlanSelector={false} blocked={!!pending} connection={performanceConnection} actionsContainer={performanceActionsContainer}
+                      embedded showPlanSelector={false} blocked={!!pending || !connectionsReady} connection={performanceConnection} actionsContainer={performanceActionsContainer}
                       resolveConnection={validPerformanceConnection}
                       client={actions} onJobLaunched={performanceJobLaunched}
                       onPendingChange={setPerformancePending}
                     /> : <p className="text-xs text-muted-foreground">{t("task.performanceUnavailable")}</p>}
+                    </RetainedWorkspace>
                   </div>
                 </FieldGroup>
               </div>
@@ -1052,6 +1090,22 @@ export function QuickTaskWorkspace({
 
 function taskKey(task: CatalogSuite) {
   return `${task.id}:${task.revision}`
+}
+
+function CatalogStatus({ resource, kind }: { resource: CatalogResource; kind: "connections" | "tasks" | "plans" }) {
+  const { t } = useTranslation("quickTest")
+  const label = t(`catalog.${kind}${resource.failed ? "Failed" : "Loading"}`)
+  return <TooltipProvider delayDuration={250}><Tooltip>
+    <TooltipTrigger asChild>
+      {resource.failed ? <Button type="button" variant="ghost" size="icon-sm" className="mr-0.5 shrink-0 text-destructive"
+        aria-label={t(`catalog.${kind}Retry`)} aria-description={label}
+        onClick={() => void resource.retry().catch(() => {})}><RotateCwIcon aria-hidden="true" /></Button>
+        : <span role="status" aria-label={label} tabIndex={0} className="mr-0.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Spinner aria-hidden="true" /><span className="sr-only">{label}</span>
+        </span>}
+    </TooltipTrigger>
+    <TooltipContent>{label}</TooltipContent>
+  </Tooltip></TooltipProvider>
 }
 // Keep unselected submissions observable without mounting a second details panel.
 function QuickTaskJobObserver({ client, jobID, onChange, onArchived, waitingForReport, onUnavailable, onControls }: {

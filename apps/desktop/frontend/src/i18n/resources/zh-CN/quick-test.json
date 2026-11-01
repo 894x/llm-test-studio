@@ -1,4 +1,15 @@
 {
+  "catalog": {
+    "connectionsLoading": "正在加载渠道和模型…",
+    "connectionsFailed": "渠道和模型加载失败，已填写内容已保留。",
+    "connectionsRetry": "重试加载渠道和模型",
+    "tasksLoading": "正在加载测试任务…",
+    "tasksFailed": "测试任务加载失败，已填写内容已保留。",
+    "tasksRetry": "重试加载测试任务",
+    "plansLoading": "正在加载性能计划…",
+    "plansFailed": "性能计划加载失败，仍可手动配置参数。",
+    "plansRetry": "重试加载性能计划"
+  },
   "historyPage": {
     "loading": "正在加载记录…",
     "error": "记录加载失败，已加载内容已保留。",
@@ -20,6 +31,7 @@
     "empty": "无匹配模型，可继续使用当前输入"
   },
   "performance": {
+    "loading": "正在加载性能测试表单…",
     "loadAndRouting": "负载与路由",
     "requestParameters": "请求参数",
     "affinity": "启用亲和性",

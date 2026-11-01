@@ -1,7 +1,7 @@
 import { ExecutionOriginDetails } from "@/features/reports/execution-origin-details"
 import { formatPerformanceInteger } from "@/features/reports/performance-format"
 import { localizeStoredMessage, desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
+import { useCallback, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import CheckCircle2Icon from "lucide-react/dist/esm/icons/check-circle-2.mjs"
 import CircleAlertIcon from "lucide-react/dist/esm/icons/circle-alert.mjs"
@@ -212,7 +212,6 @@ export function QuickPerformancePanel({
   const jobs = submittedJobs ?? localJobs
   const externallyOwnedJobs = submittedJobs !== undefined
   const [operationError, setOperationError] = useState("")
-  useEffect(() => { onPendingChange?.(pending) }, [pending, onPendingChange])
   const observeJob = useCallback((observed: JobView) => {
     if (!externallyOwnedJobs) setJobs(current => current.map(entry => entry.job.job_id === observed.job_id ? { ...entry, job: observed } : entry))
     onJobChange?.(observed)
@@ -226,6 +225,7 @@ export function QuickPerformancePanel({
     if (!profile) return
     inFlight.current = true
     setPending(true)
+    onPendingChange?.(true)
     setOperationError("")
     const command: QuickPerformanceCommand = {
         protocol: target.protocol, address_mode: target.address_mode,
@@ -253,6 +253,7 @@ export function QuickPerformancePanel({
       .finally(() => {
         inFlight.current = false
         setPending(false)
+        onPendingChange?.(false)
       })
   }
 
