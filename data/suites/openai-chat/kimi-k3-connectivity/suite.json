@@ -3,7 +3,7 @@
   "key": "kimi-k3.kimi-k3.connectivity",
   "name": "kimi-k3 连通性测试",
   "protocol": "openai-chat",
-  "description": "发送一条消息并检查非流式响应和用量。",
+  "description": "一条非流式请求，检查响应与用量；日常检查已包含本用例，不必连续重复运行。",
   "cases": [
     {
       "case_id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96"

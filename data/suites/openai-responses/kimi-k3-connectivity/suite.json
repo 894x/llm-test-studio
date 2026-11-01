@@ -3,7 +3,7 @@
   "key": "openai-responses.kimi-k3.connectivity",
   "name": "Kimi K3 Responses 连通性",
   "protocol": "openai-responses",
-  "description": "Kimi K3 Responses 短请求、流式文本与用量连通性检查。",
+  "description": "短请求、流式文本与用量连通性检查；日常检查已包含这 3 个用例。",
   "cases": [
     {
       "case_id": "7df57c19-7d18-566a-998e-86342b7cee32"

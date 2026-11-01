@@ -3,7 +3,7 @@
   "key": "kimi-k3.1-pro-highspeed.extended",
   "name": "Kimi K3.1 Pro Highspeed 扩展与高成本套件",
   "protocol": "openai-chat",
-  "description": "多模态、缓存工作流和最大输出预算；需显式选择并授权成本。",
+  "description": "专项多模态、缓存及大输出预算场景，可能产生较高费用；完整设计套件已包含本套件。",
   "cases": [
     {
       "case_id": "a2a962dc-1c58-518c-b6cf-d324d39324e5"

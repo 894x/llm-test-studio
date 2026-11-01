@@ -3,7 +3,7 @@
   "key": "kimi-k3.official-foundation",
   "name": "Kimi K3 官方基础套件",
   "protocol": "openai-chat",
-  "description": "",
+  "description": "K3 Chat 完整回归入口，包含参数、工具、多模态和缓存场景；部分场景费用较高。日常检查优先选择 Kimi K3 Chat 日常检查。",
   "cases": [
     {
       "case_id": "8e41672a-ffa2-5461-998f-96d7cd660dea"
@@ -64,9 +64,6 @@
     },
     {
       "case_id": "68273e8a-309a-5f7c-9250-f44c5f4541ef"
-    },
-    {
-      "case_id": "bd551b6e-481a-5f33-8b2e-c9b9a7eb7595"
     },
     {
       "case_id": "1d52525c-bf36-57ab-a73e-995f3f8c7809"

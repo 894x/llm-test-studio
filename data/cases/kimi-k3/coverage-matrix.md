@@ -1,5 +1,7 @@
 # Kimi K3 contract coverage matrix
 
+> 2026-11-01 profile update: Responses foundation / expected-success now contain 229 / 60 Cases; admission / extended remain 169 / 23. The previous 230 / 61 counts below describe the historical expansion. The identical `k3.responses.cache_options_omitted` Case remains available but is no longer repeated beside `k3.responses.input_string` in these two suites. A successful omitted-options request alone does not prove the 5m default; cache default behavior remains unverified. See [suite optimization](../../../doc/kimi-suite-optimization.md).
+
 Last verified against the first-party Kimi documentation on 2026-09-30.
 
 This matrix distinguishes runnable contract cases from deferred cost-heavy or runner-limited work. A case being present means the request and assertion are defined; it does not mean the paid provider call has been executed.

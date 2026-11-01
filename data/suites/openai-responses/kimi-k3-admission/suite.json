@@ -3,7 +3,7 @@
   "key": "openai-responses.kimi-k3.admission-boundary",
   "name": "Kimi K3 Responses 参数拒绝",
   "protocol": "openai-responses",
-  "description": "Kimi K3 原生 Responses 169 个参数拒绝场景；保留文档与官方实测冲突的严格断言。",
+  "description": "参数拒绝专项；已包含在完整回归套件中，通常无需连续重复运行。",
   "cases": [
     {
       "case_id": "50361472-cfbb-58a4-8f73-9bb3138a8ca0"

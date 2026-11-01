@@ -3,7 +3,7 @@
   "key": "openai-responses.kimi-k3.expected-success",
   "name": "Kimi K3 Responses 预期成功套件",
   "protocol": "openai-responses",
-  "description": "Kimi K3 原生 Responses 61 个预期 HTTP200 的正向能力与合法参数边界 Case，包含文本、流式、工具、结构化输出、图片与缓存；保留输出预算耗尽的合法 incomplete 终态断言。",
+  "description": "预期成功专项，包含图片、缓存和较大输出预算；已包含在完整回归套件中，可能产生较高费用。",
   "cases": [
     {
       "case_id": "8e41672a-ffa2-5461-998f-96d7cd660dea"
@@ -166,9 +166,6 @@
     },
     {
       "case_id": "b82df9cb-b8a8-4b85-8d65-d52be327da20"
-    },
-    {
-      "case_id": "4685e7de-4525-44df-b22c-8826477f693d"
     },
     {
       "case_id": "af2342f4-e23b-4197-9452-d7de783d86f5"

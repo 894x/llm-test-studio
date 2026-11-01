@@ -3,7 +3,7 @@
   "key": "kimi-k3.1-pro.complete",
   "name": "Kimi K3.1 Pro 完整设计套件",
   "protocol": "openai-chat",
-  "description": "本目录全部已实现 Chat Completions Case；不代表 deferred/blocked 契约项已覆盖。",
+  "description": "完整设计入口，包含基本功能、参数拒绝和扩展套件，可能产生较高费用；并不表示覆盖所有契约。Highspeed 套件排除不适用的动态工具场景。",
   "cases": [
     {
       "case_id": "43fb321f-2736-5843-8b9d-d8f96af0690f"
@@ -58,9 +58,6 @@
     },
     {
       "case_id": "06db479b-b8ae-5f66-b89f-ea2f2e37c8e9"
-    },
-    {
-      "case_id": "b6a75649-7ac6-59e2-9546-74641968f034"
     },
     {
       "case_id": "5fa30a73-408e-5192-ae13-ea27463dd7c3"

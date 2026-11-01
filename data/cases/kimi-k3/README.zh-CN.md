@@ -1,12 +1,14 @@
 # Kimi 官方多模型基础用例
 
-四个 Kimi Chat 基础套件选择 `openai-chat` 协议；Kimi 名称标识模型。K3 另有原生 `openai-responses` 连通性、基础、预期成功、参数拒绝与扩展契约 Suite。Responses 基础套件包含 230 个已启用自动 Case：44 个复用现有 84 个 K3 Chat Case 的 ID，186 个来自 `data/cases/openai-responses`。其余 40 个 K3 Chat Case 在当前目录中没有 Responses 定义。五个共用文本 Case 还配置了 `anthropic-messages`。运行时需绑定支持所选接口的模型和渠道；系统不自动转换协议。
+四个 Kimi Chat 基础套件选择 `openai-chat` 协议；Kimi 名称标识模型。K3 另有原生 `openai-responses` 连通性、日常检查、基础、预期成功、参数拒绝与扩展契约 Suite。Responses 基础套件包含 229 个已启用自动 Case：44 个来自 Chat Case 目录（其中 43 个属于 K3 Chat 基础套件），185 个来自 `data/cases/openai-responses`。K3 Chat 基础套件其余 42 个 Case ID 不在该 Responses 套件中。五个共用文本 Case 还配置了 `anthropic-messages`。运行时需绑定支持所选接口的模型和渠道；系统不自动转换协议。
 
-Responses 配置依据 2026-10-09 查阅的 [Kimi Responses API](https://platform.kimi.com/docs/api/responses) 和官方 OpenAPI。按用户要求，`tool_choice` 预期参考现有 K3 Chat Case，以及 2026-10-10 查阅的[工具调用约束](https://platform.kimi.com/docs/guide/use-tool-choice)：省略或 `auto` 允许模型自行选择，`none` 要求文本回复且不调用工具，`required` 要求至少一次工具调用。指定函数选择保留 Chat 在思考开启时的拒绝预期。Responses Schema 仍只声明 `auto`；这些参考 Chat 的预期尚未经过 Responses 上游实测。推理使用 `reasoning.effort`，结构化输出使用 `text.format`，省略 Schema 的 `name` 会被接受。图片字段为 data URL 字符串，缓存工作流校验原生输入、缓存读取及缓存写入用量。全部 84 个场景的映射、完整字段清单和剩余缺口见 [responses-coverage-matrix.md](responses-coverage-matrix.md)。这不表示 Responses 边界契约已完整覆盖。
+Responses 配置依据 2026-10-09 查阅的 [Kimi Responses API](https://platform.kimi.com/docs/api/responses) 和官方 OpenAPI。2026-10-10 的适配中，正向工具请求使用 `auto`，`required` 和 `none` 预期遭到拒绝，因为 Responses Schema 只声明 `auto`；历史供应商结果、文档冲突、字段清单和覆盖缺口见 [responses-coverage-matrix.md](responses-coverage-matrix.md)。推理使用 `reasoning.effort`，结构化输出使用 `text.format`。这不表示 Responses 边界契约已完整覆盖。
 
-- Responses 连通性套件引用 3 个 Case，基础套件引用 230 个，由 61 个预期成功 Case 和 169 个参数拒绝 Case 组成。扩展契约套件引用 23 个已停用 Case，目前不能作为自动 Plan 运行。
+- Responses 连通性套件引用 3 个 Case，日常检查引用 6 个，基础套件引用 229 个，由 60 个预期成功 Case 和 169 个参数拒绝 Case 组成。扩展契约套件引用 23 个已停用 Case，目前不能作为自动 Plan 运行。
 - 运行完整基础套件会包含 T3 图片素材和两次请求的缓存工作流，需要显式选择；本次改动没有执行付费 Kimi 请求。
-- 全部内置目录包含 925 个唯一 Case。`openai-responses` 编写目录贡献 208 个 Case：186 个已启用自动 Case 和 22 个已停用 Case。共用 Case 将各协议的请求和断言保存在相同 Case ID 下；Chat 定义保持原样。
+- 全部内置目录包含 1075 个唯一 Case。`openai-responses` 编写目录贡献 208 个 Case：186 个已启用自动 Case 和 22 个已停用 Case。共用 Case 将各协议的请求和断言保存在相同 Case ID 下；Chat 定义保持原样。
+
+K3 Chat 日常检查包含 7 个 Case；K3.1 Chat 另有 Pro 与 Highspeed 共用的 7 Case 日常套件，不含动态工具。套件名称只表达使用建议，运行时须自行选择对应模型。原套件及 Case ID 均保留；成员变化和兼容性详见 [kimi-suite-optimization.md](../../../doc/kimi-suite-optimization.md)。
 
 不发送上游请求即可校验编写的套件成员：
 
@@ -17,10 +19,10 @@ python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suite
 桌面应用将 `data/cases/openai-chat` 下可运行的 Kimi 相关用例组织为四个按模型命名的基础套件，另有更小的连通性套件。共用用例由适用套件引用，无需复制；模型与渠道由运行时的 Run 选择。
 
 - 当前目标模型为 `kimi-k3`、`kimi-k2.7-code`、`kimi-k2.7-code-highspeed` 和 `kimi-k2.6`。
-- 目录包含跨 11 个维度的 84 个已启用 K3 用例。`Kimi K3 官方基础套件` 引用全部 84 个用例，包括 10 个媒体密集型 T3 用例及 stop 运行时/cache 工作流探针。它们的 `default=false` 使其不进入单独 Case 的默认选择，但运行整个套件时仍会执行。
+- K3 Chat 基础套件包含 85 个已启用用例，其中 7 个属于日常检查。基础套件还包含 10 个媒体密集型 T3 用例及 stop 运行时/cache 工作流探针。它们的 `default=false` 使其不进入单独 Case 的默认选择，但运行整个套件时仍会执行。
 - `Kimi K2.7 Code 官方基础套件` 和 `Kimi K2.7 Code Highspeed 官方基础套件` 各包含 10 个用例。
 - `Kimi K2.6 官方基础套件` 包含 11 个用例。
-- 四个基础套件引用 87 个唯一的已启用 HTTP/SSE 用例。套件成员决定执行哪些 Case；模型与渠道由 Run 绑定。
+- 四个基础套件引用 88 个唯一的已启用 HTTP/SSE 用例。套件成员决定执行哪些 Case；模型与渠道由 Run 绑定。
 - Case 不编码目标模型。套件名称表达预期覆盖范围，运行时需要由操作者绑定兼容的模型。
 - K3 专属用例覆盖始终开启的推理及 `tool_choice=required`；K2.6 用例覆盖 `thinking.type=enabled|disabled`；K2.7 Code 与 Highspeed 共用保留思考的基线。
 - 共用协议、用量、auto/none 工具选择、结构化输出和固定参数基线只维护一份，适用于四个模型。

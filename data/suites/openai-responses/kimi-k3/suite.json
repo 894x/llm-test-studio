@@ -3,7 +3,7 @@
   "key": "openai-responses.kimi-k3.official-foundation",
   "name": "Kimi K3 Responses 官方基础套件",
   "protocol": "openai-responses",
-  "description": "Kimi K3 原生 Responses 230 个基础与参数边界场景；复用 Chat Case，包含视频拒绝、类型/枚举/工具/搜索参数边界，保留既有图片与缓存探测。",
+  "description": "完整回归入口：含成功场景及参数拒绝边界，覆盖图片和缓存探测，可能产生较高费用；日常检查可选 Responses 日常检查。",
   "cases": [
     {
       "case_id": "8e41672a-ffa2-5461-998f-96d7cd660dea"
@@ -583,9 +583,6 @@
     },
     {
       "case_id": "b82df9cb-b8a8-4b85-8d65-d52be327da20"
-    },
-    {
-      "case_id": "4685e7de-4525-44df-b22c-8826477f693d"
     },
     {
       "case_id": "26ad5236-4b1d-4564-b710-6cdaa40ad0d3"

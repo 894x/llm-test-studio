@@ -8,7 +8,7 @@
       "key": "openai-responses.kimi-k3.connectivity",
       "name": "Kimi K3 Responses 连通性",
       "protocol": "openai-responses",
-      "description": "Kimi K3 Responses 短请求、流式文本与用量连通性检查。",
+      "description": "短请求、流式文本与用量连通性检查；日常检查已包含这 3 个用例。",
       "cases": [
         {
           "case_id": "7df57c19-7d18-566a-998e-86342b7cee32"
@@ -28,7 +28,7 @@
       "key": "openai-responses.kimi-k3.official-foundation",
       "name": "Kimi K3 Responses 官方基础套件",
       "protocol": "openai-responses",
-      "description": "Kimi K3 原生 Responses 230 个基础与参数边界场景；复用 Chat Case，包含视频拒绝、类型/枚举/工具/搜索参数边界，保留既有图片与缓存探测。",
+      "description": "完整回归入口：含成功场景及参数拒绝边界，覆盖图片和缓存探测，可能产生较高费用；日常检查可选 Responses 日常检查。",
       "cases": [
         {
           "case_id": "8e41672a-ffa2-5461-998f-96d7cd660dea"
@@ -610,9 +610,6 @@
           "case_id": "b82df9cb-b8a8-4b85-8d65-d52be327da20"
         },
         {
-          "case_id": "4685e7de-4525-44df-b22c-8826477f693d"
-        },
-        {
           "case_id": "26ad5236-4b1d-4564-b710-6cdaa40ad0d3"
         },
         {
@@ -729,7 +726,7 @@
       "key": "openai-responses.kimi-k3.expected-success",
       "name": "Kimi K3 Responses 预期成功套件",
       "protocol": "openai-responses",
-      "description": "Kimi K3 原生 Responses 61 个预期 HTTP200 的正向能力与合法参数边界 Case，包含文本、流式、工具、结构化输出、图片与缓存；保留输出预算耗尽的合法 incomplete 终态断言。",
+      "description": "预期成功专项，包含图片、缓存和较大输出预算；已包含在完整回归套件中，可能产生较高费用。",
       "cases": [
         {
           "case_id": "8e41672a-ffa2-5461-998f-96d7cd660dea"
@@ -894,9 +891,6 @@
           "case_id": "b82df9cb-b8a8-4b85-8d65-d52be327da20"
         },
         {
-          "case_id": "4685e7de-4525-44df-b22c-8826477f693d"
-        },
-        {
           "case_id": "af2342f4-e23b-4197-9452-d7de783d86f5"
         },
         {
@@ -923,7 +917,7 @@
       "key": "openai-responses.kimi-k3.admission-boundary",
       "name": "Kimi K3 Responses 参数拒绝",
       "protocol": "openai-responses",
-      "description": "Kimi K3 原生 Responses 169 个参数拒绝场景；保留文档与官方实测冲突的严格断言。",
+      "description": "参数拒绝专项；已包含在完整回归套件中，通常无需连续重复运行。",
       "cases": [
         {
           "case_id": "50361472-cfbb-58a4-8f73-9bb3138a8ca0"
@@ -1511,6 +1505,35 @@
         },
         {
           "case_id": "9791b92f-822e-4366-a915-9d5577419c4f"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "directory": "kimi-k3-daily",
+      "schema_version": 1,
+      "key": "openai-responses.kimi-k3.daily",
+      "name": "Kimi K3 Responses 日常检查",
+      "protocol": "openai-responses",
+      "description": "推荐日常检查：6 个请求覆盖非流式、流式、用量、JSON Schema、工具和字符串输入；单次请求输出预算可达 2048 tokens。完整边界另选完整回归套件，运行需产生费用。",
+      "cases": [
+        {
+          "case_id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96"
+        },
+        {
+          "case_id": "7df57c19-7d18-566a-998e-86342b7cee32"
+        },
+        {
+          "case_id": "c6b97ab0-a95c-53f9-ab6e-c949d5454b90"
+        },
+        {
+          "case_id": "57d07366-b7bf-57cc-a36e-886febee83ea"
+        },
+        {
+          "case_id": "bd551b6e-481a-5f33-8b2e-c9b9a7eb7595"
+        },
+        {
+          "case_id": "bc670eff-958d-4fb3-b851-1fb5087017ea"
         }
       ],
       "inputs": []

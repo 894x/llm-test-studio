@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "key": "kimi-k3.1.daily",
+  "name": "Kimi K3.1 Chat 日常检查（Pro / Highspeed）",
+  "protocol": "openai-chat",
+  "description": "推荐日常检查：同一套 7 个短请求适用于 Pro 和 Highspeed，运行时选择对应模型；不含动态工具、缓存及多模态。完整契约另选对应模型的完整设计套件，运行需产生费用。",
+  "cases": [
+    {
+      "case_id": "21e8433f-a410-571e-95d4-e0c9625b7cd0"
+    },
+    {
+      "case_id": "95d15f44-7ae4-5249-ac82-7923ab29f039"
+    },
+    {
+      "case_id": "bff335ed-1a2e-50e9-851d-a15bb6e1d2ee"
+    },
+    {
+      "case_id": "8494305a-4e92-5eff-8337-9f87d6848b6b"
+    },
+    {
+      "case_id": "e4afd535-118b-542e-ab60-b3f4fb078fa4"
+    },
+    {
+      "case_id": "dc737346-28d0-5c0b-a9d0-759a2d60f686"
+    },
+    {
+      "case_id": "17d2bb69-1b6b-5c42-add1-5e72afa22fd4"
+    }
+  ],
+  "inputs": []
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "key": "openai-responses.kimi-k3.daily",
+  "name": "Kimi K3 Responses 日常检查",
+  "protocol": "openai-responses",
+  "description": "推荐日常检查：6 个请求覆盖非流式、流式、用量、JSON Schema、工具和字符串输入；单次请求输出预算可达 2048 tokens。完整边界另选完整回归套件，运行需产生费用。",
+  "cases": [
+    {
+      "case_id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96"
+    },
+    {
+      "case_id": "7df57c19-7d18-566a-998e-86342b7cee32"
+    },
+    {
+      "case_id": "c6b97ab0-a95c-53f9-ab6e-c949d5454b90"
+    },
+    {
+      "case_id": "57d07366-b7bf-57cc-a36e-886febee83ea"
+    },
+    {
+      "case_id": "bd551b6e-481a-5f33-8b2e-c9b9a7eb7595"
+    },
+    {
+      "case_id": "bc670eff-958d-4fb3-b851-1fb5087017ea"
+    }
+  ],
+  "inputs": []
+}

@@ -1,5 +1,7 @@
 # Kimi K3.1 Pro Chat Completions 契约覆盖矩阵
 
+> 2026-11-01：Pro / Highspeed 完整套件分别为 92 / 89 个 Case；`k31.must.tool_call` 与 `k31.must.tool_choice_required` 的请求和断言相同，套件保留后者覆盖两项，前者的 Case ID 仍可独立引用。新增两种模型共用的 7 Case 日常检查，动态工具仍仅在 Pro 专项和完整套件中。详见 [套件优化说明](../../../doc/kimi-suite-optimization.md)。
+
 ## 范围
 
 - Provider / endpoint：Moonshot Kimi，`POST /v1/chat/completions`。
@@ -36,7 +38,7 @@
 | `prediction.type/content` | OPENAPI | optional object；type=content；content string/array[text object] | string、text array | 非法 type | 200；非法 400 | both / T1/T2 | 两种合法形态、非法 type | `k31.prediction_*` | 完整 | T0 static | covered |
 | `tools[]` 与 function.type/name/parameters/strict | OPENAPI | optional array；type=function；name regex 1..128；parameters required；strict default true | name 1/128；strict true/false | 数字开头、129；缺字段/非法 type | 合法 200 + tool call；非法 400 | both / T1/T2 | 名称边界、strict 两档、缺字段 | `k31.tool_name_*`、`k31.tool_strict_*` | 完整 | T0 static | covered |
 | `tool_choice` | TOOLS, MODELS | optional enum default auto 或 function object | omitted/auto/none/required | 指定函数与始终思考不兼容 400；unknown enum | required 至少一次调用；none 无调用 | both / T1/T2 | 四合法行为、指定函数拒绝 | `k31.must.tool_choice_*`、`k31.must.tool_call`、`k31.optional.tool_choice_function` | 完整 | T0 static | covered |
-| 工具调用响应与 tool result replay | CHAT, TOOLS | assistant tool_calls；tool_call_id 对应 | required 首轮、tool 次轮 | 完整 assistant 含 reasoning/tool_calls 原样回传 | finish=tool_calls；arguments JSON；最终文本 | both / T1 | 首轮调用、完整回放、最终结果 | `k31.must.tool_call` 首轮；动态完整多步 deferred | 首轮完整；多步执行器 gap | T0 static | partial |
+| 工具调用响应与 tool result replay | CHAT, TOOLS | assistant tool_calls；tool_call_id 对应 | required 首轮、tool 次轮 | 完整 assistant 含 reasoning/tool_calls 原样回传 | finish=tool_calls；arguments JSON；最终文本 | both / T1 | 首轮调用、完整回放、最终结果 | `k31.must.tool_choice_required` 首轮（与保留的独立 `k31.must.tool_call` 等价）；动态完整多步 deferred | 首轮完整；多步执行器 gap | T0 static | partial |
 | 动态工具 message.tools | DYNAMIC | role=system；无 content；完整 name/description/parameters；位置起生效 | 动态单独、与全局并存 | 带 content 400；缺 description 按指南拒绝但不与 OpenAPI 冲突断言 | 200 + 调用；非法 400 | pro only / T1/T2 | 单独、并存、带 content | `k31.dynamic_tool*`；`kvv.dynamic_system_*` 和行为观察项 | 基础场景及部分边界已实现；KVV 行为观察不全部等同文档契约；highspeed 不纳入 | T0 static | partial |
 | 多模态 content text/image_url/video_url | CHAT, VISION | content 必须 object array；各 discriminator/条件字段必填 | 对象与字符串简写；base64；ms:// | 缺 type/text/image_url/video_url/url；公网图片 URL、SVG 400 | 图片识别 7；视频数字序列；非法 400 | both / T2/T3 | 两形式、六缺字段、公网 URL、SVG、真实 ms:// | `k31.must.image_*`、`k31.must.video_*`、`k31.image_public_url_rejected`、`k31.image_svg_rejected`；ms:// deferred | base64 完整；文件引用 deferred | T0 static | deferred |
 | 图片/视频 MIME、Body 100M | VISION | 图片 jpeg/png/gif/webp/bmp/heic/heif；视频 mp4 等；Body <=100M | 每类格式 | SVG、>100M | 支持格式 200；SVG/超限 400 | both / T3 | PNG 代表、SVG；全 MIME/100M 需资产与成本 | PNG Case、SVG Case；其余 deferred | 代表覆盖 | T0 static | deferred |

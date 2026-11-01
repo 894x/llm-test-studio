@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "protocol": "openai-chat",
+  "profiles": [
+    {
+      "directory": "kimi-k3-daily",
+      "schema_version": 1,
+      "key": "kimi-k3.daily",
+      "name": "Kimi K3 Chat 日常检查",
+      "protocol": "openai-chat",
+      "description": "推荐日常检查：7 个短请求覆盖非流式、流式、用量、JSON、工具及 low 推理参数。完整契约和边界另选官方基础套件；运行需产生费用。",
+      "cases": [
+        {
+          "case_id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96"
+        },
+        {
+          "case_id": "7df57c19-7d18-566a-998e-86342b7cee32"
+        },
+        {
+          "case_id": "c6b97ab0-a95c-53f9-ab6e-c949d5454b90"
+        },
+        {
+          "case_id": "18ed9e4f-9572-53ca-952c-24ef738261e3"
+        },
+        {
+          "case_id": "57d07366-b7bf-57cc-a36e-886febee83ea"
+        },
+        {
+          "case_id": "e5280550-a6ca-5d9d-bb65-efce43c73a7b"
+        },
+        {
+          "case_id": "e7958fd9-7c92-527d-a1d4-4010ccd9e89c"
+        }
+      ],
+      "inputs": []
+    }
+  ]
+}

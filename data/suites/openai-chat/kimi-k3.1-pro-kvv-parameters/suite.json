@@ -3,7 +3,7 @@
   "key": "kimi.k3.1.pro.kvv.parameters",
   "name": "kimi-k3.1-pro · KVV 参数和推理强度",
   "protocol": "openai-chat",
-  "description": "复用已有参数、推理强度和 JSON 模式 Case；含成功请求和预期 400 的请求，需要显式选择。",
+  "description": "复用已有参数、推理强度和 JSON 模式 Case；含成功请求和预期 400 的请求，需要显式选择。 这些 Case 已包含在对应模型的完整设计套件中，无需重复运行。",
   "cases": [
     {
       "case_id": "7db2c266-6593-5eff-958b-98c3845d3193"

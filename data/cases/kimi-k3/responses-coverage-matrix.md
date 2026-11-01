@@ -1,5 +1,7 @@
 # Kimi K3 Responses adaptation and contract matrix
 
+> 2026-11-01 profile update: Responses foundation / expected-success now contain 229 / 60 Cases; admission / extended remain 169 / 23. The previous 230 / 61 counts below describe the historical expansion. The identical `k3.responses.cache_options_omitted` Case remains available but is no longer repeated beside `k3.responses.input_string` in these two suites. A successful omitted-options request alone does not prove the 5m default; cache default behavior remains unverified. See [suite optimization](../../../doc/kimi-suite-optimization.md).
+
 Retrieved: 2026-10-10. Provider: Kimi China; model: `kimi-k3`; endpoint: `POST /v1/responses`.
 
 Scope: the documented native Kimi K3 `POST /v1/responses` request, nested input/tool parameters, synchronous and SSE responses, and replay/cache/search lifecycle. Reuse existing logical Chat Cases and IDs wherever the claim has a native counterpart; add new Cases only for missing native claims. Preserve existing Chat definitions. This expansion defines local fixtures and executable requests, without authorizing new paid provider calls. Documentation retrieved 2026-10-10.

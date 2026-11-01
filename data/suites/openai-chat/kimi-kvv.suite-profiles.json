@@ -52,7 +52,7 @@
       "key": "kimi.k3.kvv.observed",
       "name": "kimi-k3 · KVV KVV 兼容行为观察",
       "protocol": "openai-chat",
-      "description": "只适用于 kimi-k3；显式选择后运行。包含上游 KVV 预期、尚未独立确认的拒绝行为，不应直接等同于官方契约。",
+      "description": "只适用于 kimi-k3；显式选择后运行。包含上游 KVV 预期、尚未独立确认的拒绝行为，不应直接等同于官方契约。 K3 与 K3.1 套件引用同一批观察 Case；切换模型需分别执行。",
       "cases": [
         {
           "case_id": "885ca61e-9386-5586-975c-38da7ca098f9"
@@ -201,7 +201,7 @@
       "key": "kimi.k3.kvv.schema",
       "name": "kimi-k3 · KVV 严格 Schema 样例",
       "protocol": "openai-chat",
-      "description": "只适用于 kimi-k3；显式选择后运行。仅验证套件列出的断言，不代表完整契约。",
+      "description": "只适用于 kimi-k3；显式选择后运行。仅验证套件列出的断言，不代表完整契约。 K3 与 K3.1 套件引用同一批 Schema Case；切换模型需分别执行。",
       "cases": [
         {
           "case_id": "9a0f3728-266d-5ee3-8442-545b51121b46"
@@ -268,7 +268,7 @@
       "key": "kimi.k3.1.pro.kvv.observed",
       "name": "kimi-k3.1-pro · KVV KVV 兼容行为观察",
       "protocol": "openai-chat",
-      "description": "只适用于 kimi-k3.1-pro；显式选择后运行。包含上游 KVV 预期、尚未独立确认的拒绝行为，不应直接等同于官方契约。",
+      "description": "只适用于 kimi-k3.1-pro；显式选择后运行。包含上游 KVV 预期、尚未独立确认的拒绝行为，不应直接等同于官方契约。 K3 与 K3.1 套件引用同一批观察 Case；切换模型需分别执行。",
       "cases": [
         {
           "case_id": "885ca61e-9386-5586-975c-38da7ca098f9"
@@ -417,7 +417,7 @@
       "key": "kimi.k3.1.pro.kvv.schema",
       "name": "kimi-k3.1-pro · KVV 严格 Schema 样例",
       "protocol": "openai-chat",
-      "description": "只适用于 kimi-k3.1-pro；显式选择后运行。仅验证套件列出的断言，不代表完整契约。",
+      "description": "只适用于 kimi-k3.1-pro；显式选择后运行。仅验证套件列出的断言，不代表完整契约。 K3 与 K3.1 套件引用同一批 Schema Case；切换模型需分别执行。",
       "cases": [
         {
           "case_id": "9a0f3728-266d-5ee3-8442-545b51121b46"
@@ -454,7 +454,7 @@
       "key": "kimi.k3.kvv.parameters",
       "name": "kimi-k3 · KVV 参数和推理强度",
       "protocol": "openai-chat",
-      "description": "复用已有参数、推理强度和 JSON 模式 Case；含成功请求和预期 400 的请求，需要显式选择。",
+      "description": "复用已有参数、推理强度和 JSON 模式 Case；含成功请求和预期 400 的请求，需要显式选择。 这些 Case 已包含在 K3 官方基础套件中，无需重复运行。",
       "cases": [
         {
           "case_id": "2d2995c3-9766-52e4-be29-72a137d9b55d"
@@ -534,7 +534,7 @@
       "key": "kimi.k3.1.pro.kvv.parameters",
       "name": "kimi-k3.1-pro · KVV 参数和推理强度",
       "protocol": "openai-chat",
-      "description": "复用已有参数、推理强度和 JSON 模式 Case；含成功请求和预期 400 的请求，需要显式选择。",
+      "description": "复用已有参数、推理强度和 JSON 模式 Case；含成功请求和预期 400 的请求，需要显式选择。 这些 Case 已包含在对应模型的完整设计套件中，无需重复运行。",
       "cases": [
         {
           "case_id": "7db2c266-6593-5eff-958b-98c3845d3193"

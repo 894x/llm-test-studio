@@ -3,7 +3,7 @@
   "key": "kimi.k3.kvv.observed",
   "name": "kimi-k3 · KVV KVV 兼容行为观察",
   "protocol": "openai-chat",
-  "description": "只适用于 kimi-k3；显式选择后运行。包含上游 KVV 预期、尚未独立确认的拒绝行为，不应直接等同于官方契约。",
+  "description": "只适用于 kimi-k3；显式选择后运行。包含上游 KVV 预期、尚未独立确认的拒绝行为，不应直接等同于官方契约。 K3 与 K3.1 套件引用同一批观察 Case；切换模型需分别执行。",
   "cases": [
     {
       "case_id": "885ca61e-9386-5586-975c-38da7ca098f9"
