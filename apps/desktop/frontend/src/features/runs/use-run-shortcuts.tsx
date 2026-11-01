@@ -11,7 +11,7 @@ import type { ReportGenerationProgress } from "@/features/reports/generation-pro
 import { isCaseConcurrency, isRunActive, type StartQuickTaskCommand, type WorkspaceSnapshot } from "./data"
 import { RunShortcutActions, type RerunCredentialRequest } from "./run-shortcut-actions"
 
-export type RunShortcutRenderer = (runID: string, showCurrentReport?: boolean) => ReactNode
+export type RunShortcutRenderer = (runID: string, showCurrentReport?: boolean, options?: { extraAction?: ReactNode; reportID?: string }) => ReactNode
 
 type RerunAttempt = { sourceID: string; runID?: string; waiting: boolean; error?: string }
 
@@ -143,7 +143,7 @@ export function useRunShortcuts({ client, workspace, reports, generation, draft,
     }
   }
 
-  return (runID, showCurrentReport = true) => {
+  return (runID, showCurrentReport = true, options) => {
     const run = workspace?.runs.find(item => item.id === runID)
     const related = attempt?.sourceID === runID || attempt?.runID === runID
     const report = related && newReport ? newReport : showCurrentReport ? reports?.reports.find(item => item.source === "run" && item.run_id === runID) : undefined
@@ -153,9 +153,10 @@ export function useRunShortcuts({ client, workspace, reports, generation, draft,
       pending={pendingID === runID}
       waiting={!!related && waiting}
       error={related ? generationFailed ? t("shortcuts.reportFailed") : attempt?.error : undefined}
-      reportID={report?.id ?? (showCurrentReport ? run?.report_id : undefined)}
+      reportID={report?.id ?? (showCurrentReport ? options?.reportID ?? run?.report_id : undefined)}
       newReport={!!related && !!newReport}
       credential={credential?.sourceID === runID ? credential : null}
+      extraAction={options?.extraAction}
       onRerun={() => void rerun(runID)}
       onOpenReport={onOpenReport}
       onCredential={submitCredential}

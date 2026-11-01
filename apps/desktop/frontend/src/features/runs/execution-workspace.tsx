@@ -14,6 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Spinner } from "@/components/ui/spinner"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { JobDetails } from "@/features/jobs/job-details"
 import type { JobStatus, JobView, SubmissionView } from "@/features/jobs/data"
@@ -141,13 +142,12 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
   const selectedJob = selected?.job
   useEffect(() => { if (selectedJob) onJobChange?.(selectedJob) }, [selectedJob, onJobChange])
   const filtered = !!needle || [kind, location, status, plan].some(value => value !== "all")
-  const recycleAction = selected && client.previewHistoryRecycle && client.recycleHistory ? <RecycleHistoryButton
+  const recycleAction = selected && client.previewHistoryRecycle && client.recycleHistory ? <RecycleHistoryButton compact
     key={selected.id} client={client as HistoryRecycleClient} target={{ kind: selected.job ? "job" : "run", id: selected.id }}
     onHistoryChanged={onHistoryChanged} onRecycled={(entry, action) => { setLocalHistoryChanges(current => [...current, { entry, action }]); void applyJobHistory(entry, action); void applyRunHistory(entry, action); setSelectedID(""); setSelectedChildID("") }} /> : null
   const details = selected ? <div className="flex min-h-0 min-w-0 flex-1 flex-col"><ExecutionInspector key={selected.id} row={selected} client={client} reports={reports}
     selectedChildID={selectedChildID} onSelectChild={setSelectedChildID} detailTab={detailTab} onDetailTabChange={setDetailTab}
-    renderRunShortcuts={renderRunShortcuts} onJobChange={onJobChange} onOpenReport={onOpenReport} onOpenComparison={onOpenComparison} />
-    {recycleAction ? <div className="shrink-0 px-4 py-2">{recycleAction}</div> : null}</div>
+    renderRunShortcuts={renderRunShortcuts} recycleAction={recycleAction} onJobChange={onJobChange} onOpenReport={onOpenReport} onOpenComparison={onOpenComparison} /></div>
     : <p className="p-4 text-xs text-muted-foreground">{t("inspector.noneSelected")}</p>
 
   const loadMore = () => {
@@ -249,11 +249,11 @@ function ExecutionProgress({ row }: { row: ExecutionRow }) {
 }
 
 function ExecutionInspector({ row, client, reports, selectedChildID, onSelectChild, detailTab, onDetailTabChange,
-  renderRunShortcuts, onJobChange, onOpenReport, onOpenComparison }: {
+  renderRunShortcuts, recycleAction, onJobChange, onOpenReport, onOpenComparison }: {
   row: ExecutionRow; client: JobClient & Partial<RunHistoryClient>; reports: ReportSnapshot
   selectedChildID: string; onSelectChild: (id: string) => void
   detailTab: string; onDetailTabChange: (tab: string) => void
-  renderRunShortcuts?: RunShortcutRenderer; onJobChange?: (job: JobView) => void
+  renderRunShortcuts?: RunShortcutRenderer; recycleAction?: ReactNode; onJobChange?: (job: JobView) => void
   onOpenReport: (id: string) => void | Promise<void>
   onOpenComparison?: (id: string) => void | Promise<void>
 }) {
@@ -263,22 +263,24 @@ function ExecutionInspector({ row, client, reports, selectedChildID, onSelectChi
   const reportIDs = [...new Set([...row.runs.flatMap(run => run.reportID ? [run.reportID] : []), ...(job ? reports.reports.filter(report => job.report_ids.includes(report.id) ||
     (report.run_id && job.run_ids.includes(report.run_id))).map(report => report.id) : [])])]
   if (job?.kind === "performance") return <PerformanceInspector row={row} client={client} reportIDs={reportIDs}
-    onJobChange={onJobChange} onOpenReport={onOpenReport} />
+    recycleAction={recycleAction} onJobChange={onJobChange} onOpenReport={onOpenReport} />
   const layout = (execution?: ReactNode, controls?: ReactNode) => <div className="flex min-h-0 min-w-0 flex-1 flex-col">
     {job?.kind === "comparison" ? <div className="px-4 pt-3"><p className="mb-2 text-xs font-medium">{t("executions.children", { count: job.run_ids.length })}</p>
       {onOpenComparison ? <Button variant="outline" size="sm" className="mb-2" onClick={() => void onOpenComparison(job.comparison_id)}>{t("executions.comparisonReport")}</Button> : null}
       {row.runs.length ? <SearchableSelect aria-label={t("executions.child")} value={run.id} onValueChange={onSelectChild} options={row.runs.map(child => ({ value: child.id, label: `${child.channel} · ${child.title}` }))} /> : null}</div> : null}
-    {run ? <RunInspectorContent key={run.id} run={run} tab={detailTab} onTabChange={onDetailTabChange} execution={execution} shortcuts={renderRunShortcuts?.(run.id)} />
+    {run ? <RunInspectorContent key={run.id} run={run} tab={detailTab} onTabChange={onDetailTabChange} execution={execution} shortcuts={renderRunShortcuts?.(run.id, true, { extraAction: recycleAction, reportID: run.reportID })} />
       : <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1 px-4"><h2 className="pt-4 text-sm font-semibold">{row.title}</h2>{execution}</ScrollArea>}
     {controls ? <div className="shrink-0 border-t border-divider px-4 py-3">{controls}</div> : null}
+    {(!run || !renderRunShortcuts) && recycleAction ? <div className="shrink-0 px-4 py-2">{recycleAction}</div> : null}
   </div>
   return job ? <JobDetails key={job.job_id} client={client} jobID={job.job_id} initialJob={job}
-    reportIDs={reportIDs} onOpenReport={onOpenReport} onJobChange={onJobChange}
+    reportIDs={run && renderRunShortcuts ? undefined : reportIDs} onOpenReport={onOpenReport} onJobChange={onJobChange}
     renderLayout={({ details, controls }) => layout(details, controls)} /> : layout()
 }
 
-function PerformanceInspector({ row, client, reportIDs, onJobChange, onOpenReport }: {
+function PerformanceInspector({ row, client, reportIDs, recycleAction, onJobChange, onOpenReport }: {
   row: ExecutionRow; client: JobClient & Partial<RunHistoryClient>; reportIDs: string[]
+  recycleAction?: ReactNode
   onJobChange?: (job: JobView) => void
   onOpenReport: (id: string) => void | Promise<void>
 }) {
@@ -328,12 +330,20 @@ function PerformanceInspector({ row, client, reportIDs, onJobChange, onOpenRepor
           {!failure && !report?.error_code && !report?.failures.length ? <p>{t("inspector.noFailures")}</p> : null}
         </div>}
         artifacts={<p className="py-1">{reportID ? t("shortcuts.viewReport") : t("inspector.noArtifacts")}</p>}
-        footer={<div className="shrink-0 space-y-3 border-t border-divider px-4 py-3">
+        footer={<TooltipProvider><div className="shrink-0 space-y-3 border-t border-divider px-4 py-3">
           {controls}
-          <Button size="sm" variant="outline" disabled={!reportID} onClick={() => { if (reportID) void onOpenReport(reportID) }}>
-            <FileTextIcon />{t("shortcuts.viewReport")}
-          </Button>
-        </div>}
+          <div className="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild><span className="inline-flex" tabIndex={!reportID ? 0 : undefined}>
+                <Button size="icon-sm" variant="outline" aria-label={t("shortcuts.viewReport")} disabled={!reportID} onClick={() => { if (reportID) void onOpenReport(reportID) }}>
+                  <FileTextIcon />
+                </Button>
+              </span></TooltipTrigger>
+              <TooltipContent side="top">{t("shortcuts.viewReport")}</TooltipContent>
+            </Tooltip>
+            {recycleAction}
+          </div>
+        </div></TooltipProvider>}
       />
     }} />
 }

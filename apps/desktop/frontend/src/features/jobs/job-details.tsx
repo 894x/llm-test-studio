@@ -54,12 +54,12 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
   const control = (kind: ControlInput["kind"]) => {
     if (revision) void execute(async () => { setSubmittedControl(await client.controlJob({ job_id: job.job_id, kind, expected_revision: revision })) })
   }
-  const controlActions = <section aria-label={t("executionControls")} className="space-y-2 text-xs [overflow-wrap:anywhere]">
+  const controlActions = terminal ? null : <section aria-label={t("executionControls")} className="space-y-2 text-xs [overflow-wrap:anywhere]">
     <div className="flex flex-wrap gap-2">
-      <Button size="sm" variant="outline" aria-description={t("stopDescription")} disabled={pending || terminal || status === "draining" || !revision || !controlSummary?.ready || awaitingControl} onClick={() => control("stop_sending")}>{t("stop")}</Button>
-      <Button size="sm" variant="outline" aria-description={t("cancelDescription")} disabled={pending || terminal || !revision || !controlSummary?.ready || awaitingControl} onClick={() => control("cancel")}>{t("cancel")}</Button>
+      <Button size="sm" variant="outline" aria-description={t("stopDescription")} disabled={pending || status === "draining" || !revision || !controlSummary?.ready || awaitingControl} onClick={() => control("stop_sending")}>{t("stop")}</Button>
+      <Button size="sm" variant="outline" aria-description={t("cancelDescription")} disabled={pending || !revision || !controlSummary?.ready || awaitingControl} onClick={() => control("cancel")}>{t("cancel")}</Button>
     </div>
-    {!terminal ? <p className="text-[11px] leading-relaxed text-muted-foreground">{!revision ? t("awaitingControlConfirmation") : t("controlHint")}</p> : null}
+    <p className="text-[11px] leading-relaxed text-muted-foreground">{!revision ? t("awaitingControlConfirmation") : t("controlHint")}</p>
     {pending ? <p role="status" className="flex items-center gap-2 text-[11px] text-muted-foreground"><Spinner className="size-3" />{t("sendingControl")}</p> : null}
     {currentControl ? <p role="status" className="text-[11px] text-muted-foreground">{t(currentControl.kind === "cancel" ? "cancel" : "stop")} · {t(`controlStates.${currentControl.state}`)}{currentControl.observation ? ` · ${t(`observations.${currentControl.observation}`)}` : ""}</p> : null}
     {commandError ? <Alert variant="destructive"><AlertDescription>{publicDesktopErrorMessage(commandError, t("controlFailed"))}</AlertDescription></Alert> : null}

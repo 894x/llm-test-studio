@@ -7,7 +7,7 @@ import { JobDetails } from "./job-details"
 afterEach(() => { vi.useRealTimers() })
 
 describe("durable job observation", () => {
-  it("explains both controls and disables them before confirmation and after a confirmed terminal state", async () => {
+  it("explains disabled controls before confirmation and hides them after a confirmed terminal state", async () => {
     const client = executionClient()
     const unconfirmed = jobFixture({ execution: null, submission: submissionFixture({ delivery: "pending", confirmation: null }) })
     client.getJob.mockResolvedValue(unconfirmed)
@@ -21,8 +21,22 @@ describe("durable job observation", () => {
     client.getJob.mockResolvedValue(completed)
     render(<JobDetails client={client} jobID={JOB_ID} initialJob={completed} />)
     await waitFor(() => expect(screen.getByText(/已确认：已完成/)).toBeVisible())
-    expect(screen.getByRole("button", { name: "停止发送" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "取消运行" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "停止发送" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "取消运行" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("region", { name: "执行控制" })).not.toBeInTheDocument()
+  })
+
+  it.each(["completed", "failed", "cancelled"] as const)("hides controls for a shared %s job and keeps its status visible", async status => {
+    const client = executionClient()
+    const job = jobFixture({ submission: null, execution: { ...jobFixture().execution!, status } })
+    client.getJob.mockResolvedValue(job)
+    render(<JobDetails client={client} jobID={JOB_ID} initialJob={job} />)
+    await waitFor(() => expect(client.getJob).toHaveBeenCalled())
+    expect(screen.getByRole("region", { name: "执行详情" })).toBeVisible()
+    expect(screen.queryByRole("region", { name: "执行控制" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "停止发送" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "取消运行" })).not.toBeInTheDocument()
+    expect(client.controlJob).not.toHaveBeenCalled()
   })
 
   it("retains the returned pending command while offline without claiming cancellation completed", async () => {

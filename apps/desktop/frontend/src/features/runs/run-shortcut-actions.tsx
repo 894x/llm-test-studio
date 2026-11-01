@@ -1,4 +1,4 @@
-import { useId, useState } from "react"
+import { useId, useState, type ReactNode } from "react"
 import FileChartColumnIcon from "lucide-react/dist/esm/icons/file-chart-column.mjs"
 import RotateCcwIcon from "lucide-react/dist/esm/icons/rotate-ccw.mjs"
 import { useTranslation } from "react-i18next"
@@ -6,11 +6,12 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { TaskDraft } from "@/features/quick-test/task-draft"
 
 export type RerunCredentialRequest = { sourceID: string; draft: TaskDraft; concurrency: number }
 
-export function RunShortcutActions({ disabled, pending, waiting, error, reportID, newReport, credential, onRerun, onOpenReport, onCredential, onCancelCredential }: {
+export function RunShortcutActions({ disabled, pending, waiting, error, reportID, newReport, credential, extraAction, onRerun, onOpenReport, onCredential, onCancelCredential }: {
   disabled: boolean
   pending: boolean
   waiting: boolean
@@ -18,6 +19,7 @@ export function RunShortcutActions({ disabled, pending, waiting, error, reportID
   reportID?: string
   newReport: boolean
   credential: RerunCredentialRequest | null
+  extraAction?: ReactNode
   onRerun: () => void
   onOpenReport: (reportID: string) => Promise<void>
   onCredential: (request: RerunCredentialRequest, apiKey: string) => Promise<boolean>
@@ -26,16 +28,25 @@ export function RunShortcutActions({ disabled, pending, waiting, error, reportID
   const { t } = useTranslation("runs")
   const [apiKey, setAPIKey] = useState("")
   const credentialID = useId()
-  return <div className="shrink-0 space-y-2 border-t border-divider px-4 py-3" aria-label={t("shortcuts.title")}>
-    <div className="flex flex-wrap gap-2">
-      <Button size="sm" disabled={disabled || !!credential} aria-busy={pending} onClick={onRerun}>
-        {pending ? <Spinner /> : <RotateCcwIcon />}{t(pending ? "shortcuts.starting" : "shortcuts.rerun")}
-      </Button>
-      {reportID ? <Button variant="outline" size="sm" onClick={() => void onOpenReport(reportID)}><FileChartColumnIcon />{t(newReport ? "shortcuts.viewNewReport" : "shortcuts.viewReport")}</Button> : null}
+  const rerunLabel = t(pending ? "shortcuts.starting" : "shortcuts.rerun")
+  const reportLabel = t(newReport ? "shortcuts.viewNewReport" : "shortcuts.viewReport")
+  return <TooltipProvider><div className="shrink-0 space-y-2 border-t border-divider px-4 py-3" aria-label={t("shortcuts.title")}>
+    <div className="flex items-center gap-2">
+      <Tooltip>
+        <TooltipTrigger asChild><span className="inline-flex" tabIndex={disabled || credential ? 0 : undefined}>
+          <Button size="icon-sm" disabled={disabled || !!credential} aria-label={rerunLabel} aria-description={t("shortcuts.hint")} aria-busy={pending} onClick={onRerun}>
+            {pending ? <Spinner /> : <RotateCcwIcon />}
+          </Button>
+        </span></TooltipTrigger>
+        <TooltipContent side="top" className="block max-w-64"><p className="font-medium">{rerunLabel}</p><p className="mt-1">{t("shortcuts.hint")}</p></TooltipContent>
+      </Tooltip>
+      {reportID ? <Tooltip>
+        <TooltipTrigger asChild><Button variant="outline" size="icon-sm" aria-label={reportLabel} onClick={() => void onOpenReport(reportID)}><FileChartColumnIcon /></Button></TooltipTrigger>
+        <TooltipContent side="top">{reportLabel}</TooltipContent>
+      </Tooltip> : null}
+      {extraAction}
     </div>
-    <p className="text-[11px] text-muted-foreground" role={waiting ? "status" : undefined}>
-      {t(waiting ? "shortcuts.waiting" : "shortcuts.hint")}
-    </p>
+    {waiting ? <p className="text-[11px] text-muted-foreground" role="status">{t("shortcuts.waiting")}</p> : null}
     {credential ? <form className="space-y-2" onSubmit={event => {
       event.preventDefault()
       void onCredential(credential, apiKey).then(started => { if (started) setAPIKey("") })
@@ -49,5 +60,5 @@ export function RunShortcutActions({ disabled, pending, waiting, error, reportID
       </div>
     </form> : null}
     {error ? <p role="alert" className="text-[11px] text-destructive [overflow-wrap:anywhere]">{error}</p> : null}
-  </div>
+  </div></TooltipProvider>
 }

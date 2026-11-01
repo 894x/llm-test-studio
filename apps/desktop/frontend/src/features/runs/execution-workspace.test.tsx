@@ -37,6 +37,26 @@ it.each(["run", "performance"] as const)("keeps %s controls in the fixed footer 
   expect(client.controlJob).not.toHaveBeenCalled()
 })
 
+it.each(["run", "performance"] as const)("hides the %s control footer after a terminal outcome across every details tab", async kind => {
+  const user = userEvent.setup()
+  const snapshot = structuredClone(FIXTURE_WORKSPACE)
+  snapshot.runs = kind === "run" ? [{ ...snapshot.runs[0], job_id: JOB_ID }] : []
+  const job = jobFixture({ kind, submission: null, execution: { ...jobFixture().execution!, status: "cancelled" },
+    run_ids: snapshot.runs.map(run => run.id), report_ids: [] })
+  const client = executionClient()
+  client.getJobs.mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
+  client.getJob.mockResolvedValue(job)
+  render(<RunWorkspace client={client} snapshot={snapshot} reports={EMPTY_REPORTS} preferredJob={null} commandError="" onOpenReport={vi.fn()} />)
+  await screen.findByRole("tab", { name: "执行" })
+  for (const name of ["执行", "失败", "产物", "摘要"]) {
+    await user.click(screen.getByRole("tab", { name }))
+    expect(screen.queryByRole("region", { name: "执行控制" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "停止发送" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "取消运行" })).not.toBeInTheDocument()
+  }
+  expect(client.controlJob).not.toHaveBeenCalled()
+})
+
 it("lists a pending remote submission before a Run exists and recovers it after remount", async () => {
   const client = executionClient()
   const job = jobFixture({ location: { kind: "remote", configuration_id: JOB_ID }, execution: null,

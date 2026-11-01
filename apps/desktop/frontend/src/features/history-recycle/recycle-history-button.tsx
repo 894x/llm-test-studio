@@ -58,7 +58,7 @@ export function RecycleHistoryButton({ client, target, onHistoryChanged, onRecyc
       setError(publicDesktopErrorMessage(reason, t("moveFailed")))
     } finally { inFlight.current = false; setPending(false) }
   }
-  const trigger = <Button ref={triggerRef} type="button" variant="ghost" size={compact ? "icon-sm" : "sm"} disabled={disabled || pending}
+  const trigger = <Button ref={triggerRef} type="button" variant="destructive" size={compact ? "icon-sm" : "sm"} disabled={disabled || pending}
     aria-label={name ? t("moveAria", { title: name }) : t("move")}
     onClick={event => { event.stopPropagation(); void inspect() }}><Trash2Icon />{compact ? null : t("move")}</Button>
   return <>
