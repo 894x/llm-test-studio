@@ -38,16 +38,17 @@ export function EntryCaseTable({
   const [pagination, setPagination] = useState({ page: 0, selectedCaseID: "", caseNavigationRequest: 0 })
   const [expanded, setExpanded] = useState<string | null>(null)
   const columns = protocolPresentation(entry.protocol).columns
-  const columnWidths = columns.map(column => column.observation === "http_status" ? 56
-    : column.metric === "completion_tokens" || column.observation === "artifacts" ? 80 : 88)
+  const columnWidths = columns.map(column => column.observation === "http_status" || column.metric === "completion_tokens" ? 56
+    : column.metric || column.observation === "artifacts" ? 80 : 88)
   const summaryWidth = entry.cases.reduce((width, caseItem) => {
     const { passed, failed, observed, indeterminate } = caseItem.verification
     const counts = [passed, failed, observed, indeterminate].filter(count => count > 0)
-    // Reserve icon, gap, tabular digits and cell padding, consistently across pages.
+    // Keep the summary's share of the width consistent across pages.
     const contentWidth = counts.reduce((total, count) => total + 18 + String(count).length * 7, 0)
     return Math.max(width, 20 + contentWidth + Math.max(0, counts.length - 1) * 8)
   }, 96)
-  const minimumTableWidth = 280 + 88 + 80 + columnWidths.reduce((total, width) => total + width, 0) + summaryWidth
+  const columnWeights = [280, 56, 80, ...columnWidths, summaryWidth]
+  const totalWeight = columnWeights.reduce((total, weight) => total + weight, 0)
   const selectedCaseIndex = entry.cases.findIndex(caseItem => caseItem.case_id === selectedCaseID)
   // A new navigation request locates its case; manual paging then takes precedence.
   if (selectedCaseIndex >= 0 && (pagination.selectedCaseID !== selectedCaseID || pagination.caseNavigationRequest !== caseNavigationRequest)) {
@@ -55,7 +56,6 @@ export function EntryCaseTable({
   }
   const { page } = pagination
   const visible = paginate ? entry.cases.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : entry.cases
-  const TableContainer = paginate ? ScrollArea : "div"
 
   useEffect(() => {
     if (!selectedCaseID) return
@@ -71,22 +71,17 @@ export function EntryCaseTable({
   }, [caseNavigationRequest, entry.entry_id, selectedCaseID, selectedCaseIndex])
 
   return <>
-    <TableContainer className="min-w-0">
-      <Table aria-label={t("protocolDesign.caseTable")} className="table-fixed"
-        style={paginate ? { minWidth: minimumTableWidth } : undefined}>
+    <div className="min-w-0">
+      <Table aria-label={t("protocolDesign.caseTable")} className="table-fixed [&_[data-slot=badge]]:h-auto [&_[data-slot=badge]]:min-h-5 [&_[data-slot=badge]]:max-w-full [&_[data-slot=badge]]:whitespace-normal">
         <colgroup>
-          <col />
-          <col style={{ width: 88 }} />
-          <col style={{ width: 80 }} />
-          {columns.map((column, index) => <col key={column.id} style={{ width: columnWidths[index] }} />)}
-          <col style={{ width: summaryWidth }} />
+          {columnWeights.map((weight, index) => <col key={index} style={{ width: `${weight / totalWeight * 100}%` }} />)}
         </colgroup>
         <TableHeader><TableRow className="hover:bg-transparent">
           <TableHead className="h-8 pl-3 text-[11px]">{t("protocolDesign.caseName")}</TableHead>
           <TableHead className="h-8 text-[11px]">{t("protocolDesign.severity")}</TableHead>
           <TableHead className="h-8 text-[11px]">{t("protocolDesign.verification")}</TableHead>
-          {columns.map(column => <TableHead key={column.id} className="h-8 text-[11px]">{columnLabel(column, t)}</TableHead>)}
-          <TableHead className="h-8 pr-3 text-[11px]">{t("protocolDesign.summary")}</TableHead>
+          {columns.map(column => <TableHead key={column.id} className="h-8 text-[11px]" title={column.metric === "completion_tokens" ? t("protocolDesign.outputTokens") : undefined}>{columnLabel(column, t)}</TableHead>)}
+          <TableHead className="h-8 pr-3 text-[11px]" title={t("protocolDesign.summary")}>{t("protocolDesign.summaryColumn")}</TableHead>
         </TableRow></TableHeader>
         <TableBody>{visible.length ? visible.map(caseItem => {
           const open = expanded === caseItem.case_id
@@ -107,9 +102,9 @@ export function EntryCaseTable({
             >
               <TableCell className="py-1 pl-2"><TooltipProvider delayDuration={250}><Tooltip>
                 <TooltipTrigger asChild><Button type="button" variant="ghost" size="sm"
-                  className={`h-auto min-h-7 max-w-full justify-start py-1 text-left ${paginate ? "w-full min-w-0" : "whitespace-normal"}`}
+                  className="h-auto min-h-7 w-full min-w-0 max-w-full justify-start whitespace-normal py-1 text-left"
                   aria-expanded={open} aria-controls={detailID}>
-                  {open ? <ChevronDownIcon /> : <ChevronRightIcon />}<span className={paginate ? "min-w-0 truncate" : "min-w-0 [overflow-wrap:anywhere]"}>{caseItem.name}</span>
+                  {open ? <ChevronDownIcon /> : <ChevronRightIcon />}<span className="min-w-0 [overflow-wrap:anywhere]">{caseItem.name}</span>
                 </Button></TooltipTrigger>
                 <TooltipContent className="whitespace-normal [overflow-wrap:anywhere]">{caseItem.name}</TooltipContent>
               </Tooltip></TooltipProvider></TableCell>
@@ -125,7 +120,7 @@ export function EntryCaseTable({
           </Fragment>
         }) : <TableRow><TableCell colSpan={columns.length + 4} className="py-6 text-center text-xs text-muted-foreground">{t("hierarchy.noRecordedCases")}</TableCell></TableRow>}</TableBody>
       </Table>
-    </TableContainer>
+    </div>
     {paginate ? <ResultPagination page={page} count={entry.cases.length} size={PAGE_SIZE}
       onPage={page => setPagination({ page, selectedCaseID, caseNavigationRequest })} /> : null}
   </>
@@ -159,7 +154,7 @@ export function VerificationCounts({ summary, compact = false }: { summary: Veri
   return <TooltipProvider><Tooltip>
     <TooltipTrigger asChild>
       <span tabIndex={0} role="group" aria-label={description}
-        className="inline-flex flex-nowrap items-center gap-2 whitespace-nowrap rounded-sm py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        className="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-sm py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {visible.length ? visible.map(item => <span key={item.status} aria-hidden="true"
           className={`inline-flex shrink-0 items-center gap-1 ${item.style}`}>
           <item.icon className="size-3.5 shrink-0" />
@@ -304,7 +299,7 @@ function caseColumn(caseItem: ReportCaseDetail, column: ProtocolColumn): string 
 function columnLabel(column: ProtocolColumn, t: ReturnType<typeof useTranslation<"reports">>["t"]) {
   if (column.observation === "task_status") return t("protocolDesign.taskStatus")
   if (column.observation === "artifacts") return t("protocolDesign.artifacts")
-  if (column.metric === "completion_tokens") return t("protocolDesign.outputTokens")
+  if (column.metric === "completion_tokens") return t("protocolDesign.outputTokensColumn")
   return column.label
 }
 function number(value: number) { return value.toLocaleString(desktopLocale(), { maximumFractionDigits: 2 }) }

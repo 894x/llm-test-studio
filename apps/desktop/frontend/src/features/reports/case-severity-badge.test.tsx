@@ -8,13 +8,14 @@ import { CaseSeverityBadge } from "./case-severity-badge"
 
 describe("CaseSeverityBadge", () => {
   it.each([
-    { severity: "critical", label: "必过项", background: "bg-destructive-soft", foreground: "text-destructive" },
-    { severity: "normal", label: "容忍项", background: "bg-info-soft", foreground: "text-info-strong" },
-  ] satisfies { severity: CatalogCaseSeverity; label: string; background: string; foreground: string }[])(
-    "renders $severity with text and an independent semantic surface",
-    ({ severity, label, background, foreground }) => {
+    { severity: "critical", label: "必过" },
+    { severity: "normal", label: "容忍" },
+  ] satisfies { severity: CatalogCaseSeverity; label: string }[])(
+    "renders $severity as a short neutral requirement rather than an outcome",
+    ({ severity, label }) => {
       render(<I18nextProvider i18n={createAppI18n("zh-CN")}><CaseSeverityBadge severity={severity} /></I18nextProvider>)
-      expect(screen.getByText(label)).toHaveClass(background, foreground)
+      expect(screen.getByText(label)).toHaveClass("text-muted-foreground")
+      expect(screen.getByText(label)).not.toHaveAttribute("data-slot", "badge")
       expect(screen.getByTitle("用例重要性等级，不代替本次验证结果。")).toHaveTextContent(label)
     },
   )

@@ -83,7 +83,7 @@ describe("channel comparison reports", () => {
     await openComparison(user)
     await user.click(screen.getByRole("button", { name: "折叠渠道：渠道 B" }))
     let table = screen.getByRole("table", { name: "执行项用例结果" })
-    for (const name of ["E2E", "TTFT", "TPOT", "输出 Token", "执行汇总"]) {
+    for (const name of ["E2E", "TTFT", "TPOT", "输出", "汇总"]) {
       expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument()
     }
     expect(screen.getByRole("button", { name: "折叠渠道：渠道 A" })).toBeDisabled()
@@ -182,7 +182,7 @@ describe("channel comparison reports", () => {
     const exportedHeaders = Array.from(png.querySelectorAll("thead th"), header => header.textContent)
     expect(exportedHeaders).toEqual(visibleHeaders)
     expect(exportedHeaders).toEqual(expect.arrayContaining([
-      "用例名称", "等级", "验证结果", "HTTP", "E2E", "TTFT", "TPOT", "输出 Token", "执行汇总",
+      "用例名称", "等级", "验证结果", "HTTP", "E2E", "TTFT", "TPOT", "输出", "汇总",
     ]))
     expect(png).toHaveTextContent("Case 59")
     expect(Array.from(png.querySelectorAll("time"), time => time.dateTime)).toEqual([data.left.report.generated_at])

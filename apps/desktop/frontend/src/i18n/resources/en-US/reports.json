@@ -235,6 +235,7 @@
     "severityHint": "Case importance, independent of this run's verification outcome.",
     "verification": "Verification",
     "summary": "Executions",
+    "summaryColumn": "Summary",
     "verdict": {
       "passed": "Passed",
       "failed": "Not met",
@@ -279,6 +280,7 @@
     "queue": "Queue delay",
     "inputTokens": "Input tokens",
     "outputTokens": "Output tokens",
+    "outputTokensColumn": "Output",
     "cachedTokens": "Cached tokens",
     "executionMetrics": "Execution metrics"
   }
