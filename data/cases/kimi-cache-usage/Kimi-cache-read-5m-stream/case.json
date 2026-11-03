@@ -1,0 +1,936 @@
+{
+  "schema_version": 3,
+  "id": "ecfab6b6-6883-462a-a86c-1d0538402e6e",
+  "key": "kimi.cache.read_5m_stream",
+  "name": "Kimi 缓存 · 5m · 重复读取不重写 · 流式",
+  "description": "T3；适用 kimi-k3 / kimi-k3.1-pro；5m TTL；最终流式 usage。两次完全相同请求必须在第二次命中且无新增写入；不证明实际保留时长。Chat 同时核验 MSH 两档计数；Responses 核验原生 usage；Messages 核验 cache_creation 两档拆分。运行需要付费，不在日常套件执行。来源：https://platform.kimi.com/docs/guide/context-caching，核验日期 2026-11-03。",
+  "dimension": "cache",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "system",
+              "content": {
+                "$generate": "concat",
+                "parts": [
+                  "KIMI_CACHE_READ_5m_True_openai-chat",
+                  "\n",
+                  {
+                    "$generate": "repeat",
+                    "text": "缓存测试资料：alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. 每次请求保持资料和顺序一致。\n",
+                    "count": 128
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "content": "只回答 OK。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 2048,
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          },
+          "prompt_cache_options": {
+            "mode": "implicit",
+            "ttl": "5m"
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "protocol",
+          "source": "issues",
+          "pointer": "",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "status_0",
+          "source": "requests",
+          "pointer": "/0/http_status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "stream_0",
+          "source": "requests",
+          "pointer": "/0/stream_completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "input_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/prompt_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "input_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/prompt_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "read_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/prompt_tokens_details/cached_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "read_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/prompt_tokens_details/cached_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "write_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/prompt_tokens_details/cache_write_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "write_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/prompt_tokens_details/cache_write_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "ttl_0_integer_0",
+          "source": "requests",
+          "pointer": "/0/metrics/msh_usage_cache_write_tokens_5m",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "ttl_0_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/metrics/msh_usage_cache_write_tokens_5m",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "ttl_1_integer_0",
+          "source": "requests",
+          "pointer": "/0/metrics/msh_usage_cache_write_tokens_1h",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "ttl_1_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/metrics/msh_usage_cache_write_tokens_1h",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "write_bound_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/prompt_tokens_details/cache_write_tokens",
+          "operator": "lte",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/0/response/usage/prompt_tokens"
+          }
+        },
+        {
+          "id": "read_bound_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/prompt_tokens_details/cached_tokens",
+          "operator": "lte",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/0/response/usage/prompt_tokens"
+          }
+        },
+        {
+          "id": "ttl_sum_0",
+          "source": "requests",
+          "pointer": "/0",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/response/usage/prompt_tokens_details/cache_write_tokens",
+            "parts": [
+              "/metrics/msh_usage_cache_write_tokens_5m",
+              "/metrics/msh_usage_cache_write_tokens_1h"
+            ]
+          }
+        },
+        {
+          "id": "status_1",
+          "source": "requests",
+          "pointer": "/1/http_status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "stream_1",
+          "source": "requests",
+          "pointer": "/1/stream_completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "input_integer_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/prompt_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "input_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/prompt_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "read_integer_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "read_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "write_integer_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "write_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "ttl_0_integer_1",
+          "source": "requests",
+          "pointer": "/1/metrics/msh_usage_cache_write_tokens_5m",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "ttl_0_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/metrics/msh_usage_cache_write_tokens_5m",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "ttl_1_integer_1",
+          "source": "requests",
+          "pointer": "/1/metrics/msh_usage_cache_write_tokens_1h",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "ttl_1_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/metrics/msh_usage_cache_write_tokens_1h",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "write_bound_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
+          "operator": "lte",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/1/response/usage/prompt_tokens"
+          }
+        },
+        {
+          "id": "read_bound_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+          "operator": "lte",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/1/response/usage/prompt_tokens"
+          }
+        },
+        {
+          "id": "ttl_sum_1",
+          "source": "requests",
+          "pointer": "/1",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/response/usage/prompt_tokens_details/cache_write_tokens",
+            "parts": [
+              "/metrics/msh_usage_cache_write_tokens_5m",
+              "/metrics/msh_usage_cache_write_tokens_1h"
+            ]
+          }
+        },
+        {
+          "id": "cache_hit",
+          "source": "requests",
+          "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+          "operator": "gt",
+          "value": 0
+        },
+        {
+          "id": "no_rewrite",
+          "source": "requests",
+          "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
+          "operator": "equals",
+          "value": 0
+        },
+        {
+          "id": "stream_final_usage_count_0",
+          "source": "requests",
+          "pointer": "/0/metrics/stream_final_usage_count",
+          "operator": "equals",
+          "value": 1
+        },
+        {
+          "id": "stream_data_after_done_0",
+          "source": "requests",
+          "pointer": "/0/metrics/stream_data_after_done",
+          "operator": "equals",
+          "value": 0
+        },
+        {
+          "id": "stream_content_after_finish_0",
+          "source": "requests",
+          "pointer": "/0/metrics/stream_content_after_finish",
+          "operator": "equals",
+          "value": 0
+        },
+        {
+          "id": "stream_final_usage_count_1",
+          "source": "requests",
+          "pointer": "/1/metrics/stream_final_usage_count",
+          "operator": "equals",
+          "value": 1
+        },
+        {
+          "id": "stream_data_after_done_1",
+          "source": "requests",
+          "pointer": "/1/metrics/stream_data_after_done",
+          "operator": "equals",
+          "value": 0
+        },
+        {
+          "id": "stream_content_after_finish_1",
+          "source": "requests",
+          "pointer": "/1/metrics/stream_content_after_finish",
+          "operator": "equals",
+          "value": 0
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "repeat",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "system",
+                    "content": {
+                      "$generate": "concat",
+                      "parts": [
+                        "KIMI_CACHE_READ_5m_True_openai-chat",
+                        "\n",
+                        {
+                          "$generate": "repeat",
+                          "text": "缓存测试资料：alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. 每次请求保持资料和顺序一致。\n",
+                          "count": 128
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "role": "user",
+                    "content": "只回答 OK。"
+                  }
+                ],
+                "reasoning_effort": "low",
+                "max_completion_tokens": 2048,
+                "stream": true,
+                "stream_options": {
+                  "include_usage": true
+                },
+                "prompt_cache_options": {
+                  "mode": "implicit",
+                  "ttl": "5m"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "role": "system",
+              "content": {
+                "$generate": "concat",
+                "parts": [
+                  "KIMI_CACHE_READ_5m_True_openai-responses",
+                  "\n",
+                  {
+                    "$generate": "repeat",
+                    "text": "缓存测试资料：alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. 每次请求保持资料和顺序一致。\n",
+                    "count": 128
+                  }
+                ]
+              },
+              "type": "message"
+            },
+            {
+              "role": "user",
+              "content": "只回答 OK。",
+              "type": "message"
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "stream": true,
+          "prompt_cache_options": {
+            "mode": "implicit",
+            "ttl": "5m"
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "protocol",
+          "source": "issues",
+          "pointer": "",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "status_0",
+          "source": "requests",
+          "pointer": "/0/http_status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "stream_0",
+          "source": "requests",
+          "pointer": "/0/stream_completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "input_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "input_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "read_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/input_tokens_details/cached_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "read_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/input_tokens_details/cached_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "write_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/input_tokens_details/cache_write_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "write_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/input_tokens_details/cache_write_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "write_bound_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/input_tokens_details/cache_write_tokens",
+          "operator": "lte",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/0/response/usage/input_tokens"
+          }
+        },
+        {
+          "id": "read_bound_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/input_tokens_details/cached_tokens",
+          "operator": "lte",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/0/response/usage/input_tokens"
+          }
+        },
+        {
+          "id": "status_1",
+          "source": "requests",
+          "pointer": "/1/http_status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "stream_1",
+          "source": "requests",
+          "pointer": "/1/stream_completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "input_integer_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "input_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "read_integer_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/input_tokens_details/cached_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "read_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/input_tokens_details/cached_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "write_integer_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "write_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "write_bound_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
+          "operator": "lte",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/1/response/usage/input_tokens"
+          }
+        },
+        {
+          "id": "read_bound_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/input_tokens_details/cached_tokens",
+          "operator": "lte",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/1/response/usage/input_tokens"
+          }
+        },
+        {
+          "id": "cache_hit",
+          "source": "requests",
+          "pointer": "/1/response/usage/input_tokens_details/cached_tokens",
+          "operator": "gt",
+          "value": 0
+        },
+        {
+          "id": "no_rewrite",
+          "source": "requests",
+          "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
+          "operator": "equals",
+          "value": 0
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "repeat",
+            "request": {
+              "body": {
+                "input": [
+                  {
+                    "role": "system",
+                    "content": {
+                      "$generate": "concat",
+                      "parts": [
+                        "KIMI_CACHE_READ_5m_True_openai-responses",
+                        "\n",
+                        {
+                          "$generate": "repeat",
+                          "text": "缓存测试资料：alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. 每次请求保持资料和顺序一致。\n",
+                          "count": 128
+                        }
+                      ]
+                    },
+                    "type": "message"
+                  },
+                  {
+                    "role": "user",
+                    "content": "只回答 OK。",
+                    "type": "message"
+                  }
+                ],
+                "reasoning": {
+                  "effort": "low"
+                },
+                "max_output_tokens": 2048,
+                "stream": true,
+                "prompt_cache_options": {
+                  "mode": "implicit",
+                  "ttl": "5m"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "anthropic-messages": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "system": {
+            "$generate": "concat",
+            "parts": [
+              "KIMI_CACHE_READ_5m_True_anthropic-messages",
+              "\n",
+              {
+                "$generate": "repeat",
+                "text": "缓存测试资料：alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. 每次请求保持资料和顺序一致。\n",
+                "count": 128
+              }
+            ]
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答 OK。"
+            }
+          ],
+          "max_tokens": 2048,
+          "stream": true,
+          "cache_control": {
+            "type": "ephemeral",
+            "ttl": "5m"
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "protocol",
+          "source": "issues",
+          "pointer": "",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "status_0",
+          "source": "requests",
+          "pointer": "/0/http_status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "stream_0",
+          "source": "requests",
+          "pointer": "/0/stream_completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "input_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "input_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "read_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/cache_read_input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "read_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/cache_read_input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "write_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/cache_creation_input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "write_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/cache_creation_input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "ttl_0_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/cache_creation/ephemeral_5m_input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "ttl_0_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/cache_creation/ephemeral_5m_input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "ttl_1_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/cache_creation/ephemeral_1h_input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "ttl_1_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/cache_creation/ephemeral_1h_input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "ttl_sum_0",
+          "source": "requests",
+          "pointer": "/0",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/response/usage/cache_creation_input_tokens",
+            "parts": [
+              "/response/usage/cache_creation/ephemeral_5m_input_tokens",
+              "/response/usage/cache_creation/ephemeral_1h_input_tokens"
+            ]
+          }
+        },
+        {
+          "id": "status_1",
+          "source": "requests",
+          "pointer": "/1/http_status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "stream_1",
+          "source": "requests",
+          "pointer": "/1/stream_completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "input_integer_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "input_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "read_integer_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/cache_read_input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "read_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/cache_read_input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "write_integer_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/cache_creation_input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "write_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/cache_creation_input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "ttl_0_integer_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/cache_creation/ephemeral_5m_input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "ttl_0_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/cache_creation/ephemeral_5m_input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "ttl_1_integer_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/cache_creation/ephemeral_1h_input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "ttl_1_nonnegative_1",
+          "source": "requests",
+          "pointer": "/1/response/usage/cache_creation/ephemeral_1h_input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "ttl_sum_1",
+          "source": "requests",
+          "pointer": "/1",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/response/usage/cache_creation_input_tokens",
+            "parts": [
+              "/response/usage/cache_creation/ephemeral_5m_input_tokens",
+              "/response/usage/cache_creation/ephemeral_1h_input_tokens"
+            ]
+          }
+        },
+        {
+          "id": "cache_hit",
+          "source": "requests",
+          "pointer": "/1/response/usage/cache_read_input_tokens",
+          "operator": "gt",
+          "value": 0
+        },
+        {
+          "id": "no_rewrite",
+          "source": "requests",
+          "pointer": "/1/response/usage/cache_creation_input_tokens",
+          "operator": "equals",
+          "value": 0
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "repeat",
+            "request": {
+              "body": {
+                "system": {
+                  "$generate": "concat",
+                  "parts": [
+                    "KIMI_CACHE_READ_5m_True_anthropic-messages",
+                    "\n",
+                    {
+                      "$generate": "repeat",
+                      "text": "缓存测试资料：alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. 每次请求保持资料和顺序一致。\n",
+                      "count": 128
+                    }
+                  ]
+                },
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "只回答 OK。"
+                  }
+                ],
+                "max_tokens": 2048,
+                "stream": true,
+                "cache_control": {
+                  "type": "ephemeral",
+                  "ttl": "5m"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

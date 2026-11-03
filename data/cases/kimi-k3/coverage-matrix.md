@@ -1,5 +1,7 @@
 # Kimi K3 contract coverage matrix
 
+> 2026-11-03: the separate [cache-usage profiles](../../../doc/kimi-cache-usage.md) add default/5m/1h cold writes and 5m/1h repeat reads, both streaming and non-streaming. Chat checks MSH usage counters; Responses and Messages check native usage, including Messages TTL splits. Local HTTP/SSE validation only; expiry/refresh/isolation remain deferred. Existing profile memberships and Case IDs are retained.
+
 > 2026-11-01 profile update: Responses foundation / expected-success now contain 229 / 60 Cases; admission / extended remain 169 / 23. The previous 230 / 61 counts below describe the historical expansion. The identical `k3.responses.cache_options_omitted` Case remains available but is no longer repeated beside `k3.responses.input_string` in these two suites. A successful omitted-options request alone does not prove the 5m default; cache default behavior remains unverified. See [suite optimization](../../../doc/kimi-suite-optimization.md).
 
 Last verified against the first-party Kimi documentation on 2026-09-30.

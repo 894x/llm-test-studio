@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/894x/llm-test-studio/internal/protocol"
 	"github.com/894x/llm-test-studio/internal/protocols/runtime"
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
@@ -33,6 +34,7 @@ func parseStream(response runtime.Response, observation *testspec.Observation) [
 	for _, key := range []string{"stream_frames", "stream_data_after_done", "stream_content_after_finish", "stream_finish_count", "stream_invalid_delta_count", "stream_provider_error_count", "stream_identity_missing_count"} {
 		observation.Metrics[key] = 0
 	}
+	observation.Metrics[protocol.StreamFinalUsageMetric] = 0
 	limited := &io.LimitedReader{R: response.HTTP.Body, N: runtime.MaxResponseBytes + 1}
 	scanner := bufio.NewScanner(limited)
 	scanner.Buffer(make([]byte, 4096), maxEventBytes)
@@ -137,7 +139,13 @@ func (state *streamState) consume(event map[string]any, response runtime.Respons
 	if usage, exists := event["usage"]; exists && usage != nil {
 		observation.Usage, _ = json.Marshal(usage)
 	}
-	choices, _ := event["choices"].([]any)
+	choices, hasChoices := event["choices"].([]any)
+	_, hasUsage := event["usage"].(map[string]any)
+	emptyChoices := hasChoices && len(choices) == 0
+	usageOnly := emptyChoices && hasUsage
+	if state.finished && usageOnly {
+		observation.Metrics[protocol.StreamFinalUsageMetric]++
+	}
 	if len(choices) > 0 {
 		id, _ := event["id"].(string)
 		model, _ := event["model"].(string)

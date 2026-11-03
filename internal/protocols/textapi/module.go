@@ -90,6 +90,7 @@ func (module *Module) Execute(ctx context.Context, execution runtime.Execution) 
 		}
 		request := runtime.Request{Method: http.MethodPost, Path: module.Path, Body: body, Headers: module.Headers}
 		response, err := execution.Transport.Send(ctx, request)
+		runtime.ObserveCacheWriteHeaders(response.HTTP, &observation)
 		if err != nil {
 			runtime.AddIssue(&observation, step.ID, runtime.ErrorCode(ctx))
 			observation.Exchanges = append(observation.Exchanges, runtime.Exchange(step.ID, request, response))

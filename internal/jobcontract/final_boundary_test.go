@@ -101,6 +101,7 @@ func completeTaskCapabilities() RunnerCapabilities {
 		Features: []string{
 			FeatureExecutionOrigin, FeatureMixedPlanItems, "warmup", "ramp", "capacity", "open_loop", "time_slices",
 			"normal_workload", "random_input", "assets", FeaturePerformanceAffinity, FeatureCaseDescriptions,
+			FeatureCacheWriteHeaders,
 		},
 	}
 }

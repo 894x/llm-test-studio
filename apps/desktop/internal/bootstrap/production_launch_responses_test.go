@@ -121,7 +121,7 @@ func TestProductionLauncherSettlesAuthoredResponsesAndThenPerformance(t *testing
 				for _, entry := range accepted.Prepared.Spec.Spec.Run.Snapshot.Entries {
 					count += len(entry.CaseDefinitions)
 				}
-				if count != 230 {
+				if count != 229 {
 					t.Fatal("launcher omitted authored K3 cases")
 				}
 			}
@@ -179,10 +179,10 @@ func TestProductionLauncherSettlesAuthoredResponsesAndThenPerformance(t *testing
 				}
 			} else {
 				reports, err := repository.ListReportsForRuns(t.Context(), accepted.Receipt.RunIDs)
-				if err != nil || len(reports) != 1 || requests.Load()-before < 230 {
+				if err != nil || len(reports) != 1 || requests.Load()-before < 229 {
 					t.Fatal("authored production quick task did not produce its original report")
 				}
-				if len(reports[0].CaseResults) != 230 || reports[0].ExecutionOrigin == nil || *reports[0].ExecutionOrigin != expectedOrigin {
+				if len(reports[0].CaseResults) != 229 || reports[0].ExecutionOrigin == nil || *reports[0].ExecutionOrigin != expectedOrigin {
 					t.Fatal("Responses report lost authored cases or actual executor source")
 				}
 				actualOrigin, err := repository.RunExecutionOrigin(t.Context(), accepted.Receipt.RunIDs[0])

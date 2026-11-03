@@ -51,7 +51,7 @@ func TestRemoteJobEnvelopeFitsCompleteAuthoredK3Suites(t *testing.T) {
 		t.Fatal("preflight cannot obtain the production preparer")
 	}
 	for key, expectedCases := range map[string]int{
-		"kimi-k3.official-foundation": 86, "openai-responses.kimi-k3.official-foundation": 230,
+		"kimi-k3.official-foundation": 85, "openai-responses.kimi-k3.official-foundation": 229,
 	} {
 		t.Run(key, func(t *testing.T) {
 			suiteID := ""

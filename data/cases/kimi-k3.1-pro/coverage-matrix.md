@@ -1,5 +1,7 @@
 # Kimi K3.1 Pro Chat Completions 契约覆盖矩阵
 
+> 2026-11-03：独立[缓存 usage 套件](../../../doc/kimi-cache-usage.md)新增默认/5m/1h 冷写入和 5m/1h 重复读取，全部含流式/非流式。Chat 对账 MSH 两档用量头；另有 Responses / Messages 原生 usage 定义，Messages 核验两档创建量。适用 Pro，不扩大 Highspeed 支持承诺。已做本地 HTTP/SSE 模拟，未发付费请求；过期、续期、隔离仍 deferred。原套件引用和 Case ID 保留。
+
 > 2026-11-01：Pro / Highspeed 完整套件分别为 92 / 89 个 Case；`k31.must.tool_call` 与 `k31.must.tool_choice_required` 的请求和断言相同，套件保留后者覆盖两项，前者的 Case ID 仍可独立引用。新增两种模型共用的 7 Case 日常检查，动态工具仍仅在 Pro 专项和完整套件中。详见 [套件优化说明](../../../doc/kimi-suite-optimization.md)。
 
 ## 范围

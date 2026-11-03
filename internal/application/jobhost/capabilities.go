@@ -23,6 +23,7 @@ func CoreCapabilities() jobcontract.RunnerCapabilities {
 			jobcontract.FeaturePerformanceAffinity,
 			jobcontract.FeatureFunctionalProgress,
 			jobcontract.FeatureCaseDescriptions,
+			jobcontract.FeatureCacheWriteHeaders,
 		},
 	}
 }

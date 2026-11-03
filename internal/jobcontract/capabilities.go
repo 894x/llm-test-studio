@@ -12,6 +12,7 @@ const FeatureMixedPlanItems = "mixed_plan_items"
 const FeaturePerformanceAffinity = "performance_affinity"
 const FeatureFunctionalProgress = "functional_progress"
 const FeatureCaseDescriptions = "case_descriptions"
+const FeatureCacheWriteHeaders = "cache_write_headers"
 
 // SupportsJob checks only the current task requirements, independent of client
 // release and build. Report-transfer requirements may be stricter for a caller.
@@ -37,7 +38,13 @@ func (capabilities RunnerCapabilities) SupportsJob(spec JobSpec) bool {
 				for _, testCase := range entry.CaseDefinitions {
 					if testCase.Description != "" {
 						features = append(features, FeatureCaseDescriptions)
-						break
+					}
+					definition, err := testCase.SpecFor(run.Snapshot.Channel.Protocol)
+					if err != nil {
+						return false
+					}
+					if requiresCacheWriteHeaders(definition.Assertions) {
+						features = append(features, FeatureCacheWriteHeaders)
 					}
 				}
 				if entry.Performance != nil || entry.OnFailure != "" || run.Snapshot.PlanDocument.Entries[index].Name != "" {

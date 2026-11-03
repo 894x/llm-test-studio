@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "protocol": "openai-chat",
+  "profiles": [
+    {
+      "directory": "kimi-cache-usage",
+      "schema_version": 1,
+      "key": "openai-chat.kimi.cache-usage",
+      "name": "Kimi 缓存 usage 对账 · openai-chat",
+      "protocol": "openai-chat",
+      "description": "K3 / K3.1 Pro 专项 T3：5m、1h、默认 TTL 的流式和非流式实际写入，以及两档重复读取。Chat 包含 MSH 用量头，Messages 包含 TTL 写入拆分。运行产生费用；不纳入日常套件，不证明跨时间保留。",
+      "cases": [
+        {
+          "case_id": "c69198ce-66ee-4324-8346-6e3bba2992ac"
+        },
+        {
+          "case_id": "15ff3310-338d-458b-8bbe-7d2390a1f881"
+        },
+        {
+          "case_id": "5db3e48f-f7f4-472f-af33-74e08454c7a4"
+        },
+        {
+          "case_id": "158c6ed7-6d9e-4046-b48c-83a31a5ac6be"
+        },
+        {
+          "case_id": "2dc03162-a742-4d1d-9e3f-2afd3f232f29"
+        },
+        {
+          "case_id": "f20d65f3-6948-4b6c-bea1-93ffbcaf8f42"
+        },
+        {
+          "case_id": "15b19757-bec4-4689-b35f-1489889ae5f9"
+        },
+        {
+          "case_id": "ecfab6b6-6883-462a-a86c-1d0538402e6e"
+        },
+        {
+          "case_id": "42d8ac5e-ea87-4add-9cf0-a07fb6f2010b"
+        },
+        {
+          "case_id": "5781dcbc-0106-4e12-9d9f-79205d7a8386"
+        }
+      ],
+      "inputs": []
+    }
+  ]
+}

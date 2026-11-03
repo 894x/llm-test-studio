@@ -105,7 +105,7 @@ func TestProductionLauncherUsesAuthoredQuickTaskAndMinimalPerformance(t *testing
 				for _, entry := range accepted.Prepared.Spec.Spec.Run.Snapshot.Entries {
 					count += len(entry.CaseDefinitions)
 				}
-				if count != 86 {
+				if count != 85 {
 					t.Fatal("launcher omitted authored K3 cases")
 				}
 			}
