@@ -149,14 +149,9 @@ describe("channel comparison reports", () => {
       const seed = detail.entries[0].cases[0]
       detail.entries[0].cases = Array.from({ length: 60 }, (_, i) => ({ ...seed, case_id: reportID(100 + i), name: `Case ${i}` }))
     }
+    const exportedDocuments: HTMLElement[] = []
     const visualExport = vi.fn(async (element: HTMLElement) => {
-      expect(element).toHaveTextContent("Case 59")
-      expect(element.querySelectorAll("thead th")).toHaveLength(3)
-      expect(element).toHaveTextContent("rhzs")
-      expect(Array.from(element.querySelectorAll("time"), time => time.dateTime)).toEqual([
-        data.left.report.generated_at, data.right.report.generated_at,
-      ])
-      expect(element.querySelector("time")?.textContent).toMatch(/GMT|UTC/)
+      exportedDocuments.push(element.cloneNode(true) as HTMLElement)
       return { filename: "comparison.html", mediaType: "text/html", blob: new Blob(["html"]) }
     })
     const save = vi.fn(async () => true)
@@ -165,16 +160,32 @@ describe("channel comparison reports", () => {
     expect(screen.queryByText("Case 59")).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "HTML" }))
     await waitFor(() => expect(save).toHaveBeenCalledOnce())
+    const html = exportedDocuments[0]
+    expect(html).toHaveTextContent("Case 59")
+    expect(Array.from(html.querySelectorAll("thead th"), header => header.textContent)).toEqual(["用例名称", "渠道 A", "渠道 B"])
+    expect(html).toHaveTextContent("rhzs")
+    expect(Array.from(html.querySelectorAll("time"), time => time.dateTime)).toEqual([
+      data.left.report.generated_at, data.right.report.generated_at,
+    ])
+    expect(html.querySelector("time")?.textContent).toMatch(/GMT|UTC/)
     await waitFor(() => expect(screen.getByRole("button", { name: "PNG" })).toBeEnabled())
     await user.click(screen.getByRole("button", { name: "折叠渠道：渠道 B" }))
+    const visibleHeaders = within(screen.getByRole("table", { name: "执行项用例结果" }))
+      .getAllByRole("columnheader").map(header => header.textContent)
     visualExport.mockImplementationOnce(async element => {
-      expect(element.querySelectorAll("thead th")).toHaveLength(9)
-      expect(element).toHaveTextContent("Case 59")
-      expect(Array.from(element.querySelectorAll("time"), time => time.dateTime)).toEqual([data.left.report.generated_at])
+      exportedDocuments.push(element.cloneNode(true) as HTMLElement)
       return { filename: "comparison.png", mediaType: "image/png", blob: new Blob(["png"]) }
     })
     await user.click(screen.getByRole("button", { name: "PNG" }))
     await waitFor(() => expect(save).toHaveBeenCalledTimes(2))
+    const png = exportedDocuments[1]
+    const exportedHeaders = Array.from(png.querySelectorAll("thead th"), header => header.textContent)
+    expect(exportedHeaders).toEqual(visibleHeaders)
+    expect(exportedHeaders).toEqual(expect.arrayContaining([
+      "用例名称", "等级", "验证结果", "HTTP", "E2E", "TTFT", "TPOT", "输出 Token", "执行汇总",
+    ]))
+    expect(png).toHaveTextContent("Case 59")
+    expect(Array.from(png.querySelectorAll("time"), time => time.dateTime)).toEqual([data.left.report.generated_at])
   })
 
   it("still opens an individual channel report from a run shortcut", async () => {
