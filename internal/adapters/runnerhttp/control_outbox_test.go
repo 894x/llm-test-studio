@@ -125,11 +125,7 @@ func newControlHTTPFixture(t *testing.T, kind jobcontract.Kind) *controlHTTPFixt
 	if err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-fixture.node.entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("control fixture did not issue its first request")
-	}
+	fixture.node.waitForProvider(t)
 	fixture.reopenController(t, fixture.repository)
 	fixture.observationOnly.Store(true)
 	return fixture

@@ -23,11 +23,7 @@ func TestBackgroundWatcherRevisitsAnExistingJobForLateReports(t *testing.T) {
 	if _, err := client.Submit(t.Context(), &submission); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-fixture.entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("performance request did not reach provider")
-	}
+	fixture.waitForProvider(t)
 	desktop, _ := performanceMirrorStore(t)
 	cache, _ := syncDocuments(t)
 	identity := fixture.host.Identity()

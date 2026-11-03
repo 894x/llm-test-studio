@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
@@ -19,6 +20,11 @@ func (fixture *httpFixture) runSubmission(t *testing.T, comparison bool) jobcont
 	t.Helper()
 	submission := fixture.submission(t, nil)
 	first := httpRunInput(t, fixture.upstream.URL)
+	if fixture.blocked {
+		timeoutMS := uint64(fixture.executionTimeout / time.Millisecond)
+		first.Snapshot.Entries[0].Load.RequestTimeoutMS = timeoutMS
+		first.Snapshot.PlanDocument.Entries[0].Load.RequestTimeoutMS = timeoutMS
+	}
 	inputs := []runs.PreparedRun{first}
 	submission.Clear()
 	submission.Job.Kind, submission.Job.Spec = jobcontract.KindRun, jobcontract.Payload{Run: &first}

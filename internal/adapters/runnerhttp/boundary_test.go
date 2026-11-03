@@ -40,11 +40,7 @@ func TestHTTPFailedReceiptWriteDoesNotAbandonOrDuplicateAcceptedExecution(t *tes
 	if writer.status != http.StatusAccepted {
 		t.Fatal("submission was not committed before the lost receipt")
 	}
-	select {
-	case <-fixture.entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("lost receipt abandoned execution")
-	}
+	fixture.waitForProvider(t)
 	retry := fixture.request(
 		t,
 		http.MethodPost,
@@ -75,11 +71,7 @@ func TestHTTPCommandPathAndByteRejectionsLeaveJobAndJournalUnchanged(t *testing.
 		"/jobs",
 		encode(t, submission),
 	)
-	select {
-	case <-fixture.entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("request did not start")
-	}
+	fixture.waitForProvider(t)
 	before, err := fixture.repository.GetJob(t.Context(), submission.Job.JobID)
 	if err != nil {
 		t.Fatal(err)

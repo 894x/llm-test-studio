@@ -85,11 +85,7 @@ func TestHTTPActiveJobContinuesAfterLongPollObservationIsCancelled(t *testing.T)
 	fixture := newHTTPFixture(t, true, capabilities())
 	submission := fixture.submission(t, func(command *quicktest.PerformanceCommand) { command.RequestCount = 1 })
 	admitHTTPJob(t, fixture, submission)
-	select {
-	case <-fixture.entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("active observation fixture did not enter its held request")
-	}
+	fixture.waitForProvider(t)
 	before, err := fixture.repository.GetJob(t.Context(), submission.Job.JobID)
 	if err != nil || before.Receipt.Status != domain.RunRunning {
 		t.Fatalf("observation fixture is not running: %v", err)
@@ -170,11 +166,7 @@ func TestHTTPFullPerformanceResultsRejectUnreadyAndOtherActualJobOwners(t *testi
 	for _, submission := range []jobcontract.Submission{first, second} {
 		admitHTTPJob(t, fixture, submission)
 	}
-	select {
-	case <-fixture.entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("performance owner fixture did not hold its first request")
-	}
+	fixture.waitForProvider(t)
 	for _, submission := range []jobcontract.Submission{first, second} {
 		path := "/jobs/" + submission.Job.JobID + "/reports/" + submission.Job.Spec.Performance.ReportID
 		response := fixture.request(

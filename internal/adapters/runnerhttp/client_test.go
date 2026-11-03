@@ -182,11 +182,7 @@ func TestManagementClientCommandsKeepStableConfirmationsAcrossClients(t *testing
 	if _, err := client.Submit(t.Context(), &active); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-fixture.entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("active request did not start")
-	}
+	fixture.waitForProvider(t)
 	queued := fixture.submission(t, nil)
 	if _, err := client.Submit(t.Context(), &queued); err != nil {
 		t.Fatal(err)

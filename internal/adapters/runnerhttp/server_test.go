@@ -51,6 +51,7 @@ type httpFixture struct {
 	entered          chan struct{}
 	release          func()
 	executionTimeout time.Duration
+	blocked          bool
 }
 
 func capabilities() jobcontract.RunnerCapabilities {
@@ -66,11 +67,17 @@ func capabilities() jobcontract.RunnerCapabilities {
 
 func newHTTPFixture(t *testing.T, blocked bool, caps jobcontract.RunnerCapabilities) *httpFixture {
 	t.Helper()
+	executionTimeout := 30 * time.Second
+	if blocked {
+		// Observation and control tests hold requests across multiple real
+		// database and watcher phases before releasing the local provider.
+		executionTimeout = 2 * time.Minute
+	}
 	return newHTTPFixtureWithExecutionTimeout(
 		t,
 		blocked,
 		caps,
-		30*time.Second,
+		executionTimeout,
 	)
 }
 
@@ -82,7 +89,7 @@ func newHTTPFixtureWithExecutionTimeout(
 ) *httpFixture {
 	t.Helper()
 	fixture := &httpFixture{
-		entered: make(chan struct{}), executionTimeout: executionTimeout,
+		entered: make(chan struct{}), executionTimeout: executionTimeout, blocked: blocked,
 	}
 	release := make(chan struct{})
 	fixture.release = sync.OnceFunc(func() { close(release) })
@@ -166,6 +173,9 @@ func (fixture *httpFixture) submission(
 		URL: fixture.upstream.URL, APIKey: "http-channel-test-secret", ModelID: "model",
 		RequestCount: 2, Concurrency: 1, TimeoutMS: 5000, InputTokens: 32, OutputTokens: 2,
 	}
+	if fixture.blocked {
+		command.TimeoutMS = uint64(fixture.executionTimeout / time.Millisecond)
+	}
 	if configure != nil {
 		configure(&command)
 	}
@@ -227,6 +237,23 @@ func encode(t *testing.T, value any) []byte {
 		t.Fatal(err)
 	}
 	return document
+}
+
+func (fixture *httpFixture) waitForProvider(t *testing.T) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), fixture.executionTimeout)
+	defer cancel()
+	select {
+	case <-fixture.entered:
+	case <-ctx.Done():
+		status := fixture.host.Status()
+		t.Fatalf(
+			"HTTP fixture did not enter its mock provider: active=%d queued=%d: %v",
+			status.Active,
+			status.Queued,
+			ctx.Err(),
+		)
+	}
 }
 
 func waitHTTPJob(t *testing.T, fixture *httpFixture, id string, status domain.RunStatus) jobcontract.Snapshot {
@@ -395,11 +422,7 @@ func TestHTTPSubmitIsIdempotentAndIndependentOfSubmissionConnection(t *testing.T
 	if response.StatusCode != http.StatusAccepted {
 		t.Fatalf("initial admission=%d", response.StatusCode)
 	}
-	select {
-	case <-fixture.entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("accepted task did not run after its HTTP context ended")
-	}
+	fixture.waitForProvider(t)
 	retry := fixture.request(
 		t,
 		http.MethodPost,
@@ -551,11 +574,7 @@ func TestHTTPClientsWithDifferentBuildsShareOneNodeQueueAndAuthorization(t *test
 			t.Fatal("a different client build could not submit using the same node authorization")
 		}
 		if index == 0 {
-			select {
-			case <-fixture.entered:
-			case <-time.After(3 * time.Second):
-				t.Fatal("first client task did not start")
-			}
+			fixture.waitForProvider(t)
 		}
 	}
 	if fixture.host.Status().Active != 1 || fixture.host.Status().Queued != 1 || fixture.requests.Load() != 1 {

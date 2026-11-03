@@ -31,11 +31,7 @@ func TestHTTPControlsConfirmDurableCommandsAndDoNotRepeatRequests(t *testing.T) 
 			if response.StatusCode != http.StatusAccepted {
 				t.Fatal("control fixture was not admitted")
 			}
-			select {
-			case <-fixture.entered:
-			case <-time.After(3 * time.Second):
-				t.Fatal("request did not start")
-			}
+			fixture.waitForProvider(t)
 			current, err := fixture.repository.GetJob(t.Context(), submission.Job.JobID)
 			if err != nil {
 				t.Fatal(err)

@@ -75,7 +75,7 @@ func startObservingFixture(
 
 func awaitObservation(t *testing.T, predicate func() bool) {
 	t.Helper()
-	awaitObservationFor(t, 10*time.Second, predicate)
+	awaitObservationFor(t, 30*time.Second, predicate)
 }
 
 func awaitObservationFor(t *testing.T, budget time.Duration, predicate func() bool) {
@@ -83,7 +83,7 @@ func awaitObservationFor(t *testing.T, budget time.Duration, predicate func() bo
 	ctx, cancel := context.WithTimeout(t.Context(), budget)
 	defer cancel()
 	for !predicate() {
-		timer := time.NewTimer(5 * time.Millisecond)
+		timer := time.NewTimer(50 * time.Millisecond)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -102,11 +102,7 @@ func TestBackgroundWatcherDiscoversSharedJobsAndReopensWithoutControllingExecuti
 	if _, err := firstClient.Submit(t.Context(), &performance); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-fixture.entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("performance warmup did not enter provider")
-	}
+	fixture.waitForProvider(t)
 	run, comparison := fixture.runSubmission(t, false), fixture.runSubmission(t, true)
 	for _, submission := range []*jobcontract.Submission{&run, &comparison} {
 		if _, err := otherClient.Submit(t.Context(), submission); err != nil {

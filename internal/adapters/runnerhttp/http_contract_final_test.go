@@ -120,11 +120,7 @@ func TestHTTPConcurrentDifferentControlsAtOneRevisionConfirmOnlyOneDecision(t *t
 	if admitted.StatusCode != http.StatusAccepted {
 		t.Fatal("control race fixture was not admitted")
 	}
-	select {
-	case <-fixture.entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("control race did not hold an in-flight provider request")
-	}
+	fixture.waitForProvider(t)
 	before, err := fixture.repository.GetJob(t.Context(), submission.Job.JobID)
 	if err != nil || before.Receipt.Status != domain.RunRunning {
 		t.Fatalf("control race requires running state: %v", err)

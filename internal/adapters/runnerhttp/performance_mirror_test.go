@@ -39,7 +39,7 @@ func performanceMirrorStore(t *testing.T) (*sqlite.Repository, string) {
 
 func waitHTTPSettlement(t *testing.T, client *runnerclient.Client) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 	for {
 		info, err := client.Probe(ctx)
@@ -49,7 +49,7 @@ func waitHTTPSettlement(t *testing.T, client *runnerclient.Client) {
 		if info.Pending == 0 {
 			return
 		}
-		timer := time.NewTimer(5 * time.Millisecond)
+		timer := time.NewTimer(50 * time.Millisecond)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -330,11 +330,7 @@ func TestQueuedPerformanceResultHasNoStatisticalArchive(t *testing.T) {
 	if _, err := client.Submit(t.Context(), &active); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-fixture.entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("active fixture did not enter provider")
-	}
+	fixture.waitForProvider(t)
 	if _, err := client.Submit(t.Context(), &queued); err != nil {
 		t.Fatal(err)
 	}

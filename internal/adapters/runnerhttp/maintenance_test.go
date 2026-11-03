@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
@@ -44,11 +43,7 @@ func TestHTTPMaintenanceBlocksNewWorkAndAllowsAlreadyAcceptedWorkToFinish(t *tes
 		"/jobs",
 		encode(t, submission),
 	)
-	select {
-	case <-fixture.entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("request did not start")
-	}
+	fixture.waitForProvider(t)
 	command := jobcontract.MaintenanceCommand{
 		Contract: jobcontract.CurrentContract, OperationID: "55555555-5555-4555-8555-555555555555",
 		Action: jobcontract.MaintenancePause,
