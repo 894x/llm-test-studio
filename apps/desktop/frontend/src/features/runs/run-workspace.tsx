@@ -248,7 +248,7 @@ export function NewRunSheet({
                   key={plan.id}
                   className={cn(
                     "run-plan-option",
-                    selected && "border-primary bg-info-soft",
+                    selected && "bg-info-soft",
                   )}
                 >
                   <RadioGroupItem id={`run-plan-${plan.id}`} value={plan.id} />

@@ -63,4 +63,4 @@ Keep Header controls compact. Do not enlarge every desktop control to mobile tou
 - Do not use ripple or scale effects on dense controls.
 - Respect `prefers-reduced-motion` globally and in local animations.
 
-Input, textarea, input-group, and searchable dropdown focus uses the existing 1 px border in the semantic focus color, without an outer ring. Invalid fields retain a 1 px destructive border and inline validation text.
+Input, textarea, input-group, autocomplete, and searchable dropdown controls have no visible default border; use their control surface and radius to identify the input area. Field-like toggle wrappers follow the same rule. Keep a transparent 1 px border to preserve geometry, show it in the semantic focus color on focus, and use a destructive border with inline validation text for invalid fields, without an outer ring. Compound inputs draw focus and validation borders only on the outer control. Checkbox and radio indicators retain their identifying outlines.

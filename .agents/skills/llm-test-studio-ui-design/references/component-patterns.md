@@ -35,6 +35,8 @@ Do not use HTML `datalist` for suggestions in the desktop product. Its browser-o
 - Prefer readable option names. Include protocol, revision, or other metadata only when it helps distinguish choices or make a decision; keep stable identifiers in values rather than exposing them by default in labels.
 - Group related short fields according to available container width; give long text and complex controls more space. Do not copy a fixed column count from another form. Avoid empty wrappers and overlapping legend/section spacing that leave unexplained gaps.
 - Place validation next to the affected field and preserve entered values after failure.
+- Text inputs, textareas, input groups, autocomplete, searchable dropdowns, and field-like toggle wrappers have no visible default border. Preserve their surface, radius, and dimensions with a transparent border; show focus and error borders on the outer control only. Checkbox and radio indicators retain their identifying outlines.
+- Form groups and plan/channel selection rows also omit default frames; use surface and selection indicators to distinguish choices. Secondary buttons use a quiet filled surface without a default outline. Retain group validation borders and button keyboard focus.
 - Implement applicable read-only, disabled, loading, success, warning, and error states.
 
 ## Navigation and selection

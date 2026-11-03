@@ -103,7 +103,7 @@ export function NewComparisonSheet({
                 <div className="text-xs font-semibold">{t("selectChannels")}</div>
                 <div className="mt-2 space-y-2">
                   {channels.map((channel) => (
-                    <Field key={channel.id} className="rounded-md border px-3 py-2">
+                    <Field key={channel.id} className="rounded-md border border-transparent bg-surface-control px-3 py-2 has-[[data-slot=checkbox][data-state=checked]]:bg-surface-active">
                       <Checkbox
                         id={`compare-${channel.id}`}
                         checked={effectiveSelected.includes(channel.id)}

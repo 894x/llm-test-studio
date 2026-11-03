@@ -45,7 +45,7 @@ function AutocompleteInput({
     <AutocompletePrimitive.InputGroup
       data-slot="autocomplete-input-group"
       className={cn(
-        "group/autocomplete relative flex h-8 w-full min-w-0 items-center rounded-md border border-input bg-surface-control transition-colors outline-none has-[[data-slot=autocomplete-input]:focus-visible]:border-ring has-[[data-slot=autocomplete-input]:focus-visible]:ring-0 has-[[data-slot=autocomplete-input]:focus-visible]:ring-ring/50 has-[[data-slot=autocomplete-input][aria-invalid=true]]:border-destructive has-[[data-slot=autocomplete-input][aria-invalid=true]]:ring-0 has-[[data-slot=autocomplete-input][aria-invalid=true]]:ring-destructive/20 has-[[data-slot=autocomplete-input]:disabled]:bg-input/50 has-[[data-slot=autocomplete-input]:disabled]:text-text-disabled has-[[data-slot=autocomplete-input][readonly]]:bg-input/50",
+        "group/autocomplete relative flex h-8 w-full min-w-0 items-center rounded-md border border-transparent bg-surface-control transition-colors outline-none has-[[data-slot=autocomplete-input]:focus-visible]:border-ring has-[[data-slot=autocomplete-input]:focus-visible]:ring-0 has-[[data-slot=autocomplete-input]:focus-visible]:ring-ring/50 has-[[data-slot=autocomplete-input][aria-invalid=true]]:border-destructive has-[[data-slot=autocomplete-input][aria-invalid=true]]:ring-0 has-[[data-slot=autocomplete-input][aria-invalid=true]]:ring-destructive/20 has-[[data-slot=autocomplete-input]:disabled]:bg-input/50 has-[[data-slot=autocomplete-input]:disabled]:text-text-disabled has-[[data-slot=autocomplete-input][readonly]]:bg-input/50",
         className,
       )}
     >

@@ -73,7 +73,7 @@
   --surface-elevated: rgba(255,255,255,.94);
   --surface-glass: rgba(255,255,255,.88);
   --surface-subtle: rgba(15,23,42,.035);
-  --surface-control: rgba(255,255,255,.92);
+  --surface-control: rgba(15,23,42,.06);
   --surface-hover: rgba(15,23,42,.06);
   --surface-active: rgba(88,107,128,.14);
   --border-strong: rgba(15,23,42,.20);
@@ -235,7 +235,7 @@
 }
 
 .run-plan-option {
-  @apply min-h-14 border border-border px-3 py-2.5 hover:bg-muted;
+  @apply min-h-14 border border-transparent px-3 py-2.5 hover:bg-muted;
 }
 
 .status-dot {

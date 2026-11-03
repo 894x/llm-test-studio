@@ -8,7 +8,7 @@ function InputGroup({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="input-group"
       className={cn(
-        "flex h-8 min-w-0 items-center gap-1 rounded-md border border-input bg-surface-control px-1 transition-colors focus-within:border-ring focus-within:ring-0 focus-within:ring-ring/50 has-[input:disabled]:bg-input/50 has-[input[readonly]]:bg-input/50",
+        "flex h-8 min-w-0 items-center gap-1 rounded-md border border-transparent bg-surface-control px-1 transition-colors focus-within:border-ring focus-within:ring-0 focus-within:ring-ring/50 has-[input[aria-invalid=true]]:border-destructive has-[input:disabled]:bg-input/50 has-[input[readonly]]:bg-input/50",
         className,
       )}
       {...props}
