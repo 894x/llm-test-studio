@@ -4,6 +4,40 @@ import { parseReportDetail } from "./data"
 import type { ExecutionOrigin } from "./execution-origin"
 
 describe("current protocol report contract", () => {
+  it("preserves dimension statistics from Core and accepts earlier details without the additive fields", () => {
+    const source = protocolReportFixture()
+    const statistic = { dimension: "parameters", case_count: 5, passed_case_count: 1, failed_case_count: 1,
+      observed_case_count: 1, indeterminate_case_count: 1, not_run_case_count: 1, pass_rate_percent: 50 }
+    const parsed = parseReportDetail({ ...source, dimension_statistics: [statistic] })
+    if (parsed.source !== "run") throw new Error("run expected")
+    expect(parsed.dimension_statistics).toEqual([statistic])
+    expect(parsed.dimension_statistics?.[0]).not.toBe(statistic)
+    expect(parsed.entries[0].cases[0].dimension).toBe("parameters")
+    delete source.entries[0].cases[0].dimension
+    const before = structuredClone(source)
+    const legacy = parseReportDetail(source)
+    expect(legacy.source === "run" && legacy.dimension_statistics).toBeUndefined()
+    expect(legacy.source === "run" && legacy.entries[0].cases[0]).not.toHaveProperty("dimension")
+    expect(source).toEqual(before)
+  })
+  it("rejects malformed dimension statistics without modifying the source", () => {
+    const source = protocolReportFixture()
+    const statistic = { dimension: "tools", case_count: 2, passed_case_count: 1, failed_case_count: 1,
+      observed_case_count: 0, indeterminate_case_count: 0, not_run_case_count: 0, pass_rate_percent: 50 }
+    for (const patch of [{ dimension: " " }, { dimension: 1 }, { case_count: 3 }, { failed_case_count: -1 },
+      { passed_case_count: 0.5 }, { pass_rate_percent: null }, { pass_rate_percent: 101 }, { pass_rate_percent: NaN }]) {
+      const value = { ...source, dimension_statistics: [{ ...statistic, ...patch }] }
+      const before = structuredClone(value)
+      expect(() => parseReportDetail(value)).toThrow()
+      expect(value).toEqual(before)
+    }
+    expect(() => parseReportDetail({ ...source, dimension_statistics: [statistic, statistic] })).toThrow()
+    const observed = { ...statistic, passed_case_count: 0, failed_case_count: 0, observed_case_count: 2, pass_rate_percent: null }
+    expect(() => parseReportDetail({ ...source, dimension_statistics: [observed] })).not.toThrow()
+    expect(() => parseReportDetail({ ...source, dimension_statistics: [{ ...observed, pass_rate_percent: 0 }] })).toThrow()
+    Object.assign(source.entries[0].cases[0], { dimension: " tools " })
+    expect(() => parseReportDetail(source)).toThrow()
+  })
   it("accepts an optional Go-owned performance summary and rejects malformed values without changing input", () => {
     const source = protocolReportFixture()
     const entry = source.entries[0]

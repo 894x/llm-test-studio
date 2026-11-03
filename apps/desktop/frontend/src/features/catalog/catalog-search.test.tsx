@@ -16,6 +16,18 @@ const props = {
 }
 
 describe("Catalog table search", () => {
+  it("shows case dimensions as a column and searches custom dimensions", async () => {
+    const user = userEvent.setup()
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.test_cases[0].dimension = "custom-dimension"
+    render(<CasesWorkspace {...props} catalog={catalog} />)
+    const table = screen.getByRole("table", { name: "测试用例目录" })
+    expect(within(table).getByRole("columnheader", { name: "维度" })).toBeVisible()
+    expect(within(table).getByRole("cell", { name: "custom-dimension" })).toBeVisible()
+    await user.type(screen.getByRole("searchbox", { name: "搜索用例" }), "custom-dimension")
+    expect(within(table).getAllByRole("row")).toHaveLength(2)
+    expect(screen.getByRole("row", { selected: true })).toHaveTextContent(catalog.test_cases[0].name)
+  })
   it("applies repeated case and suite drilldowns without clearing their search or selection", async () => {
     const user = userEvent.setup()
     const view = render(<CasesWorkspace {...props} navigationIntent={{ sequence: 1, tab: "suites" }} />)

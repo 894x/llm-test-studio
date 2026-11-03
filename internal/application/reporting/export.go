@@ -118,6 +118,12 @@ type htmlReport struct {
 	Unassigned         []resultRow
 	GeneratedUTC       string
 	PerformanceMetrics []namedMetric
+	Dimensions         []htmlDimensionStatistic
+}
+
+type htmlDimensionStatistic struct {
+	DimensionStatistic
+	PassRate string
 }
 
 type htmlEntryReport struct {
@@ -150,13 +156,14 @@ type quickHTMLReport struct {
 }
 
 type htmlLabels struct {
-	Request, Status, Input, Output, Error, Queue, Metric, Average, StreamingTiming string
-	TTFTAny, TTFTVisible, TTST, ObservedICL, SemanticChunks                        string
-	Title, QuickTitle, Conclusion, Plan, Run, Report, Phase                        string
-	CoreMetrics, RequestDetails, RequestSamples, SuccessRate, RequestRate          string
-	Passed, Failed, StatusPassed, StatusFailed, Samples, Footer, QuickFooter       string
-	Suite, Entry, Cases, Case, Type, Revision, Severity, Unassigned                string
-	PerformanceSummary, PerformanceSummaryScope                                    string
+	Request, Status, Input, Output, Error, Queue, Metric, Average, StreamingTiming            string
+	TTFTAny, TTFTVisible, TTST, ObservedICL, SemanticChunks                                   string
+	Title, QuickTitle, Conclusion, Plan, Run, Report, Phase                                   string
+	CoreMetrics, RequestDetails, RequestSamples, SuccessRate, RequestRate                     string
+	Passed, Failed, StatusPassed, StatusFailed, Samples, Footer, QuickFooter                  string
+	Suite, Entry, Cases, Case, Type, Revision, Severity, Unassigned                           string
+	PerformanceSummary, PerformanceSummaryScope                                               string
+	DimensionStatistics, DimensionScope, Dimension, PassRate, Observed, Indeterminate, NotRun string
 }
 
 type namedMetric struct {
@@ -214,7 +221,20 @@ func reportHTMLView(detail Detail, watermark, locale string) htmlReport {
 		Unassigned:         resultRows(detail.UnassignedRequestResults),
 		GeneratedUTC:       detail.Report.GeneratedAt.Format("2006-01-02 15:04:05 UTC"),
 		PerformanceMetrics: sortedMetrics(performanceSummaryMetrics(detail.PerformanceSummary)),
+		Dimensions:         htmlDimensionStatistics(detail.DimensionStatistics),
 	}
+}
+
+func htmlDimensionStatistics(statistics []DimensionStatistic) []htmlDimensionStatistic {
+	rows := make([]htmlDimensionStatistic, 0, len(statistics))
+	for _, statistic := range statistics {
+		rate := "—"
+		if statistic.PassRatePercent != nil {
+			rate = fmt.Sprintf("%.2f%%", *statistic.PassRatePercent)
+		}
+		rows = append(rows, htmlDimensionStatistic{DimensionStatistic: statistic, PassRate: rate})
+	}
+	return rows
 }
 
 func htmlEntryReports(suites []EntryDetail, locale string) []htmlEntryReport {
@@ -252,27 +272,35 @@ func renderJSON(detail Detail, watermark string) ([]byte, error) {
 		performance = detail.Performance
 	}
 	return json.MarshalIndent(struct {
-		Watermark          string              `json:"watermark"`
-		SchemaVersion      int                 `json:"schema_version"`
-		Source             ReportSource        `json:"source"`
-		Report             domain.Report       `json:"report"`
-		RequestResults     []domain.Result     `json:"request_results"`
-		Suites             []EntryDetail       `json:"entries"`
-		Unassigned         []domain.Result     `json:"unassigned_request_results"`
-		Performance        any                 `json:"performance,omitempty"`
-		PerformanceSummary *PerformanceSummary `json:"performance_summary,omitempty"`
+		Watermark           string               `json:"watermark"`
+		SchemaVersion       int                  `json:"schema_version"`
+		Source              ReportSource         `json:"source"`
+		Report              domain.Report        `json:"report"`
+		RequestResults      []domain.Result      `json:"request_results"`
+		Suites              []EntryDetail        `json:"entries"`
+		Unassigned          []domain.Result      `json:"unassigned_request_results"`
+		Performance         any                  `json:"performance,omitempty"`
+		PerformanceSummary  *PerformanceSummary  `json:"performance_summary,omitempty"`
+		DimensionStatistics []DimensionStatistic `json:"dimension_statistics,omitempty"`
 	}{
 		Watermark: watermark, SchemaVersion: detail.SchemaVersion, Source: detail.Source,
 		Report: detail.Report, RequestResults: detail.RequestResults,
 		Suites: detail.Entries, Unassigned: detail.UnassignedRequestResults,
-		Performance:        performance,
-		PerformanceSummary: detail.PerformanceSummary,
+		Performance:         performance,
+		PerformanceSummary:  detail.PerformanceSummary,
+		DimensionStatistics: detail.DimensionStatistics,
 	}, "", "  ")
 }
 
 func exportHTMLLabels(locale string) htmlLabels {
 	if locale == "en-US" {
 		return htmlLabels{
+			DimensionStatistics: "Compatibility by dimension", Dimension: "Dimension", PassRate: "Pass rate",
+			Observed: "Observation only", Indeterminate: "Indeterminate", NotRun: "Not executed",
+			DimensionScope: "Each case counts once per entry, regardless of request count. " +
+				"Pass rate = passed / (passed + failed). Observation-only, indeterminate and unexecuted cases " +
+				"are listed separately; warmup and performance items are excluded. " +
+				"Dimensions come from the frozen run snapshot.",
 			PerformanceSummary:      "Overall performance statistics",
 			PerformanceSummaryScope: "Available steady-state observations only; excludes warmup, ramp and functional cases. Cache rate is weighted by input tokens; throughput uses summed steady-state durations.",
 			Request:                 "Request", Status: "Status", Input: "Input", Output: "Output", Error: "Error", Queue: "Queue", Metric: "Metric", Average: "Average", StreamingTiming: "Streaming timing distributions", TTFTAny: "TTFT Any (includes reasoning)", TTFTVisible: "TTFT Visible (visible content)", TTST: "TTST (second semantic chunk)", ObservedICL: "Observed ICL (semantic inter-chunk latency, not Token ITL)", SemanticChunks: "Semantic chunks",
@@ -284,6 +312,9 @@ func exportHTMLLabels(locale string) htmlLabels {
 		}
 	}
 	return htmlLabels{
+		DimensionStatistics: "维度兼容性统计", Dimension: "维度", PassRate: "通过率",
+		Observed: "仅观察", Indeterminate: "待判定", NotRun: "未执行",
+		DimensionScope:          "每个执行项中的用例计一次，不按请求数加权。通过率 = 通过 /（通过 + 失败）；仅观察、待判定和未执行单列，不含预热与性能项。维度取自运行时冻结的快照。",
 		PerformanceSummary:      "性能总统计",
 		PerformanceSummaryScope: "仅汇总已有性能稳态观测，不含预热、爬坡及功能用例。缓存命中率按输入 Token 加权；吞吐按累计稳态用时计算。",
 		Request:                 "请求", Status: "状态", Input: "输入", Output: "输出", Error: "错误", Queue: "排队", Metric: "指标", Average: "平均", StreamingTiming: "流式时序分布", TTFTAny: "TTFT（含推理）", TTFTVisible: "TTFT（可见内容）", TTST: "TTST（第二语义块）", ObservedICL: "Observed ICL（语义块间隔，非 Token ITL）", SemanticChunks: "语义块数",
@@ -477,6 +508,9 @@ var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype h
 <p>{{.Labels.Plan}} {{.Detail.Report.PlanSnapshot.Plan.ID}} · {{.Labels.Run}} {{.Detail.Report.RunID}} · {{.Labels.Report}} {{.Detail.Report.ID}}</p>
 {{if .Issues}}<ul class="issues">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>{{end}}
 {{if .Detail.PerformanceSummary}}<h2>{{.Labels.PerformanceSummary}}</h2><p class="muted">{{.Labels.PerformanceSummaryScope}}</p><section class="grid">{{range .PerformanceMetrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}}</span></div>{{end}}</section>{{end}}
+{{if .Dimensions}}<h2>{{.Labels.DimensionStatistics}}</h2><p class="muted">{{.Labels.DimensionScope}}</p>
+<div class="scroll"><table><thead><tr><th>{{.Labels.Dimension}}</th><th>{{.Labels.PassRate}}</th><th>{{.Labels.Cases}}</th><th>{{.Labels.StatusPassed}}</th><th>{{.Labels.StatusFailed}}</th><th>{{.Labels.Observed}}</th><th>{{.Labels.Indeterminate}}</th><th>{{.Labels.NotRun}}</th></tr></thead>
+<tbody>{{range .Dimensions}}<tr><td>{{.Dimension}}</td><td>{{.PassRate}}</td><td>{{.CaseCount}}</td><td>{{.PassedCaseCount}}</td><td>{{.FailedCaseCount}}</td><td>{{.ObservedCaseCount}}</td><td>{{.IndeterminateCaseCount}}</td><td>{{.NotRunCaseCount}}</td></tr>{{end}}</tbody></table></div>{{end}}
 <h2>{{.Labels.CoreMetrics}}</h2><section class="grid">{{range .Metrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
 <h2>SLA</h2><section class="grid">{{range .SLA}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} samples</span></div>{{end}}</section>
 {{range .Suites}}<section class="suite" data-suite-entry-id="{{.Detail.EntryID}}" data-suite-status="{{.Detail.Status}}" data-suite-conclusion="{{.Detail.Conclusion.Verdict}}">
@@ -493,7 +527,7 @@ var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype h
 <div class="scroll"><table><thead><tr><th>{{$.Labels.Request}}</th><th>{{$.Labels.Status}}</th><th>E2E ms</th><th>{{$.Labels.Input}}</th><th>{{$.Labels.Output}}</th><th>{{$.Labels.Error}}</th></tr></thead><tbody>{{range .Performance.Samples}}<tr><td>{{.RequestIndex}}</td><td>{{if .Success}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2EMS}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.ErrorCode}}</td></tr>{{end}}</tbody></table></div>
 {{else}}<h3>{{$.Labels.Cases}} ({{len .Cases}})</h3>{{end}}
 {{range .Cases}}<section class="case" data-case-id="{{.Detail.CaseID}}"><h4>{{$.Labels.Case}} {{.Index}}: {{.Detail.Name}} [{{.Detail.Key}}]</h4>
-<p class="muted">{{$.Labels.Type}} {{.Detail.Protocol}} v{{.Detail.Revision}} · {{$.Labels.Revision}} {{.Detail.Revision}} · {{$.Labels.Severity}} <span class="severity severity-{{.Detail.Severity}}">{{.Severity}}</span> · {{$.Labels.Status}} {{.Status}}</p>
+<p class="muted">{{$.Labels.Dimension}} {{.Detail.Dimension}} · {{$.Labels.Type}} {{.Detail.Protocol}} v{{.Detail.Revision}} · {{$.Labels.Revision}} {{.Detail.Revision}} · {{$.Labels.Severity}} <span class="severity severity-{{.Detail.Severity}}">{{.Severity}}</span> · {{$.Labels.Status}} {{.Status}}</p>
 <h4>{{$.Labels.RequestDetails}} ({{len .Results}})</h4><div class="scroll"><table><thead><tr><th>{{$.Labels.Request}}</th><th>{{$.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{$.Labels.TTFTAny}} ms</th><th>{{$.Labels.TTFTVisible}} ms</th><th>{{$.Labels.TTST}} ms</th><th>{{$.Labels.ObservedICL}} ms</th><th>{{$.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{$.Labels.Queue}} ms</th><th>{{$.Labels.Input}}</th><th>{{$.Labels.Output}}</th><th>{{$.Labels.Error}}</th></tr></thead><tbody>{{range .Results}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
 </section>{{end}}
 {{if .Unassigned}}<section class="suite"><h2>{{.Labels.Unassigned}} ({{len .Unassigned}})</h2><div class="scroll"><table><thead><tr><th>{{.Labels.Request}}</th><th>{{.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{.Labels.TTFTAny}} ms</th><th>{{.Labels.TTFTVisible}} ms</th><th>{{.Labels.TTST}} ms</th><th>{{.Labels.ObservedICL}} ms</th><th>{{.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{.Labels.Queue}} ms</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Unassigned}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
@@ -587,6 +621,25 @@ const formalPNGResultLimitPerCase = 3
 
 func formalReportImageLines(detail Detail) []string {
 	lines := make([]string, 0)
+	if len(detail.DimensionStatistics) > 0 {
+		lines = append(lines,
+			"COMPATIBILITY BY DIMENSION - CASES PER ENTRY, EXCLUDING WARMUP AND PERFORMANCE",
+			"PASS RATE = PASSED / (PASSED + FAILED); OTHER OUTCOMES COUNTED SEPARATELY",
+		)
+		for _, row := range htmlDimensionStatistics(detail.DimensionStatistics) {
+			lines = append(lines,
+				fmt.Sprintf("DIMENSION %s  PASS RATE %s  CASES %d", row.Dimension, row.PassRate, row.CaseCount),
+				fmt.Sprintf(
+					"PASSED %d  FAILED %d  OBSERVED %d  INDETERMINATE %d  NOT RUN %d",
+					row.PassedCaseCount,
+					row.FailedCaseCount,
+					row.ObservedCaseCount,
+					row.IndeterminateCaseCount,
+					row.NotRunCaseCount,
+				),
+			)
+		}
+	}
 	if detail.PerformanceSummary != nil {
 		lines = append(lines, "OVERALL PERFORMANCE - AVAILABLE STEADY-STATE OBSERVATIONS")
 		for _, metric := range sortedMetrics(performanceSummaryMetrics(detail.PerformanceSummary)) {
@@ -613,6 +666,7 @@ func formalReportImageLines(detail Detail) []string {
 			}
 			lines = append(lines,
 				fmt.Sprintf("CASE %d %s [%s]", caseIndex+1, testCase.Name, testCase.Key),
+				"DIMENSION "+testCase.Dimension,
 				fmt.Sprintf("CASE ID %s  TYPE %s V%d  REVISION %d", testCase.CaseID, testCase.Protocol, testCase.Revision, testCase.Revision),
 				fmt.Sprintf("SEVERITY %s  STATUS %s", strings.ToUpper(string(testCase.Severity)), caseStatus),
 				fmt.Sprintf("REQUEST RESULTS %d", len(testCase.RequestResults)),

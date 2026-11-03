@@ -28,6 +28,7 @@ import { PlanPerformanceSummary } from "./plan-performance-summary"
 import { PerformanceLatencyTable } from "./performance-latency-table"
 import { PerformanceStreamingTimingTable } from "./performance-streaming-timing-table"
 import { EntryCaseTable, ExecutionDetails, VerificationCounts, VerificationBadge } from "./entry-case-table"
+import { DimensionStatistics } from "./dimension-statistics"
 import { CaseOutcomeNavigator, type ReportCaseTarget } from "./case-outcome-navigator"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
 import type { RunShortcutRenderer } from "@/features/runs/use-run-shortcuts"
@@ -354,17 +355,25 @@ function RunReportBody({ detail, summary, paginate = true }: { detail: Extract<R
         </div>
         <ConclusionBadge passed={detail.report.conclusion.passed} verdict={detail.report.conclusion.verdict} status={detail.report.run_status} />
       </header>
-      {summary && (!detail.performance_summary || entries.some(entry => entry.target_kind !== "performance")) ? <FunctionalReportHeadline report={summary} /> : null}
+      <div data-report-functional-overview className={summary && detail.dimension_statistics?.length ? "grid min-w-0 grid-cols-[minmax(0,1fr)_460px] items-start gap-6" : "min-w-0"}>
+        <div className="min-w-0 space-y-3">
+          {summary && (!detail.performance_summary || entries.some(entry => entry.target_kind !== "performance")) ? <>
+            <h3 className="text-xs font-semibold">{tx("reports:headline.functional")}</h3>
+            <FunctionalReportHeadline report={summary} />
+          </> : null}
+          <CaseOutcomeNavigator
+            entries={entries}
+            selected={selectedCase}
+            onSelect={(target) => {
+              setSelectedCase(target)
+              setCaseNavigationRequest((request) => request + 1)
+            }}
+          />
+        </div>
+        <DimensionStatistics statistics={detail.dimension_statistics} />
+      </div>
       {detail.performance_summary ? <PlanPerformanceSummary summary={detail.performance_summary} /> : null}
       {!paginate && <ExecutionOriginDetails origin={detail.report.execution_origin} />}
-      <CaseOutcomeNavigator
-        entries={entries}
-        selected={selectedCase}
-        onSelect={(target) => {
-          setSelectedCase(target)
-          setCaseNavigationRequest((request) => request + 1)
-        }}
-      />
       {entries.map((suite) => (
         <SuiteReportSection
           key={suite.entry_id}
@@ -674,7 +683,7 @@ function ReportExportSurface({ ref, report, detail, watermark }: {
 
 function FunctionalReportHeadline({ report }: { report: ReportSummary }) {
   const { t } = useTranslation("reports")
-  return <dl aria-label={t("headline.functional")} className="grid grid-cols-2 gap-x-5 gap-y-3 rounded-md bg-surface-subtle px-3 py-3 sm:grid-cols-4">
+  return <dl aria-label={t("headline.functional")} className="grid min-w-0 grid-cols-4 gap-x-4 gap-y-3 rounded-md bg-surface-subtle px-3 py-3">
     <HeadlineValue label={t("headline.failedCases")} value={formatMetric(report.failed_case_count)} tone={report.failed_case_count > 0 ? "failed" : undefined} />
     <HeadlineValue label={t("headline.indeterminateCases")} value={formatMetric(report.indeterminate_case_count)} tone={report.indeterminate_case_count > 0 ? "review" : undefined} />
     <HeadlineValue label={t("headline.passedCases")} value={formatMetric(report.passed_case_count)} />

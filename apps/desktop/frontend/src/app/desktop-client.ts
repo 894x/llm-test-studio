@@ -1035,11 +1035,15 @@ function fixtureReportDetail(summary: ReportSnapshot["reports"][number]): Report
   {id:"10000000-0000-4000-8000-000000000012",request_id:"fixture-normal-request",entry_id:entryID,case_id:"10000000-0000-4000-8000-000000000006",execution_status:"completed" as const,verification:{status:summary.passed ? "passed" as const : "failed" as const,assertions:[]},metrics:{e2e_ms:180},observation:{protocol:"openai-chat" as const,http_status:200,response:{},metrics:{e2e_ms:180},artifacts:[],exchanges:[],issues:[]}},
  ]
  const cases = [
-  {case_id:results[0].case_id,revision:1,key:"fixture-critical",name:"核心协议契约",protocol:"openai-chat" as const,severity:"critical" as const,verification:{status:"passed" as const,passed:1,failed:0,observed:0,indeterminate:0},metrics:{e2e_ms:{value:120,samples:1,unit:"ms"}},summary_result:results[0],request_results:[results[0]]},
-  {case_id:results[1].case_id,revision:1,key:"fixture-normal",name:"输出稳定性观察",protocol:"openai-chat" as const,severity:"normal" as const,verification:{status:summary.passed ? "passed" as const : "failed" as const,passed:summary.passed ? 1 : 0,failed:summary.passed ? 0 : 1,observed:0,indeterminate:0},metrics:{e2e_ms:{value:180,samples:1,unit:"ms"}},summary_result:results[1],request_results:[results[1]]},
+  {case_id:results[0].case_id,revision:1,key:"fixture-critical",name:"核心协议契约",dimension:"protocol",protocol:"openai-chat" as const,severity:"critical" as const,verification:{status:"passed" as const,passed:1,failed:0,observed:0,indeterminate:0},metrics:{e2e_ms:{value:120,samples:1,unit:"ms"}},summary_result:results[0],request_results:[results[0]]},
+  {case_id:results[1].case_id,revision:1,key:"fixture-normal",name:"输出稳定性观察",dimension:"parameters",protocol:"openai-chat" as const,severity:"normal" as const,verification:{status:summary.passed ? "passed" as const : "failed" as const,passed:summary.passed ? 1 : 0,failed:summary.passed ? 0 : 1,observed:0,indeterminate:0},metrics:{e2e_ms:{value:180,samples:1,unit:"ms"}},summary_result:results[1],request_results:[results[1]]},
  ]
  return {
   schema_version:1,source:"run",
+  dimension_statistics:[
+   {dimension:"parameters",case_count:1,passed_case_count:summary.passed ? 1 : 0,failed_case_count:summary.passed ? 0 : 1,observed_case_count:0,indeterminate_case_count:0,not_run_case_count:0,pass_rate_percent:summary.passed ? 100 : 0},
+   {dimension:"protocol",case_count:1,passed_case_count:1,failed_case_count:0,observed_case_count:0,indeterminate_case_count:0,not_run_case_count:0,pass_rate_percent:100},
+  ],
   report:{id:summary.id,run_id:summary.run_id!,run_status:summary.run_status,generated_at:summary.generated_at,protocol:"openai-chat",
    model:{id:"10000000-0000-4000-8000-000000000001",name:summary.model_name},channel:{id:"10000000-0000-4000-8000-000000000002",name:summary.channel_name},
    execution_origin:null,environment:{os:"windows",arch:"amd64",region:"local",network_egress:"direct",app_version:"fixture",engine_version:"go-core"},

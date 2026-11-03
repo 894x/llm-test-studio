@@ -121,6 +121,7 @@ type Detail struct {
 	UnassignedRequestResults []domain.Result              `json:"unassigned_request_results"`
 	Performance              *quicktest.PerformanceReport `json:"performance,omitempty"`
 	PerformanceSummary       *PerformanceSummary          `json:"performance_summary,omitempty"`
+	DimensionStatistics      []DimensionStatistic         `json:"dimension_statistics,omitempty"`
 }
 
 type EntryDetail struct {
@@ -151,6 +152,7 @@ type CaseDetail struct {
 	Revision       uint64                        `json:"revision"`
 	Key            string                        `json:"key"`
 	Name           string                        `json:"name"`
+	Dimension      string                        `json:"dimension"`
 	Protocol       domain.Protocol               `json:"protocol"`
 	Severity       domain.CaseSeverity           `json:"severity"`
 	Verification   domain.VerificationSummary    `json:"verification"`
@@ -233,6 +235,7 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 		Entries:                  suites,
 		UnassignedRequestResults: unassigned,
 		PerformanceSummary:       performanceSummary,
+		DimensionStatistics:      summarizeDimensions(suites),
 	}, nil
 }
 
@@ -290,11 +293,12 @@ func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([
 			}
 			requests := append([]domain.Result{}, groupedRequests[key]...)
 			cases = append(cases, CaseDetail{
-				CaseID:   ref.CaseID,
-				Revision: ref.Revision,
-				Key:      definition.Key,
-				Name:     definition.Name,
-				Protocol: report.Protocol, Severity: definition.Severity,
+				CaseID:    ref.CaseID,
+				Revision:  ref.Revision,
+				Key:       definition.Key,
+				Name:      definition.Name,
+				Dimension: definition.Dimension,
+				Protocol:  report.Protocol, Severity: definition.Severity,
 				Verification: domain.SummarizeVerification(requests), Metrics: aggregateMetrics(requests),
 				SummaryResult:  summary,
 				RequestResults: requests,

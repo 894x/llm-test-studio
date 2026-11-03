@@ -53,6 +53,7 @@ export type ReportDistribution = Readonly<Record<string, unknown>>
 export type ReportEntryStatus = "completed" | "failed" | "cancelled" | "not_started"
 export interface ReportCaseDetail {
   case_id: string; revision: number; key: string; name: string; protocol: CatalogProtocol
+  dimension?: string
   severity: CatalogCaseSeverity
   verification: VerificationSummary; metrics: Record<string, ReportMetric>
   summary_result?: ReportResult; request_results: ReportResult[]
@@ -71,6 +72,7 @@ export interface ReportEntryDetail {
 export interface FormalReportDetail {
   schema_version: 1; source: "run"
   performance_summary?: ReportPerformanceSummary
+  dimension_statistics?: ReportDimensionStatistic[]
   report: {
     id: string; run_id: string; protocol: CatalogProtocol; run_status: ReportSummary["run_status"]; generated_at: string
     model: { id: string; name: string }; channel: { id: string; name: string }
@@ -81,6 +83,13 @@ export interface FormalReportDetail {
     distributions?: ReportDistribution[]; case_results: ReportResult[]
   }
   request_results: ReportResult[]; entries: ReportEntryDetail[]; unassigned_request_results: ReportResult[]
+}
+
+export interface ReportDimensionStatistic {
+  dimension: string
+  case_count: number; passed_case_count: number; failed_case_count: number
+  observed_case_count: number; indeterminate_case_count: number; not_run_case_count: number
+  pass_rate_percent: number | null
 }
 
 export interface ReportPerformanceSummary {
@@ -174,6 +183,7 @@ export function parseReportDetail(value: unknown): ReportDetail {
   const ids = [...owned, ...unassigned].map(result => result.id)
   if (new Set(ids).size !== ids.length || ids.length !== requestResults.length || requestResults.some(result => !ids.includes(result.id))) throw invalidReport()
   const performanceSummary = value.performance_summary === undefined ? undefined : parsePerformanceSummary(value.performance_summary)
+  const dimensionStatistics = value.dimension_statistics === undefined ? undefined : parseDimensionStatistics(value.dimension_statistics)
   if (performanceSummary && performanceSummary.item_count !== entries.filter(entry => entry.target_kind === "performance").length) throw invalidReport()
   return { schema_version: 1, source: "run", report: {
     id: report.id, run_id: report.run_id, protocol: report.protocol, run_status: report.run_status,
@@ -183,7 +193,32 @@ export function parseReportDetail(value: unknown): ReportDetail {
     conclusion: copyConclusion(report.conclusion), sla: parseMetricMap(report.sla), metrics: parseMetricMap(report.metrics),
     distributions: parseRecordArray(report.distributions ?? []), case_results: caseResults,
   }, entries, request_results: requestResults, unassigned_request_results: unassigned,
-    performance_summary: performanceSummary }
+    performance_summary: performanceSummary,
+    ...(dimensionStatistics === undefined ? {} : { dimension_statistics: dimensionStatistics }) }
+}
+
+function parseDimensionStatistics(value: unknown): ReportDimensionStatistic[] {
+  if (!Array.isArray(value)) throw invalidReport()
+  const statistics = value.map((item): ReportDimensionStatistic => {
+    if (!isRecord(item) || !isDimension(item.dimension)) throw invalidReport()
+    const counts = ["case_count", "passed_case_count", "failed_case_count", "observed_case_count", "indeterminate_case_count", "not_run_case_count"] as const
+    if (!counts.every(key => isNonNegativeInteger(item[key])) || item.case_count === 0) throw invalidReport()
+    const count = (key: typeof counts[number]) => item[key] as number
+    const verified = count("passed_case_count") + count("failed_case_count")
+    if (counts.slice(1).reduce((total, key) => total + count(key), 0) !== item.case_count ||
+      (verified === 0) !== (item.pass_rate_percent === null) ||
+      (item.pass_rate_percent !== null && (!isNonNegativeNumber(item.pass_rate_percent) || item.pass_rate_percent > 100))) throw invalidReport()
+    return { dimension: item.dimension, case_count: count("case_count"), passed_case_count: count("passed_case_count"),
+      failed_case_count: count("failed_case_count"), observed_case_count: count("observed_case_count"),
+      indeterminate_case_count: count("indeterminate_case_count"), not_run_case_count: count("not_run_case_count"),
+      pass_rate_percent: item.pass_rate_percent as number | null }
+  })
+  if (new Set(statistics.map(item => item.dimension)).size !== statistics.length) throw invalidReport()
+  return statistics
+}
+
+function isDimension(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.trim() === value
 }
 
 function parsePerformanceSummary(value: unknown): ReportPerformanceSummary {
@@ -259,8 +294,10 @@ function parseCase(value: unknown): ReportCaseDetail {
   if (!isRecord(value) || !isUUID(value.case_id) || !isPositiveInteger(value.revision) ||
     !isNonBlank(value.key) || !isNonBlank(value.name) || !isProtocol(value.protocol) ||
     (value.severity !== "critical" && value.severity !== "normal") ||
+    (value.dimension !== undefined && !isDimension(value.dimension)) ||
     !isRecord(value.metrics) || !Array.isArray(value.request_results) || "case_type" in value) throw invalidReport()
   return { case_id: value.case_id, revision: value.revision, key: value.key, name: value.name,
+    ...(value.dimension === undefined ? {} : { dimension: value.dimension as string }),
     protocol: value.protocol, severity: value.severity, verification: parseSummary(value.verification), metrics: parseMetricMap(value.metrics),
     ...(value.summary_result === undefined ? {} : { summary_result: parseResult(value.summary_result) }),
     request_results: value.request_results.map(parseResult) }

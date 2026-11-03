@@ -47,7 +47,7 @@ export function EntryCaseTable({
     const contentWidth = counts.reduce((total, count) => total + 18 + String(count).length * 7, 0)
     return Math.max(width, 20 + contentWidth + Math.max(0, counts.length - 1) * 8)
   }, 96)
-  const columnWeights = [280, 56, 80, ...columnWidths, summaryWidth]
+  const columnWeights = [280, 96, 56, 80, ...columnWidths, summaryWidth]
   const totalWeight = columnWeights.reduce((total, weight) => total + weight, 0)
   const selectedCaseIndex = entry.cases.findIndex(caseItem => caseItem.case_id === selectedCaseID)
   // A new navigation request locates its case; manual paging then takes precedence.
@@ -78,6 +78,7 @@ export function EntryCaseTable({
         </colgroup>
         <TableHeader><TableRow className="hover:bg-transparent">
           <TableHead className="h-8 pl-3 text-[11px]">{t("protocolDesign.caseName")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{t("dimensions.dimension")}</TableHead>
           <TableHead className="h-8 text-[11px]">{t("protocolDesign.severity")}</TableHead>
           <TableHead className="h-8 text-[11px]">{t("protocolDesign.verification")}</TableHead>
           {columns.map(column => <TableHead key={column.id} className="h-8 text-[11px]" title={column.metric === "completion_tokens" ? t("protocolDesign.outputTokens") : undefined}>{columnLabel(column, t)}</TableHead>)}
@@ -108,17 +109,18 @@ export function EntryCaseTable({
                 </Button></TooltipTrigger>
                 <TooltipContent className="whitespace-normal [overflow-wrap:anywhere]">{caseItem.name}</TooltipContent>
               </Tooltip></TooltipProvider></TableCell>
+              <TableCell className="py-1 text-[11px] [overflow-wrap:anywhere]">{caseItem.dimension ?? "—"}</TableCell>
               <TableCell className="py-1"><CaseSeverityBadge severity={caseItem.severity} /></TableCell>
               <TableCell className="py-1"><VerificationBadge status={caseItem.verification.status} /></TableCell>
               {columns.map(column => <TableCell key={column.id} className="py-1 text-xs tabular-nums">{caseColumn(caseItem, column)}</TableCell>)}
               <TableCell className="py-1 pr-3 text-[11px]"><VerificationCounts summary={caseItem.verification} compact /></TableCell>
             </TableRow>
-            {open ? <TableRow id={detailID} className="hover:bg-transparent"><TableCell colSpan={columns.length + 4} className="bg-muted/20 p-3">
+            {open ? <TableRow id={detailID} className="hover:bg-transparent"><TableCell colSpan={columns.length + 5} className="bg-muted/20 p-3">
               <div className="mb-2 break-all font-mono text-[10px] text-muted-foreground">{caseItem.key} · {caseItem.case_id}</div>
               <ExecutionDetails results={caseItem.request_results} paginate={paginate} />
             </TableCell></TableRow> : null}
           </Fragment>
-        }) : <TableRow><TableCell colSpan={columns.length + 4} className="py-6 text-center text-xs text-muted-foreground">{t("hierarchy.noRecordedCases")}</TableCell></TableRow>}</TableBody>
+        }) : <TableRow><TableCell colSpan={columns.length + 5} className="py-6 text-center text-xs text-muted-foreground">{t("hierarchy.noRecordedCases")}</TableCell></TableRow>}</TableBody>
       </Table>
     </div>
     {paginate ? <ResultPagination page={page} count={entry.cases.length} size={PAGE_SIZE}

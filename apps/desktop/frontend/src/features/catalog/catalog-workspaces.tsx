@@ -559,7 +559,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
   const [selectedID, setSelectedID] = useState("")
   const [selectedSuiteID, setSelectedSuiteID] = useState("")
   const caseSearch = useCatalogSearch(catalog.test_cases, (testCase) => [
-    testCase.key, testCase.name, testCase.description ?? "", ...Object.keys(testCase.definitions), caseProtocolLabel(testCase), t(casePolicyKey(testCase)),
+    testCase.key, testCase.name, testCase.description ?? "", testCase.dimension, ...Object.keys(testCase.definitions), caseProtocolLabel(testCase), t(casePolicyKey(testCase)),
   ])
   const suiteSearch = useCatalogSearch(catalog.suites, (suite) => [
     suite.key, suite.name, suite.description, suite.protocol, PROTOCOL_LABELS[suite.protocol],
@@ -592,6 +592,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
             <TableHeader className="sticky top-0 z-10 bg-background">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 pl-2 text-[11px]">{tx("desktop:catalog_case")}</TableHead>
+                <TableHead className="h-8 w-28 text-[11px]">{tx("desktop:catalog_dimension")}</TableHead>
                 <TableHead className="h-8 text-[11px]">{tx("catalog:protocolDesign.supportedProtocols")}</TableHead>
                 <TableHead className="h-8 text-[11px]">{tx("desktop:catalog_policy")}</TableHead>
               </TableRow>
@@ -612,6 +613,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
                     <div className="mt-0.5 text-[10px] text-muted-foreground">{testCase.key}</div>
                     <p className="mt-1 whitespace-pre-wrap text-[11px] leading-4 text-muted-foreground [overflow-wrap:anywhere]">{testCase.description?.trim() || t("cases.noCaseDescription")}</p>
                   </TableCell>
+                  <TableCell className="py-1 text-[11px] [overflow-wrap:anywhere]">{testCase.dimension}</TableCell>
                   <TableCell className="py-1 text-[11px]">{caseProtocolLabel(testCase)}</TableCell>
                   <TableCell className="py-1">
                     <CasePolicyBadge testCase={testCase} />

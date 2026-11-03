@@ -18,7 +18,7 @@
     "matrix": "Search model and channel matrix",
     "matrixPlaceholder": "Model, configured channel, or upstream",
     "cases": "Search cases",
-    "casesPlaceholder": "Key, name, description, or protocol",
+    "casesPlaceholder": "Key, name, description, dimension, or protocol",
     "suites": "Search suites",
     "suitesPlaceholder": "Key, name, description, or protocol",
     "plans": "Search plans",
