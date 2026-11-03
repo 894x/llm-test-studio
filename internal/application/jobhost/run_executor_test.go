@@ -139,10 +139,26 @@ func writeCoreResponse(writer http.ResponseWriter) {
 
 func waitSettled(t *testing.T, repository jobhost.Repository) {
 	t.Helper()
-	waitHost(t, func() bool {
-		pending, err := repository.RecoveryJobs(t.Context())
-		return err == nil && len(pending) == 0
-	})
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	for {
+		pending, err := repository.RecoveryJobs(ctx)
+		if err == nil && len(pending) == 0 {
+			return
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			t.Fatalf(
+				"host did not settle: pending=%d read_error=%v: %v",
+				len(pending),
+				err,
+				ctx.Err(),
+			)
+		case <-timer.C:
+		}
+	}
 }
 
 func TestRunExecutorUsesRealCoreAndSettlesReportsWithoutClient(t *testing.T) {

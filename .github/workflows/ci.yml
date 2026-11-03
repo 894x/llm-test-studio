@@ -21,8 +21,12 @@ env:
 
 jobs:
   go:
-    name: Go checks
+    name: Go checks (${{ matrix.group }})
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [desktop, remote, remaining]
     steps:
       - name: Check out source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
@@ -36,13 +40,38 @@ jobs:
       - name: Verify generated protocol contract
         run: go run ./scripts/generate-protocols -check
       - name: Run tests
-        # Bound concurrent database-heavy packages on shared Windows runners.
-        run: go test ./... -p 2 -count=1 -timeout=20m
+        # Isolate database-heavy integration groups on separate runners.
+        shell: pwsh
+        run: |
+          $modulePath = go list -m
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $allTestPackages = @(go list ./...)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $desktopPrefix = "$modulePath/apps/desktop"
+          $remotePackages = @(
+            "$modulePath/internal/adapters/runnerhttp",
+            "$modulePath/internal/application/jobhost"
+          )
+          $testPackages = @($allTestPackages | Where-Object {
+            $desktop = $_ -eq $desktopPrefix -or $_.StartsWith("$desktopPrefix/")
+            $remote = $remotePackages -contains $_
+            switch ('${{ matrix.group }}') {
+              'desktop' { $desktop }
+              'remote' { $remote }
+              'remaining' { -not $desktop -and -not $remote }
+            }
+          })
+          if ($testPackages.Count -eq 0) { throw 'The selected Go test group is empty' }
+          Write-Output "Testing $($testPackages.Count) packages in ${{ matrix.group }}"
+          go test @testPackages -p 1 -count=1 -timeout=20m
       - name: Run vet
+        if: matrix.group == 'remaining'
         run: go vet ./...
       - name: Install vulnerability scanner
+        if: matrix.group == 'remaining'
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
       - name: Scan Go dependencies
+        if: matrix.group == 'remaining'
         run: govulncheck ./...
 
   frontend:

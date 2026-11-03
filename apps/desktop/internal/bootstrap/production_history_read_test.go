@@ -127,9 +127,15 @@ func verifyProductionHistoryReadDuringExecution(t *testing.T) {
 				done <- err
 				return
 			}
+			select {
+			case <-release:
+			case <-queryContext.Done():
+				done <- nil
+				return
+			}
 			// Leave a gap after each real snapshot so readers do not saturate
 			// slower CI machines while the full authored suite is persisting.
-			timer := time.NewTimer(100 * time.Millisecond)
+			timer := time.NewTimer(0)
 			defer timer.Stop()
 			for {
 				select {
@@ -144,7 +150,7 @@ func verifyProductionHistoryReadDuringExecution(t *testing.T) {
 						done <- err
 						return
 					}
-					timer.Reset(100 * time.Millisecond)
+					timer.Reset(time.Second)
 				}
 			}
 		}()
