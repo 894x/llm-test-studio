@@ -67,9 +67,11 @@ Case 目录是产品的中心，而不是藏在一次运行背后的配置页面
 
 前往 [GitHub Releases](https://github.com/894x/llm-test-studio/releases) 查看可用构建。Tag 发行流程已配置为生成 Windows amd64 安装包和压缩包，以及 macOS universal DMG 和 ZIP。目前尚未提供 Linux 桌面发行包。
 
+推送 `v*` 版本标签后，会对该标签对应的提交执行共享 CI 工作流。Go 检查、前端检查和全历史密钥扫描必须全部通过，才能开始打包和发布 GitHub Release。
+
 ### 构建桌面应用
 
-要求：Go 1.25+ 并使用 Go 1.26.6 工具链、Node.js 24、pnpm 10.30.3 和 Wails v2.15.0。
+要求：Go 1.26+ 并使用 Go 1.26.10 工具链、Node.js 24、pnpm 10.30.3 和 Wails v2.15.0。
 
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0

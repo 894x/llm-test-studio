@@ -523,7 +523,7 @@ func TestDesktopAppWaitsForStartupInProgressBeforeServingBindings(t *testing.T) 
 		t.Fatalf("GetWorkspace() error = %v", got.err)
 	}
 	if got.snapshot.SchemaVersion != want.SchemaVersion {
-		t.Fatalf("schema version = %q, want %q", got.snapshot.SchemaVersion, want.SchemaVersion)
+		t.Fatalf("schema version = %d, want %d", got.snapshot.SchemaVersion, want.SchemaVersion)
 	}
 }
 

@@ -2,6 +2,41 @@
 useDefault = true
 
 [[allowlists]]
-description = "Synthetic API key used by a channel configuration unit test"
-paths = ['''internal/application/channelconfig/service_test\.go''']
-regexes = ['''sk-bound-1234''']
+description = "Synthetic API keys used by channel configuration unit tests"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^internal/application/channelconfig/service_test\.go$''']
+regexes = ['''^sk-(?:bound|retain|uncertain)-1234$''']
+
+[[allowlists]]
+description = "Case and Suite metadata keys in authored catalogs and the archived inventory"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''^(?:data/)?(?:cases|suites)/.*\.json$''',
+  '''^doc/experiments/2026-09-09-ablation/catalog-inventory\.json$''',
+]
+regexTarget = "match"
+regexes = ['''^(?:case_key|key)"\s*:\s*"[A-Za-z0-9][A-Za-z0-9_.-]*"$''']
+
+[[allowlists]]
+description = "Known Case and Suite keys in desktop test fixtures"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''^apps/desktop/production_test\.go$''',
+  '''^apps/desktop/frontend/src/features/(?:catalog|runs)/[a-z-]+\.test\.tsx$''',
+]
+regexTarget = "match"
+regexes = ['''(?i)^(?:suite_)?key:\s*"(?:gpt-5\.2-smoke|wan30-boundary|wan30\.t2v(?:\.min_duration|_smoke)|h3\.t2v\.min_duration)"$''']
+
+[[allowlists]]
+description = "Synthetic run UUIDs that reference credentials in quick-test fixtures"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''^internal/application/quicktest/task_path_test\.go$''',
+  '''^apps/desktop/frontend/src/features/quick-test/task-draft\.test\.ts$''',
+]
+regexTarget = "match"
+regexes = ['''^(?:credential_run_id =|CredentialRunID:) "123e4567-e89b-42d3-a456-4266141740(?:02|99)"$''']

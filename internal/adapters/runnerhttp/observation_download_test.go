@@ -435,6 +435,9 @@ func TestHTTPRunReportCompleteEntityAtByteLimitAndAbove(t *testing.T) {
 				api.URL+path,
 				"",
 			)
+			// Content-Length describes the identity entity; gzip negotiation and
+			// decompressed digest preservation are covered by separate tests.
+			request.Header.Set("Accept-Encoding", "identity")
 			response, err := api.Client().Do(request)
 			if err != nil {
 				t.Fatal(err)

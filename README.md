@@ -67,9 +67,11 @@ The reusable boundary is the exact case revision. Suites group Case references; 
 
 Check [GitHub Releases](https://github.com/894x/llm-test-studio/releases) for available builds. Tagged releases are configured for Windows amd64 installers and archives, plus macOS universal DMG and ZIP packages. Linux does not currently have a packaged desktop release.
 
+Pushing a `v*` version tag runs the shared CI workflow against that tagged commit. Go checks, frontend checks, and the full-history secret scan must all pass before packaging and GitHub Release publication can start.
+
 ### Build the desktop application
 
-Requirements: Go 1.25+ with the Go 1.26.6 toolchain, Node.js 24, pnpm 10.30.3, and Wails v2.15.0.
+Requirements: Go 1.26+ with the Go 1.26.10 toolchain, Node.js 24, pnpm 10.30.3, and Wails v2.15.0.
 
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
