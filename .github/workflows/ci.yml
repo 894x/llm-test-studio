@@ -36,7 +36,8 @@ jobs:
       - name: Verify generated protocol contract
         run: go run ./scripts/generate-protocols -check
       - name: Run tests
-        run: go test ./... -count=1 -timeout=20m
+        # Bound concurrent database-heavy packages on shared Windows runners.
+        run: go test ./... -p 2 -count=1 -timeout=20m
       - name: Run vet
         run: go vet ./...
       - name: Install vulnerability scanner

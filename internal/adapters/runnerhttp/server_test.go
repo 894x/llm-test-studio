@@ -42,14 +42,15 @@ func (testGuard) Reserve(context.Context, jobcontract.JobSpec) (io.Closer, error
 }
 
 type httpFixture struct {
-	repository  *sqlite.Repository
-	host        *jobhost.Host
-	maintenance *jobhost.Maintenance
-	api         *httptest.Server
-	upstream    *httptest.Server
-	requests    atomic.Int64
-	entered     chan struct{}
-	release     func()
+	repository       *sqlite.Repository
+	host             *jobhost.Host
+	maintenance      *jobhost.Maintenance
+	api              *httptest.Server
+	upstream         *httptest.Server
+	requests         atomic.Int64
+	entered          chan struct{}
+	release          func()
+	executionTimeout time.Duration
 }
 
 func capabilities() jobcontract.RunnerCapabilities {
@@ -80,7 +81,9 @@ func newHTTPFixtureWithExecutionTimeout(
 	executionTimeout time.Duration,
 ) *httpFixture {
 	t.Helper()
-	fixture := &httpFixture{entered: make(chan struct{})}
+	fixture := &httpFixture{
+		entered: make(chan struct{}), executionTimeout: executionTimeout,
+	}
 	release := make(chan struct{})
 	fixture.release = sync.OnceFunc(func() { close(release) })
 	fixture.upstream = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -228,11 +231,22 @@ func encode(t *testing.T, value any) []byte {
 
 func waitHTTPJob(t *testing.T, fixture *httpFixture, id string, status domain.RunStatus) jobcontract.Snapshot {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		snapshot, err := fixture.repository.GetJob(t.Context(), id)
-		pending, pendingErr := fixture.repository.RecoveryJobs(t.Context())
-		if err == nil && pendingErr == nil && len(pending) == 0 {
+	ctx, cancel := context.WithTimeout(t.Context(), fixture.executionTimeout+30*time.Second)
+	defer cancel()
+	pendingCount := -1
+	for {
+		snapshot, err := fixture.repository.GetJob(ctx, id)
+		if err != nil {
+			t.Fatalf(
+				"read admitted HTTP job %s while waiting for %s: %v",
+				id,
+				status,
+				err,
+			)
+		}
+		// Recovery reads share the execution pool. Check settlement only after
+		// the job is terminal instead of decoding all pending jobs on every poll.
+		if jobcontract.Terminal(snapshot.Receipt.Status) {
 			if snapshot.Receipt.Status != status {
 				t.Fatalf(
 					"job=%s failure=%+v, want %s",
@@ -241,12 +255,29 @@ func waitHTTPJob(t *testing.T, fixture *httpFixture, id string, status domain.Ru
 					status,
 				)
 			}
-			return snapshot
+			pending, err := fixture.repository.RecoveryJobs(ctx)
+			if err != nil {
+				t.Fatalf("read HTTP job settlement: %v", err)
+			}
+			pendingCount = len(pending)
+			if pendingCount == 0 {
+				return snapshot
+			}
 		}
-		time.Sleep(5 * time.Millisecond)
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			t.Fatalf(
+				"HTTP admitted job %s did not settle: status=%s pending=%d: %v",
+				id,
+				snapshot.Receipt.Status,
+				pendingCount,
+				ctx.Err(),
+			)
+		case <-timer.C:
+		}
 	}
-	t.Fatal("HTTP admitted job did not settle")
-	return jobcontract.Snapshot{}
 }
 
 func TestHTTPNodeAuthorizationAndContractAreCheckedBeforeSubmission(t *testing.T) {

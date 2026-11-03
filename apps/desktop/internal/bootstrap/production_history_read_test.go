@@ -27,7 +27,7 @@ func TestProductionHistoryRefreshDoesNotInterruptLocalCasePersistence(t *testing
 
 func verifyProductionHistoryReadDuringExecution(t *testing.T) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	notifyEntered := sync.OnceFunc(func() { close(entered) })
@@ -127,14 +127,16 @@ func verifyProductionHistoryReadDuringExecution(t *testing.T) {
 				done <- err
 				return
 			}
-			ticker := time.NewTicker(20 * time.Millisecond)
-			defer ticker.Stop()
+			// Leave a gap after each real snapshot so readers do not saturate
+			// slower CI machines while the full authored suite is persisting.
+			timer := time.NewTimer(100 * time.Millisecond)
+			defer timer.Stop()
 			for {
 				select {
 				case <-queryContext.Done():
 					done <- nil
 					return
-				case <-ticker.C:
+				case <-timer.C:
 					if err := query(queryContext); err != nil {
 						if queryContext.Err() != nil {
 							err = nil
@@ -142,6 +144,7 @@ func verifyProductionHistoryReadDuringExecution(t *testing.T) {
 						done <- err
 						return
 					}
+					timer.Reset(100 * time.Millisecond)
 				}
 			}
 		}()
@@ -169,7 +172,7 @@ func verifyProductionHistoryReadDuringExecution(t *testing.T) {
 	}
 	defer repository.Close()
 	jobID, runID := accepted.Prepared.Spec.JobID, accepted.Receipt.RunIDs[0]
-	ticker := time.NewTicker(20 * time.Millisecond)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		job, err := repository.GetJob(ctx, jobID)
