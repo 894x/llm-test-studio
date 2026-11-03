@@ -55,6 +55,62 @@ describe("compact protocol reports", () => {
     expect(screen.getByRole("button", { name: "Case 50" })).toBeVisible()
   })
 
+  it("allows manual paging after locating a case and can locate the same case again", async () => {
+    const detail = protocolReportFixture()
+    const entry = detail.entries[0]
+    const seed = entry.cases[0]
+    entry.cases = Array.from({ length: 126 }, (_, index) => ({ ...seed, case_id: reportID(100 + index), name: `Case ${index}` }))
+    const user = userEvent.setup()
+    render(<I18nextProvider i18n={createAppI18n("en-US")}><ReportWorkspace
+      snapshot={protocolReportSnapshot(detail)} preferredReportID={detail.report.id}
+      getDetail={async () => detail} exportReport={vi.fn()} saveReportExport={vi.fn()} copyReportPNG={vi.fn()}
+    /></I18nextProvider>)
+    const table = await screen.findByRole("table", { name: "Cases in execution entry" })
+    const navigator = screen.getByRole("navigation", { name: "Case outcome navigation" })
+    const target = within(navigator).getByRole("button", { name: /Case 65,/ })
+
+    await user.click(target)
+    await waitFor(() => expect(within(table).getByRole("button", { name: "Case 65" }).closest("tr")).toHaveFocus())
+    expect(screen.getByText("2 / 3")).toBeVisible()
+
+    await user.click(screen.getByRole("button", { name: "Next" }))
+    expect(screen.getByText("3 / 3")).toBeVisible()
+    expect(within(table).getByRole("button", { name: "Case 125" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled()
+
+    await user.click(screen.getByRole("button", { name: "Previous" }))
+    await user.click(screen.getByRole("button", { name: "Previous" }))
+    expect(screen.getByText("1 / 3")).toBeVisible()
+    expect(within(table).getByRole("button", { name: "Case 0" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled()
+
+    await user.click(target)
+    await waitFor(() => expect(within(table).getByRole("button", { name: "Case 65" }).closest("tr")).toHaveFocus())
+    expect(screen.getByText("2 / 3")).toBeVisible()
+    await user.click(within(navigator).getByRole("button", { name: /Case 125,/ }))
+    await waitFor(() => expect(within(table).getByRole("button", { name: "Case 125" }).closest("tr")).toHaveFocus())
+    expect(screen.getByText("3 / 3")).toBeVisible()
+  }, 15000)
+
+  it("locates an initial selection and preserves paging when navigation targets another entry", async () => {
+    const entry = protocolReportFixture().entries[0]
+    const seed = entry.cases[0]
+    entry.cases = Array.from({ length: 126 }, (_, index) => ({ ...seed, case_id: reportID(100 + index), name: `Case ${index}` }))
+    const i18n = createAppI18n("en-US")
+    const user = userEvent.setup()
+    const view = render(<I18nextProvider i18n={i18n}><EntryCaseTable entry={entry} selectedCaseID={entry.cases[65].case_id} /></I18nextProvider>)
+    await waitFor(() => expect(screen.getByRole("button", { name: "Case 65" }).closest("tr")).toHaveFocus())
+    expect(screen.getByText("2 / 3")).toBeVisible()
+
+    view.rerender(<I18nextProvider i18n={i18n}><EntryCaseTable entry={entry} caseNavigationRequest={1} /></I18nextProvider>)
+    expect(screen.getByText("2 / 3")).toBeVisible()
+
+    await user.click(screen.getByRole("button", { name: "Next" }))
+    view.rerender(<I18nextProvider i18n={i18n}><EntryCaseTable entry={entry} caseNavigationRequest={2} /></I18nextProvider>)
+    expect(screen.getByText("3 / 3")).toBeVisible()
+    expect(screen.getByRole("button", { name: "Case 125" })).toBeVisible()
+  })
+
   it("exports all report cases instead of the first visible page", async () => {
     const detail = protocolReportFixture()
     const entry = detail.entries[0]

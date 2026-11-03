@@ -35,7 +35,7 @@ export function EntryCaseTable({
   paginate?: boolean
 }) {
   const { t } = useTranslation("reports")
-  const [page, setPage] = useState(0)
+  const [pagination, setPagination] = useState({ page: 0, selectedCaseID: "", caseNavigationRequest: 0 })
   const [expanded, setExpanded] = useState<string | null>(null)
   const columns = protocolPresentation(entry.protocol).columns
   const columnWidths = columns.map(column => column.observation === "http_status" ? 56
@@ -48,18 +48,18 @@ export function EntryCaseTable({
     return Math.max(width, 20 + contentWidth + Math.max(0, counts.length - 1) * 8)
   }, 96)
   const minimumTableWidth = 280 + 88 + 80 + columnWidths.reduce((total, width) => total + width, 0) + summaryWidth
+  const selectedCaseIndex = entry.cases.findIndex(caseItem => caseItem.case_id === selectedCaseID)
+  // A new navigation request locates its case; manual paging then takes precedence.
+  if (selectedCaseIndex >= 0 && (pagination.selectedCaseID !== selectedCaseID || pagination.caseNavigationRequest !== caseNavigationRequest)) {
+    setPagination({ page: Math.floor(selectedCaseIndex / PAGE_SIZE), selectedCaseID, caseNavigationRequest })
+  }
+  const { page } = pagination
   const visible = paginate ? entry.cases.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : entry.cases
   const TableContainer = paginate ? ScrollArea : "div"
 
   useEffect(() => {
     if (!selectedCaseID) return
-    const caseIndex = entry.cases.findIndex((caseItem) => caseItem.case_id === selectedCaseID)
-    if (caseIndex < 0) return
-    const selectedPage = Math.floor(caseIndex / PAGE_SIZE)
-    if (selectedPage !== page) {
-      setPage(selectedPage)
-      return
-    }
+    if (selectedCaseIndex < 0) return
     const frame = window.requestAnimationFrame(() => {
       const row = document.getElementById(reportCaseRowID(entry.entry_id, selectedCaseID))
       if (!row) return
@@ -68,7 +68,7 @@ export function EntryCaseTable({
       row.focus({ preventScroll: true })
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [caseNavigationRequest, entry.cases, entry.entry_id, page, selectedCaseID])
+  }, [caseNavigationRequest, entry.entry_id, selectedCaseID, selectedCaseIndex])
 
   return <>
     <TableContainer className="min-w-0">
@@ -126,7 +126,8 @@ export function EntryCaseTable({
         }) : <TableRow><TableCell colSpan={columns.length + 4} className="py-6 text-center text-xs text-muted-foreground">{t("hierarchy.noRecordedCases")}</TableCell></TableRow>}</TableBody>
       </Table>
     </TableContainer>
-    {paginate ? <ResultPagination page={page} count={entry.cases.length} size={PAGE_SIZE} onPage={setPage} /> : null}
+    {paginate ? <ResultPagination page={page} count={entry.cases.length} size={PAGE_SIZE}
+      onPage={page => setPagination({ page, selectedCaseID, caseNavigationRequest })} /> : null}
   </>
 }
 
