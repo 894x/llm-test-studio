@@ -214,7 +214,8 @@ func (app *DesktopApp) jobOperationError(err error) error {
 		return app.safeBindingError(jobs.ErrInvalid)
 	}
 	public := app.safeBindingError(err)
-	if public.Error() == desktopCodeOperationFailed {
+	var binding DesktopBindingError
+	if errors.As(public, &binding) && binding.Code == desktopCodeOperationFailed {
 		return DesktopBindingError{Code: desktopCodeJobUnavailable}
 	}
 	return public
