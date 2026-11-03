@@ -102,9 +102,9 @@ export function EntryCaseTable({
             >
               <TableCell className="py-1 pl-2"><TooltipProvider delayDuration={250}><Tooltip>
                 <TooltipTrigger asChild><Button type="button" variant="ghost" size="sm"
-                  className="h-auto min-h-7 w-full min-w-0 max-w-full justify-start whitespace-normal py-1 text-left"
+                  className={`h-auto min-h-7 w-full min-w-0 max-w-full justify-start py-1 text-left ${paginate ? "whitespace-nowrap" : "whitespace-normal"}`}
                   aria-expanded={open} aria-controls={detailID}>
-                  {open ? <ChevronDownIcon /> : <ChevronRightIcon />}<span className="min-w-0 [overflow-wrap:anywhere]">{caseItem.name}</span>
+                  {open ? <ChevronDownIcon /> : <ChevronRightIcon />}<span className={paginate ? "min-w-0 truncate" : "min-w-0 [overflow-wrap:anywhere]"}>{caseItem.name}</span>
                 </Button></TooltipTrigger>
                 <TooltipContent className="whitespace-normal [overflow-wrap:anywhere]">{caseItem.name}</TooltipContent>
               </Tooltip></TooltipProvider></TableCell>
