@@ -153,8 +153,12 @@ describe("Suite quick task workspace", () => {
     expect(actions.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: accepted.job_id, kind: "cancel", expected_revision: 1 })
     expect(actions.getJobs).not.toHaveBeenCalled()
     expect(cancel).toBeDisabled()
-    expect(within(history).getByText("取消运行 · 等待确认 · 执行器暂不可达，任务状态尚不确定")).toBeVisible()
-    expect(within(history).queryByText("已取消")).not.toBeInTheDocument()
+    const feedback = "取消运行 · 等待确认 · 执行器暂不可达，任务状态尚不确定"
+    expect(within(history).queryByText(feedback)).not.toBeInTheDocument()
+    const status = within(history).getAllByRole("button").find(button => button.getAttribute("aria-description") === feedback)!
+    act(() => status.focus())
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(feedback)
+    expect(within(history).queryByText("取消")).not.toBeInTheDocument()
   })
 
   it("shows a disabled cancel action until an unconfirmed Job can be controlled", async () => {
@@ -168,7 +172,11 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("button", { name: "开启功能测试" }))
     const history = screen.getByRole("list", { name: "测试记录" })
     expect(within(history).getByRole("button", { name: `取消测试 ${task.name}` })).toBeDisabled()
-    expect(within(history).getByText("执行器确认任务后即可操作。")).toBeVisible()
+    const hint = "执行器确认任务后即可操作。"
+    expect(within(history).queryByText(hint)).not.toBeInTheDocument()
+    const status = within(history).getAllByRole("button").find(button => button.getAttribute("aria-description") === hint && !button.hasAttribute("disabled"))!
+    act(() => status.focus())
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(hint)
     expect(actions.controlJob).not.toHaveBeenCalled()
   })
 
@@ -235,7 +243,7 @@ describe("Suite quick task workspace", () => {
     const rows = within(history).getAllByRole("listitem")
     const failed = rows.find(row => row.textContent?.includes("model-1"))!
     expect(failed).toHaveTextContent("失败")
-    expect(rows.find(row => row.textContent?.includes("model-2"))).toHaveTextContent("运行中")
+    expect(rows.find(row => row.textContent?.includes("model-2"))).toHaveTextContent("运行")
     await user.click(within(failed).getByRole("button", { name: "执行详情 快速性能测试" }))
     await waitFor(() => expect(actions.onOpenExecution).toHaveBeenCalledWith(jobs[0]))
   }, 10_000)
@@ -265,7 +273,10 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("button", { name: "开启功能测试" }))
     const history = await screen.findByRole("list", { name: "测试记录" })
     expect(within(history).getByRole("button", { name: task.name })).toHaveAttribute("aria-current", "true")
-    expect(within(history).getByText(/执行日志待同步/)).toBeInTheDocument()
+    const waitingStatus = within(history).getByRole("button", { name: /执行日志待同步/ })
+    expect(within(waitingStatus).getByText("等待")).toBeVisible()
+    act(() => waitingStatus.focus())
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(/执行日志待同步/)
     expect(screen.getByText("1 项运行中")).toBeInTheDocument()
     expect(screen.queryByText("执行编号")).not.toBeInTheDocument()
     const details = within(history).getByRole("button", { name: `执行详情 ${task.name}` })
@@ -278,7 +289,7 @@ describe("Suite quick task workspace", () => {
     await user.click(within(history).getByRole("button", { name: task.name }))
     expect(actions.getQuickTask).not.toHaveBeenCalled()
     actions.getJob.mockResolvedValue(remote)
-    await waitFor(() => expect(within(history).getByText("运行中")).toBeInTheDocument(), { timeout: 4000 })
+    await waitFor(() => expect(within(history).getByText("运行")).toBeInTheDocument(), { timeout: 4000 })
     expect(actions.onJobChange).toHaveBeenCalledWith(remote)
     actions.getJob.mockResolvedValue({ ...remote, execution: { ...remote.execution!, status: "failed", revision: 2, latest_sequence: 2,
       failure: { phase: "execution", error_code: "request_failed" } } })
@@ -303,11 +314,11 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
     actions.getJob.mockRejectedValue(new Error("private transport error"))
     await new Promise(resolve => setTimeout(resolve, 1600))
-    expect(within(history).getByText("运行中")).toBeInTheDocument()
+    expect(within(history).getByText("运行")).toBeInTheDocument()
     expect(screen.getByText("1 项运行中")).toBeInTheDocument()
     expect(screen.queryByText("private transport error")).not.toBeInTheDocument()
     actions.getJob.mockResolvedValue({ ...remote, execution: { ...remote.execution!, status: "cancelled", revision: 2, latest_sequence: 2 } })
-    await waitFor(() => expect(within(history).getByText("已取消")).toBeInTheDocument(), { timeout: 4000 })
+    await waitFor(() => expect(within(history).getByText("取消")).toBeInTheDocument(), { timeout: 4000 })
     expect(screen.getByText("0 项运行中")).toBeInTheDocument()
     expect(actions.launchJob).toHaveBeenCalledTimes(1)
   })
@@ -324,7 +335,8 @@ describe("Suite quick task workspace", () => {
     const history = await screen.findByRole("list", { name: "测试记录" })
     actions.updateWorkspace({ ...FIXTURE_WORKSPACE, runs: [run] })
     expect(within(history).getAllByRole("listitem")).toHaveLength(1)
-    expect(within(history).getByRole("button", { name: `填入并编辑 ${task.name}` })).toBeEnabled()
+    await user.click(within(history).getByRole("button", { name: `更多操作 ${task.name}` }))
+    expect(screen.getByRole("menuitem", { name: "填入并编辑" })).toBeEnabled()
     expect(screen.getByText("1 项运行中")).toBeInTheDocument()
   })
 
@@ -402,18 +414,21 @@ describe("Suite quick task workspace", () => {
       expect(actions.onOpenReport).toHaveBeenCalledExactlyOnceWith(report.id)
       expect(actions.getQuickTask).not.toHaveBeenCalled()
       expect(actions.launchJob).not.toHaveBeenCalled()
-      expect(screen.getByRole("button", { name: "填入并编辑 Past quick test" })).toBeEnabled()
+      await user.click(screen.getByRole("button", { name: "更多操作 Past quick test" }))
+      expect(screen.getByRole("menuitem", { name: "填入并编辑" })).toBeEnabled()
     },
   )
 
   it.each(["running", "completed"] as const)(
     "keeps %s history editable without offering an unavailable report",
-    (status) => {
+    async (status) => {
+      const user = userEvent.setup()
       const run = { ...FIXTURE_WORKSPACE.runs[0], source: "quick_task" as const, status, plan_name: "Unarchived quick test" }
       setup(undefined, undefined, { ...FIXTURE_WORKSPACE, runs: [run] }, undefined, { schema_version: 1, reports: [] })
 
       expect(screen.queryByRole("button", { name: "打开报告 Unarchived quick test" })).not.toBeInTheDocument()
-      expect(screen.getByRole("button", { name: "填入并编辑 Unarchived quick test" })).toBeEnabled()
+      await user.click(screen.getByRole("button", { name: "更多操作 Unarchived quick test" }))
+      expect(screen.getByRole("menuitem", { name: "填入并编辑" })).toBeEnabled()
     },
   )
 
@@ -612,7 +627,11 @@ describe("Suite quick task workspace", () => {
       })
       const row = screen.getByRole("button", { name: "Past video task" })
       if (activation === "keyboard") { row.focus(); await user.keyboard("{Enter}") }
-      else await user.click(activation === "row" ? row : screen.getByRole("button", { name: "填入并编辑 Past video task" }))
+      else if (activation === "row") await user.click(row)
+      else {
+        await user.click(screen.getByRole("button", { name: "更多操作 Past video task" }))
+        await user.click(screen.getByRole("menuitem", { name: "填入并编辑" }))
+      }
       expect(actions.getQuickTask).toHaveBeenCalledExactlyOnceWith(run.id)
       await waitFor(() => expect(screen.getByLabelText("时长")).toHaveValue(8))
       expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(`${task.name} · ${task.case_count} 个用例`)
@@ -740,7 +759,7 @@ describe("Suite quick task workspace", () => {
     { status: "completed" as const, passed: false, expected: "失败" },
     { status: "completed" as const, passed: true, expected: "通过" },
     { status: "failed" as const, passed: true, expected: "失败" },
-    { status: "cancelled" as const, passed: true, expected: "已取消" },
+    { status: "cancelled" as const, passed: true, expected: "取消" },
   ])("shows the archived performance verdict after a $status Job (passed=$passed)", async ({ status, passed, expected }) => {
     const user = userEvent.setup()
     const actions = setup({ ...createTaskDraft(FIXTURE_CATALOG.suites[1]), base_url: "https://example.test", api_key: "private-key", model: "model" },
@@ -804,7 +823,7 @@ describe("Suite quick task workspace", () => {
     const list = screen.getByRole("list", { name: "测试记录" })
     const row = within(list).getByRole("button", { name: "快速性能测试" }).closest("li")!
     await waitFor(() => expect(row).toHaveTextContent("3 / 10"))
-    expect(row).toHaveTextContent("发送中")
+    expect(row).toHaveTextContent("发送")
     expect(row).toHaveTextContent("成功 2 · 失败 1 · 在途 1")
     expect(screen.getByLabelText("API Key")).toBeEnabled()
     await user.click(screen.getByRole("switch", { name: "切换测试模式" }))

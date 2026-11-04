@@ -174,9 +174,9 @@
   "headline": {
     "functional": "用例关键结果",
     "failedCases": "失败用例",
-    "indeterminateCases": "无法判定",
+    "indeterminateCases": "待定",
     "passedCases": "通过用例",
-    "observedCases": "仅观测",
+    "observedCases": "观测",
     "performance": "关键性能指标",
     "ttftP95": "TTFT P95（含推理）",
     "capacityStatus": {

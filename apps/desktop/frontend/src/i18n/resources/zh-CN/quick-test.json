@@ -17,6 +17,21 @@
     "more": "加载更多",
     "end": "已加载全部记录"
   },
+  "historyStatus": {
+    "queued": "排队",
+    "starting": "启动",
+    "running": "运行",
+    "draining": "排空",
+    "completed": "完成",
+    "failed": "失败",
+    "cancelled": "取消",
+    "passed": "通过",
+    "not_started": "未启",
+    "warming_up": "预热",
+    "ramping": "爬坡",
+    "sending": "发送",
+    "waiting": "等待"
+  },
   "title": "快速测试",
   "description": "功能测试选择任务并填写连接；性能测试可选择计划填入参数，再按需调整。",
   "connection": "连接信息",

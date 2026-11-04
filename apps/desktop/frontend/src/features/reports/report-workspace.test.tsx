@@ -118,13 +118,13 @@ describe("ReportWorkspace", () => {
     const report = await screen.findByRole("region", { name: "计划报告" })
     const headline = within(report).getByLabelText("用例关键结果")
     const failed = within(headline).getByText("失败用例").nextElementSibling
-    const indeterminate = within(headline).getByText("无法判定").nextElementSibling
+    const indeterminate = within(headline).getByText("待定").nextElementSibling
     expect(failed).toHaveTextContent("2")
     expect(failed).toHaveClass("text-outcome-fail")
     expect(indeterminate).toHaveTextContent("4")
     expect(indeterminate).toHaveClass("text-outcome-review")
     expect(within(headline).getByText("通过用例").nextElementSibling).toHaveTextContent("5")
-    expect(within(headline).getByText("仅观测").nextElementSibling).toHaveTextContent("3")
+    expect(within(headline).getByText("观测").nextElementSibling).toHaveTextContent("3")
     expect(detail).toEqual(original)
   })
 

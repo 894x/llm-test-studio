@@ -9,6 +9,8 @@ import zh from "@/i18n/resources/zh-CN/history-recycle.json"
 
 import type { HistoryRecyclePreview, RecycledHistoryEntry } from "./data"
 import { RecycleHistoryButton } from "./recycle-history-button"
+import { QuickTestHistory } from "@/features/quick-test/quick-test-history"
+import { TransientOverlayProvider } from "@/components/ui/transient-overlays"
 
 const OWNER: RecycledHistoryEntry = {
   kind: "job", id: "11111111-1111-4111-8111-111111111111", title: "整次功能测试",
@@ -19,6 +21,32 @@ const OWNER: RecycledHistoryEntry = {
   comparison_ids: [],
 }
 const TARGET = { kind: "report" as const, id: OWNER.report_ids[0] }
+
+it("opens recycle confirmation after closing history actions and restores focus to the menu trigger", async () => {
+  const user = userEvent.setup()
+  const client = makeClient()
+  const select = vi.fn()
+  render(<TransientOverlayProvider><QuickTestHistory items={[{
+    id: OWNER.id, title: OWNER.title, mode: "functional", model: "kimi-k31-pro", channel: "https://example.test",
+    timestamp: "2026-11-04T13:19:29Z", status: "passed", active: false, runID: OWNER.run_ids[0], reportID: OWNER.report_ids[0],
+  }]} selectedID="" busy={false} onSelect={select} onRestore={vi.fn()} onOpenReport={vi.fn()} onCancel={vi.fn()} onRefresh={vi.fn()}
+    renderRecycleAction={(_item, renderTrigger) => <RecycleHistoryButton client={client} target={TARGET} name={OWNER.title} compact renderTrigger={renderTrigger} />} /></TransientOverlayProvider>)
+  const more = screen.getByRole("button", { name: `更多操作 ${OWNER.title}` })
+  await user.click(more)
+  await user.click(screen.getByRole("menuitem", { name: /移入回收站/ }))
+  const dialog = await screen.findByRole("alertdialog")
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+  await waitFor(() => expect(within(dialog).getByRole("button", { name: "移入回收站" })).toBeEnabled())
+  expect(client.previewHistoryRecycle).toHaveBeenCalledExactlyOnceWith(TARGET)
+  expect(client.recycleHistory).not.toHaveBeenCalled()
+  expect(select).not.toHaveBeenCalled()
+  await user.click(within(dialog).getByRole("button", { name: "取消" }))
+  await waitFor(() => expect(more).toHaveFocus())
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+  await user.click(more)
+  await user.keyboard("{Escape}")
+  await waitFor(() => expect(more).toHaveFocus())
+})
 
 function preview(blocked: HistoryRecyclePreview["blocked_reason"] = ""): HistoryRecyclePreview {
   return { schema_version: 1, entry: OWNER, can_recycle: !blocked, blocked_reason: blocked }

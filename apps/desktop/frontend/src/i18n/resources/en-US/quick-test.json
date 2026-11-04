@@ -17,6 +17,21 @@
     "more": "Load more",
     "end": "All records loaded"
   },
+  "historyStatus": {
+    "queued": "Queued",
+    "starting": "Starting",
+    "running": "Running",
+    "draining": "Draining",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "passed": "Passed",
+    "not_started": "Not started",
+    "warming_up": "Warming up",
+    "ramping": "Ramping",
+    "sending": "Sending",
+    "waiting": "Waiting"
+  },
   "title": "Quick Test",
   "description": "Choose a task and connection for functional tests, or load and adjust a performance plan.",
   "connection": "Connection",

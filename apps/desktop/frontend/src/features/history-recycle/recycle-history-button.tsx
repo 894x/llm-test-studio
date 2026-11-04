@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useCallback, useRef, useState, type ReactNode, type RefCallback } from "react"
 import { useTranslation } from "react-i18next"
 import Trash2Icon from "lucide-react/dist/esm/icons/trash-2.mjs"
 import TriangleAlertIcon from "lucide-react/dist/esm/icons/triangle-alert.mjs"
@@ -11,7 +11,14 @@ import type { HistoryChanged, HistoryRecyclePreview, HistoryRecycleTarget } from
 
 export type HistoryRecycleClient = Pick<DesktopClient, "previewHistoryRecycle" | "recycleHistory">
 
-export function RecycleHistoryButton({ client, target, onHistoryChanged, onRecycled, compact = false, disabled = false, name }: {
+export type HistoryRecycleTriggerProps = {
+  ref: RefCallback<HTMLButtonElement>
+  disabled: boolean
+  label: string
+  onClick: () => void
+}
+
+export function RecycleHistoryButton({ client, target, onHistoryChanged, onRecycled, compact = false, disabled = false, name, renderTrigger }: {
   client: HistoryRecycleClient
   target: HistoryRecycleTarget
   onHistoryChanged?: HistoryChanged
@@ -19,6 +26,7 @@ export function RecycleHistoryButton({ client, target, onHistoryChanged, onRecyc
   compact?: boolean
   disabled?: boolean
   name?: string
+  renderTrigger?: (props: HistoryRecycleTriggerProps) => ReactNode
 }) {
   const { t } = useTranslation("historyRecycle")
   const [open, setOpen] = useState(false)
@@ -27,6 +35,7 @@ export function RecycleHistoryButton({ client, target, onHistoryChanged, onRecyc
   const [error, setError] = useState("")
   const [refreshError, setRefreshError] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const setTriggerRef = useCallback((element: HTMLButtonElement | null) => { triggerRef.current = element }, [])
   const inFlight = useRef(false)
   const request = useRef(0)
   const inspect = async () => {
@@ -62,7 +71,8 @@ export function RecycleHistoryButton({ client, target, onHistoryChanged, onRecyc
     aria-label={name ? t("moveAria", { title: name }) : t("move")}
     onClick={event => { event.stopPropagation(); void inspect() }}><Trash2Icon />{compact ? null : t("move")}</Button>
   return <>
-    {compact ? <TooltipProvider><Tooltip>
+    {renderTrigger ? <CustomRecycleTrigger render={renderTrigger} ref={setTriggerRef} disabled={disabled || pending}
+      label={name ? t("moveAria", { title: name }) : t("move")} onClick={() => { void inspect() }} /> : compact ? <TooltipProvider><Tooltip>
       <TooltipTrigger asChild>{trigger}</TooltipTrigger>
       <TooltipContent>{t("move")}</TooltipContent>
     </Tooltip></TooltipProvider> : trigger}
@@ -103,4 +113,8 @@ export function RecycleHistoryButton({ client, target, onHistoryChanged, onRecyc
       </AlertDialogContent>
     </AlertDialog>
   </>
+}
+
+function CustomRecycleTrigger({ render, ...props }: HistoryRecycleTriggerProps & { render: (props: HistoryRecycleTriggerProps) => ReactNode }) {
+  return render(props)
 }

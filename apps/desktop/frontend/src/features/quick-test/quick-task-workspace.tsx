@@ -719,9 +719,9 @@ export function QuickTaskWorkspace({
                   .catch(reason => setError(publicDesktopErrorMessage(reason, tj("readFailed"))))
               }}
               onRestore={id => { setMode("functional"); setSelectedHistoryID(id); void restore(id) }}
-              renderRecycleAction={actions.previewHistoryRecycle && actions.recycleHistory ? item => {
+              renderRecycleAction={actions.previewHistoryRecycle && actions.recycleHistory ? (item, renderTrigger) => {
                 const target = item.jobID ? { kind: "job" as const, id: item.jobID } : item.runID ? { kind: "run" as const, id: item.runID } : item.reportID ? { kind: "report" as const, id: item.reportID } : null
-                return target ? <RecycleHistoryButton compact name={item.title} client={actions as HistoryRecycleClient} target={target} disabled={busy}
+                return target ? <RecycleHistoryButton compact name={item.title} client={actions as HistoryRecycleClient} target={target} disabled={busy} renderTrigger={renderTrigger}
                   onRecycled={(entry, action) => { setLocalHistoryChanges(current => [...current, { entry, action }]); setSelectedHistoryID(""); if (entry.run_ids.includes(runID)) onRunSelected("") }} onHistoryChanged={onHistoryChanged} /> : null
               } : undefined}
               onOpenReport={id => void onOpenReport(id)} onCancel={item => void cancel(item)} onRefresh={() => void refreshProgress()} />
