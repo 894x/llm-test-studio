@@ -69,7 +69,7 @@ async function open(user: ReturnType<typeof userEvent.setup>) {
 afterEach(() => vi.useRealTimers())
 
 describe("RemoteNodesMenu", () => {
-  it("applies shared task slots and rereads the authoritative runner limit", async () => {
+  it("edits shared task slots only in the node form and preserves connection edits", async () => {
     const user = userEvent.setup()
     const f = fixture()
     f.client.setRemoteNodeTaskConcurrency.mockImplementation(async command => {
@@ -79,16 +79,24 @@ describe("RemoteNodesMenu", () => {
     })
     show(f.client)
     await open(user)
+    expect(screen.queryByRole("spinbutton", { name: "同时运行任务数" })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "编辑" }))
+    await user.clear(screen.getByLabelText("名称"))
+    await user.type(screen.getByLabelText("名称"), "Renamed runner")
     const input = screen.getByRole("spinbutton", { name: "同时运行任务数" })
     expect(input).toHaveValue(4)
     await user.clear(input)
     await user.type(input, "8")
-    await user.click(screen.getByRole("button", { name: "应用" }))
+    await user.click(screen.getByRole("button", { name: "保存任务数" }))
     await waitFor(() => expect(f.client.setRemoteNodeTaskConcurrency).toHaveBeenCalledExactlyOnceWith({
       id: NODE_ID, expected_revision: 3, expected_max_active_jobs: 4, max_active_jobs: 8,
     }))
     await waitFor(() => expect(screen.getByRole("spinbutton", { name: "同时运行任务数" })).toHaveValue(8))
-    expect(screen.getByRole("button", { name: "应用" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "保存任务数" })).toBeDisabled()
+    expect(screen.getByLabelText("名称")).toHaveValue("Renamed runner")
+    expect(f.client.saveRemoteNode).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "返回节点列表" }))
+    expect(screen.queryByRole("spinbutton", { name: "同时运行任务数" })).not.toBeInTheDocument()
   })
 
   it("rejects task slot boundaries and preserves the draft on an unsupported runner", async () => {
@@ -97,15 +105,16 @@ describe("RemoteNodesMenu", () => {
     f.client.setRemoteNodeTaskConcurrency.mockRejectedValue(new DesktopClientError("remote_node_upgrade_required"))
     show(f.client)
     await open(user)
+    await user.click(screen.getByRole("button", { name: "编辑" }))
     const input = screen.getByRole("spinbutton", { name: "同时运行任务数" })
     for (const invalid of ["0", "129", "1.5"]) {
       fireEvent.change(input, { target: { value: invalid } })
-      expect(screen.getByRole("button", { name: "应用" })).toBeDisabled()
+      expect(screen.getByRole("button", { name: "保存任务数" })).toBeDisabled()
     }
     fireEvent.change(input, { target: { value: "1" } })
     expect(screen.getByText("当前有 2 个任务在运行，请等待任务结束后再调低。")).toBeVisible()
     fireEvent.change(input, { target: { value: "8" } })
-    await user.click(screen.getByRole("button", { name: "应用" }))
+    await user.click(screen.getByRole("button", { name: "保存任务数" }))
     await screen.findByText("请升级或重新安装 Runner 后再使用此节点。")
     expect(screen.getByRole("spinbutton", { name: "同时运行任务数" })).toHaveValue(8)
     expect(f.client.setRemoteNodeTaskConcurrency).toHaveBeenCalledTimes(1)

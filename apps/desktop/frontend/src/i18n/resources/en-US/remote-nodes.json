@@ -110,6 +110,8 @@
     "unconfirmed": "The server has not confirmed this operation. Its identity is retained while status is read. Retry this operation after the connection recovers.",
     "resumeAttempted": "Admission resume has been attempted. Restoring the old database is blocked to protect any new data.",
     "background": "The desktop service continues the upgrade when this panel closes. Reopen it to read durable progress.",
+    "attentionStage": "Upgrade needs attention (last stage: {{stage}})",
+    "attention": "The original upgrade operation is retained. Read its status before retrying or recovering; a connection failure does not mean remote work has stopped.",
     "refresh": "Read upgrade status",
     "retry": "Retry this upgrade",
     "recover": "Restore pre-upgrade state",
@@ -145,7 +147,7 @@
       "installation_operation_conflict": "The server operation differs from the expected upgrade. Read its status before proceeding.",
       "installation_path_not_owned": "The installed program is not owned by this upgrade procedure. Inspect the server installation before proceeding.",
       "node_pairing_repair_required": "Runner pairing must be repaired. Verify the server identity before proceeding.",
-      "runner_upgrade_required": "The Runner needs a supported upgrade release. Update the desktop application and retry this operation.",
+      "runner_upgrade_required": "The runtime data did not pass this package's compatibility checks. Restore the pre-upgrade state, then use a package that supports migration from the old database.",
       "installation_integrity_failed": "Runner verification failed. Read the operation state and retry or restore when available.",
       "invalid_installation_request": "The upgrade request is invalid. Read the current node and operation state before proceeding.",
       "runner_installation_failed": "The upgrade could not finish. Read its state and retry or restore when available.",
@@ -162,8 +164,8 @@
   "scheduling": {
     "label": "Concurrent tasks",
     "help": "1–128 tasks, shared by the entire node. Changes apply immediately and persist. Request concurrency within tasks still shares the node's total budget.",
-    "apply": "Apply",
-    "saving": "Applying…",
+    "apply": "Save task limit",
+    "saving": "Saving…",
     "invalid": "Enter an integer from 1 to 128.",
     "busy": "{{active}} tasks are running. Wait for tasks to finish before lowering this limit."
   },

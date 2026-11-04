@@ -146,12 +146,24 @@ func (installer upgrader) backupFiles(ctx context.Context, request UpgradeReques
 	if _, err := os.Lstat(database); errors.Is(err, os.ErrNotExist) {
 		manifest.Database, err = installer.backup(ctx, filepath.Join(installer.layout.state, "runner.db"), database)
 		if err != nil {
-			return ErrUpgradeRequired
+			return errors.Join(ErrUpgradeRequired, err)
 		}
 	} else if err == nil {
-		manifest.Database, err = installer.verifyDB(ctx, database)
+		manifest.Database, err = installer.verifyBackupDatabase(ctx, database)
 		if err != nil {
-			return ErrUpgradeRequired
+			return errors.Join(ErrUpgradeRequired, err)
+		}
+		// A previous process may have copied an old snapshot but died before its
+		// migration rehearsal and backup manifest were complete. Rehearse that
+		// exact snapshot before accepting it as a newly restorable backup.
+		_, manifestErr := os.Lstat(filepath.Join(directory, "backup.json"))
+		if manifest.Database.SchemaVersion != sqlite.CurrentSchemaVersion && errors.Is(manifestErr, os.ErrNotExist) {
+			if err := installer.preflightDB(ctx, database); err != nil {
+				return errors.Join(ErrUpgradeRequired, err)
+			}
+		}
+		if manifestErr != nil && !errors.Is(manifestErr, os.ErrNotExist) {
+			return manifestErr
 		}
 	} else {
 		return err
@@ -214,9 +226,9 @@ func (installer upgrader) verifyBackup(ctx context.Context, request UpgradeReque
 			return ErrIntegrity
 		}
 	}
-	proof, err := installer.verifyDB(ctx, filepath.Join(directory, "runner.db"))
+	proof, err := installer.verifyBackupDatabase(ctx, filepath.Join(directory, "runner.db"))
 	if err != nil {
-		return ErrUpgradeRequired
+		return errors.Join(ErrUpgradeRequired, err)
 	}
 	proofBytes, _ := json.Marshal(proof)
 	expectedBytes, _ := json.Marshal(manifest.Database)
@@ -224,6 +236,13 @@ func (installer upgrader) verifyBackup(ctx context.Context, request UpgradeReque
 		return ErrIntegrity
 	}
 	return nil
+}
+
+func (installer upgrader) verifyBackupDatabase(ctx context.Context, path string) (sqlite.RunnerBackup, error) {
+	if installer.verifyBackupDB != nil {
+		return installer.verifyBackupDB(ctx, path)
+	}
+	return installer.verifyDB(ctx, path)
 }
 
 func (paths layout) checkUpgradeDataDirectory(name string) error {

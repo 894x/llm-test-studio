@@ -26,6 +26,7 @@ type runnerBackupResultQueries struct {
 	onEvidence         func()
 	failOwner          bool
 	aliasFrom, aliasTo string
+	resultReads        map[string]int
 }
 
 func (queryer *runnerBackupResultQueries) QueryRowContext(
@@ -34,6 +35,10 @@ func (queryer *runnerBackupResultQueries) QueryRowContext(
 	args ...any,
 ) *sql.Row {
 	if strings.Contains(query, "FROM case_results WHERE id") && len(args) == 1 {
+		if queryer.resultReads != nil {
+			id, _ := args[0].(string)
+			queryer.resultReads[id]++
+		}
 		if args[0] == queryer.aliasFrom {
 			args = []any{queryer.aliasTo}
 		}
@@ -88,6 +93,77 @@ func TestRunnerBackupCaseResultsReadsEachLargeOwnerOnceAcrossPages(t *testing.T)
 			queryer.pages,
 			len(runs),
 		)
+	}
+}
+
+func TestRunnerBackupCaseResultsCompositeCursorVisitsTiedRowsExactlyOnce(t *testing.T) {
+	_, repository, runs := runnerBackupResultsFixture(t, 258, 3)
+	var timestamps int
+	if err := repository.db.QueryRowContext(t.Context(), `SELECT COUNT(DISTINCT created_at) FROM case_results`).
+		Scan(&timestamps); err != nil || timestamps != 1 {
+		t.Fatalf("fixture must cross page boundaries with identical creation times: %d %v", timestamps, err)
+	}
+	tx, err := repository.db.BeginTx(t.Context(), &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	queryer := &runnerBackupResultQueries{relationQueryer: tx, resultReads: map[string]int{}}
+	if err := validateRunnerBackupCaseResults(t.Context(), queryer); err != nil {
+		t.Fatal(err)
+	}
+	if len(queryer.resultReads) != 261 || queryer.pages != 3 || queryer.ownerReads != len(runs) {
+		t.Fatalf("cursor skipped rows or reloaded an owner: results=%d pages=%d owners=%d",
+			len(queryer.resultReads), queryer.pages, queryer.ownerReads)
+	}
+	for id, count := range queryer.resultReads {
+		if count != 1 {
+			t.Fatalf("result %s read %d times, want once", id, count)
+		}
+	}
+}
+
+func TestRunnerBackupIDCursorVisitsEveryPageAndRejectsEmptyIdentity(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(t.Context(), `CREATE TABLE objects(id TEXT PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	for index := 258; index > 0; index-- {
+		id := fmt.Sprintf("31000000-0000-4000-8000-%012d", index)
+		if _, err := db.ExecContext(t.Context(), `INSERT INTO objects(id) VALUES(?)`, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	seen := map[string]int{}
+	if err := runnerBackupEachID(t.Context(), tx, "objects", "id", func(id string) error {
+		seen[id]++
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 258 {
+		t.Fatalf("cursor visited %d identities, want 258", len(seen))
+	}
+	for id, count := range seen {
+		if count != 1 {
+			t.Fatalf("identity %s visited %d times, want once", id, count)
+		}
+	}
+	if _, err := tx.ExecContext(t.Context(), `INSERT INTO objects(id) VALUES('')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := runnerBackupEachID(t.Context(), tx, "objects", "id", func(string) error { return nil }); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("first-page optimization skipped an empty stored identity: %v", err)
 	}
 }
 

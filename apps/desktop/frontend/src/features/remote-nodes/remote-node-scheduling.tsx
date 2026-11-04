@@ -2,6 +2,7 @@ import { useId, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 
@@ -19,24 +20,26 @@ export function RemoteNodeScheduling({ node, runner, disabled, saving, onSave }:
   const tooLow = valid && limit < runner.active
   const error = !valid ? t("scheduling.invalid") : tooLow ? t("scheduling.busy", { active: runner.active }) : ""
 
-  return <form className="space-y-1.5" onSubmit={event => {
+  return <form className="min-w-0" onSubmit={event => {
     event.preventDefault()
     if (disabled || saving || error || limit === runner.max_active_jobs) return
     onSave({ id: node.id, expected_revision: node.revision,
       expected_max_active_jobs: runner.max_active_jobs, max_active_jobs: limit })
   }}>
-    <label htmlFor={id} className="text-xs font-medium">{t("scheduling.label")}</label>
-    <div className="flex items-center gap-2">
-      <Input id={id} type="number" min={1} max={128} step={1} className="w-24 tabular-nums"
+    <Field><FieldContent>
+    <FieldLabel htmlFor={id}>{t("scheduling.label")}</FieldLabel>
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+      <Input id={id} type="number" min={1} max={128} step={1} className="tabular-nums"
         value={value} disabled={disabled || saving} aria-invalid={Boolean(error)}
         aria-describedby={`${id}-help${error ? ` ${id}-error` : ""}`}
         onChange={event => setValue(event.target.value)} />
-      <Button type="submit" variant="outline" size="sm"
+      <Button type="submit" variant="outline"
         disabled={disabled || saving || Boolean(error) || limit === runner.max_active_jobs}>
         {saving && <Spinner />}{t(saving ? "scheduling.saving" : "scheduling.apply")}
       </Button>
     </div>
-    <p id={`${id}-help`} className="text-[11px] text-muted-foreground">{t("scheduling.help")}</p>
+    <FieldDescription id={`${id}-help`}>{t("scheduling.help")}</FieldDescription>
     {error && <p id={`${id}-error`} role="alert" className="text-xs text-destructive">{error}</p>}
+    </FieldContent></Field>
   </form>
 }

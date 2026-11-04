@@ -58,12 +58,22 @@ type RunnerBackupRows struct {
 // or SQLite sidecar is a conflict. The caller must own a private destination
 // directory so another process cannot replace files during SQLite's path open.
 func BackupRunnerDatabase(ctx context.Context, sourcePath, destinationPath string) (RunnerBackup, error) {
+	return backupRunnerDatabase(ctx, sourcePath, destinationPath, runnerSnapshotFacts)
+}
+
+type runnerSnapshotInspector func(context.Context, *sql.Conn) (RunnerBackup, error)
+
+func backupRunnerDatabase(
+	ctx context.Context,
+	sourcePath, destinationPath string,
+	inspect runnerSnapshotInspector,
+) (RunnerBackup, error) {
 	source, err := openRunnerBackupSource(ctx, sourcePath)
 	if err != nil {
 		return RunnerBackup{}, err
 	}
 	defer source.close()
-	before, err := runnerSnapshotFacts(ctx, source.conn)
+	before, err := inspect(ctx, source.conn)
 	if err != nil {
 		return RunnerBackup{}, runnerBackupError(ctx, "validate source", err)
 	}
@@ -117,14 +127,14 @@ func BackupRunnerDatabase(ctx context.Context, sourcePath, destinationPath strin
 	if !validDestination {
 		return RunnerBackup{}, errors.New("runner backup destination identity changed")
 	}
-	after, err := runnerSnapshotFacts(ctx, source.conn)
+	after, err := inspect(ctx, source.conn)
 	if err != nil {
 		return RunnerBackup{}, runnerBackupError(ctx, "revalidate source snapshot", err)
 	}
 	if !sameRunnerBusiness(before, after) {
 		return RunnerBackup{}, fmt.Errorf("%w: runner source snapshot changed", ErrConflict)
 	}
-	backup, err := VerifyRunnerDatabase(ctx, destination)
+	backup, err := verifyRunnerDatabase(ctx, destination, inspect)
 	if err != nil {
 		return RunnerBackup{}, err
 	}
@@ -143,6 +153,10 @@ func BackupRunnerDatabase(ctx context.Context, sourcePath, destinationPath strin
 // For an arbitrary WAL database, DatabaseSHA256 is the main file's hash; only
 // BusinessSHA256 includes the transaction's WAL-visible values.
 func VerifyRunnerDatabase(ctx context.Context, path string) (RunnerBackup, error) {
+	return verifyRunnerDatabase(ctx, path, runnerSnapshotFacts)
+}
+
+func verifyRunnerDatabase(ctx context.Context, path string, inspect runnerSnapshotInspector) (RunnerBackup, error) {
 	source, err := openRunnerBackupSource(ctx, path)
 	if err != nil {
 		return RunnerBackup{}, err
@@ -152,7 +166,7 @@ func VerifyRunnerDatabase(ctx context.Context, path string) (RunnerBackup, error
 	if err != nil {
 		return RunnerBackup{}, runnerBackupError(ctx, "hash database", err)
 	}
-	facts, err := runnerSnapshotFacts(ctx, source.conn)
+	facts, err := inspect(ctx, source.conn)
 	if err != nil {
 		return RunnerBackup{}, runnerBackupError(ctx, "verify database", err)
 	}
@@ -685,9 +699,9 @@ func validateRunnerBackupRelations(ctx context.Context, conn *sql.Conn) error {
 }
 
 func validateRunnerBackupCaseResults(ctx context.Context, queryer relationQueryer) error {
-	type resultIdentity struct{ runID, id string }
+	type resultIdentity struct{ runID, createdAt, id string }
 
-	var afterRunID, afterID string
+	var afterRunID, afterCreatedAt, afterID string
 	var currentRunID string
 	var snapshot domain.RunSnapshot
 	started := false
@@ -695,16 +709,14 @@ func validateRunnerBackupCaseResults(ctx context.Context, queryer relationQuerye
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		rows, err := queryer.QueryContext(
-			ctx,
-			`SELECT run_id, id FROM case_results
-			WHERE (? = 0 OR run_id > ? OR (run_id = ? AND id > ?))
-			ORDER BY run_id, id LIMIT 128`,
-			started,
-			afterRunID,
-			afterRunID,
-			afterID,
-		)
+		query := `SELECT run_id, created_at, id FROM case_results`
+		arguments := []any{}
+		if started {
+			query += ` WHERE (run_id, created_at, id) > (?, ?, ?)`
+			arguments = []any{afterRunID, afterCreatedAt, afterID}
+		}
+		query += ` ORDER BY run_id, created_at, id LIMIT 128`
+		rows, err := queryer.QueryContext(ctx, query, arguments...)
 		if err != nil {
 			return err
 		}
@@ -714,12 +726,12 @@ func validateRunnerBackupCaseResults(ctx context.Context, queryer relationQuerye
 				_ = rows.Close()
 				return err
 			}
-			var runID, id string
-			if err := rows.Scan(&runID, &id); err != nil {
+			var identity resultIdentity
+			if err := rows.Scan(&identity.runID, &identity.createdAt, &identity.id); err != nil {
 				_ = rows.Close()
 				return err
 			}
-			page = append(page, resultIdentity{runID: runID, id: id})
+			page = append(page, identity)
 		}
 		iterationErr := rows.Err()
 		closeErr := rows.Close()
@@ -743,7 +755,8 @@ func validateRunnerBackupCaseResults(ctx context.Context, queryer relationQuerye
 			`, identity.id)); err != nil {
 				return err
 			}
-			if row.id != identity.id || row.runID != identity.runID {
+			identityMatches := row.id == identity.id && row.runID == identity.runID && row.createdAt == identity.createdAt
+			if !identityMatches {
 				return fmt.Errorf("%w: result page identity", ErrCorrupt)
 			}
 			result, err := row.decode("")
@@ -774,7 +787,7 @@ func validateRunnerBackupCaseResults(ctx context.Context, queryer relationQuerye
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			afterRunID, afterID = row.runID, row.id
+			afterRunID, afterCreatedAt, afterID = identity.runID, identity.createdAt, identity.id
 		}
 		started = true
 		if len(page) < 128 {
@@ -792,13 +805,14 @@ func runnerBackupEachID(
 	var after string
 	started := false
 	for {
-		rows, err := conn.QueryContext(
-			ctx,
-			`SELECT "`+column+`" FROM "`+table+`"
-			WHERE (? = 0 OR "`+column+`" > ?) ORDER BY "`+column+`" LIMIT 128`,
-			started,
-			after,
-		)
+		query := `SELECT "` + column + `" FROM "` + table + `"`
+		arguments := []any{}
+		if started {
+			query += ` WHERE "` + column + `" > ?`
+			arguments = []any{after}
+		}
+		query += ` ORDER BY "` + column + `" LIMIT 128`
+		rows, err := conn.QueryContext(ctx, query, arguments...)
 		if err != nil {
 			return err
 		}

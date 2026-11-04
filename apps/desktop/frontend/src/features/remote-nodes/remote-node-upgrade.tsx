@@ -6,6 +6,7 @@ import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right.mjs"
 import CopyIcon from "lucide-react/dist/esm/icons/copy.mjs"
 import RefreshCwIcon from "lucide-react/dist/esm/icons/refresh-cw.mjs"
 import RotateCcwIcon from "lucide-react/dist/esm/icons/rotate-ccw.mjs"
+import CircleAlertIcon from "lucide-react/dist/esm/icons/circle-alert.mjs"
 
 import { Alert } from "@/components/ui/alert"
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
@@ -31,6 +32,7 @@ export function RemoteNodeUpgrade({ node, controller, disabled }: {
   const canStart = !locked && node.enabled && node.has_authentication && Boolean(node.host_key) && Boolean(runner) && !node.checking && !tasksBusy
   const pending = Boolean(operation.pending)
   const active = Boolean(view || operation.command) && !terminal
+  const needsAttention = active && Boolean(view?.error_code || operation.error || operation.conflict)
   const error = operation.error && i18n.exists(operation.error, { ns: "remoteNodes" }) ? t(operation.error) : operation.error ? t("upgrade.commandError") : ""
   return <section aria-label={t("upgrade.title")} className="min-w-0 space-y-2">
     <Collapsible.Root className="min-w-0 space-y-2">
@@ -82,7 +84,8 @@ export function RemoteNodeUpgrade({ node, controller, disabled }: {
     {tasksBusy && !active && <p className="text-[11px] text-warning-strong">{t("upgrade.busy", { active: runner!.active, queued: runner!.queued, pending: runner!.pending })}</p>}
     {view && <>
       <div role="status" aria-live="polite" className="flex min-w-0 items-center gap-2 text-xs">
-        {active && <Spinner />}<span>{t(`upgrade.stage.${view.stage}`)}</span>
+        {needsAttention ? <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0 text-warning-strong" /> : active && <Spinner />}
+        <span>{needsAttention ? t("upgrade.attentionStage", { stage: t(`upgrade.stage.${view.stage}`) }) : t(`upgrade.stage.${view.stage}`)}</span>
       </div>
       <dl className="min-w-0 space-y-2 text-[11px]">
         <div className="min-w-0"><dt className="text-muted-foreground">{t("upgrade.targetBuild")}</dt><dd className="mt-0.5 font-mono [overflow-wrap:anywhere]">{view.target_build_id}</dd></div>
@@ -95,7 +98,7 @@ export function RemoteNodeUpgrade({ node, controller, disabled }: {
     {!view && operation.command && <Alert>{t("upgrade.unconfirmed")}<p className="mt-1 font-mono [overflow-wrap:anywhere]">{operation.command.operation_id}</p></Alert>}
     {error && <Alert variant="destructive">{error}</Alert>}
     {active && <>
-      <p className="text-[11px] text-muted-foreground">{t("upgrade.background")}</p>
+      <p className="text-[11px] text-muted-foreground">{t(needsAttention ? "upgrade.attention" : "upgrade.background")}</p>
       <div className="flex flex-wrap gap-2">
         <Button variant="ghost" size="sm" disabled={disabled || pending} onClick={() => controller.refresh(node)}><RefreshCwIcon />{t("upgrade.refresh")}</Button>
         <Button variant="outline" size="sm"

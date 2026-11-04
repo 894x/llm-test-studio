@@ -1,4 +1,4 @@
-import { useId, useState } from "react"
+import { useId, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -11,16 +11,17 @@ import { Textarea } from "@/components/ui/textarea"
 
 import type { RemoteNode, RemoteNodeDraft } from "./data"
 
-export function RemoteNodeEditor({ draft, node, disabled, saving, onSave }: {
+export function RemoteNodeEditor({ draft, node, disabled, saving, onSave, runtimeSettings }: {
   draft: RemoteNodeDraft; node?: RemoteNode; disabled: boolean; saving: boolean
   onSave: (draft: RemoteNodeDraft) => void
+  runtimeSettings?: ReactNode
 }) {
   const { t } = useTranslation("remoteNodes")
   const id = useId()
   const [value, setValue] = useState(draft)
   const set = <K extends keyof RemoteNodeDraft>(key: K, next: RemoteNodeDraft[K]) => setValue(current => ({ ...current, [key]: next }))
   const existingAuth = node?.has_authentication && node.authentication_kind === value.authentication
-  return <form className="min-w-0 space-y-4" onSubmit={event => {
+  return <div className="min-w-0 space-y-4"><form id={`${id}-form`} className="min-w-0 space-y-4" onSubmit={event => {
     event.preventDefault()
     if (disabled) return
     onSave({ ...value, name: value.name.trim(), region: value.region.trim(), host: value.host.trim(), user: value.user.trim() })
@@ -61,6 +62,8 @@ export function RemoteNodeEditor({ draft, node, disabled, saving, onSave }: {
       <Field className="items-center"><Checkbox id={`${id}-enabled`} disabled={disabled} checked={value.enabled} onCheckedChange={next => set("enabled", next === true)} /><FieldLabel htmlFor={`${id}-enabled`}>{t("field.enabled")}</FieldLabel></Field>
     </FieldGroup>
     <p className="text-[11px] text-muted-foreground">{t("credentialHelp")}</p>
-    <Button type="submit" disabled={disabled}>{saving && <Spinner />}{t("save")}</Button>
   </form>
+    {runtimeSettings}
+    <Button type="submit" form={`${id}-form`} disabled={disabled}>{saving && <Spinner />}{t("save")}</Button>
+  </div>
 }

@@ -26,14 +26,16 @@ type upgradeSystem interface {
 }
 
 type upgrader struct {
-	layout   layout
-	system   upgradeSystem
-	source   io.ReadSeeker
-	progress func(UpgradeProgress)
-	probe    func(context.Context, runnerconfig.Config, []byte) (jobcontract.RunnerInfo, error)
-	maintain func(context.Context, runnerconfig.Config, []byte, jobcontract.MaintenanceCommand) (jobhost.MaintenanceResult, error)
-	backup   func(context.Context, string, string) (sqlite.RunnerBackup, error)
-	verifyDB func(context.Context, string) (sqlite.RunnerBackup, error)
+	layout         layout
+	system         upgradeSystem
+	source         io.ReadSeeker
+	progress       func(UpgradeProgress)
+	probe          func(context.Context, runnerconfig.Config, []byte) (jobcontract.RunnerInfo, error)
+	maintain       func(context.Context, runnerconfig.Config, []byte, jobcontract.MaintenanceCommand) (jobhost.MaintenanceResult, error)
+	backup         func(context.Context, string, string) (sqlite.RunnerBackup, error)
+	verifyDB       func(context.Context, string) (sqlite.RunnerBackup, error)
+	preflightDB    func(context.Context, string) error
+	verifyBackupDB func(context.Context, string) (sqlite.RunnerBackup, error)
 }
 
 // Upgrade creates a single durable operation. Repeating the exact request reads
@@ -74,7 +76,8 @@ func productionUpgrade(
 	installer := upgrader{
 		layout: paths, system: localUpgradeSystem{localSystem{layout: paths}}, source: source, progress: progress,
 		probe: probeRunner, maintain: applyUpgradeMaintenance,
-		backup: sqlite.BackupRunnerDatabase, verifyDB: sqlite.VerifyRunnerDatabase,
+		backup: sqlite.BackupRunnerUpgradeDatabase, verifyDB: sqlite.VerifyRunnerDatabase,
+		preflightDB: sqlite.PreflightRunnerUpgradeDatabase, verifyBackupDB: sqlite.VerifyRunnerUpgradeDatabase,
 	}
 	return installer.run(ctx, request, mode)
 }
@@ -171,6 +174,19 @@ func (installer upgrader) run(
 	if err != nil {
 		return operation, err
 	}
+	defer func() {
+		if runErr == nil || mode == "recover" || operation.Restorable || operation.ResumeAttempted {
+			return
+		}
+		stoppedBeforeCutover := operation.Stage == "stopping" || operation.Stage == "stopped" ||
+			operation.Stage == "backing_up"
+		if !stoppedBeforeCutover {
+			return
+		}
+		if err := installer.restartUnchangedRunner(request, owner, config, token); err != nil {
+			runErr = errors.Join(runErr, err)
+		}
+	}()
 	if operation.ResumeAttempted {
 		if selected != request.ArtifactSHA256 {
 			return operation, ErrIntegrity
@@ -193,9 +209,6 @@ func (installer upgrader) run(
 				return operation, err
 			}
 		}
-		if err := checkpoint("pausing"); err != nil {
-			return operation, err
-		}
 		info, err := installer.probe(ctx, config, token)
 		if err != nil {
 			return operation, err
@@ -208,6 +221,18 @@ func (installer upgrader) run(
 		}
 		if info.MaintenanceOperationID != "" && info.MaintenanceOperationID != request.OperationID {
 			return operation, ErrConflict
+		}
+		if err := checkpoint("checking"); err != nil {
+			return operation, err
+		}
+		if err := installer.preflightDB(ctx, filepath.Join(installer.layout.state, "runner.db")); err != nil {
+			if contextErr := ctx.Err(); contextErr != nil {
+				return operation, contextErr
+			}
+			return operation, errors.Join(ErrUpgradeRequired, err)
+		}
+		if err := checkpoint("pausing"); err != nil {
+			return operation, err
 		}
 		paused, err := installer.maintain(ctx, config, token, upgradeCommand(request, jobcontract.MaintenancePause))
 		if err != nil {
@@ -272,6 +297,41 @@ func (installer upgrader) run(
 	}
 	err = installer.finish(ctx, lock, &operation, owner, config, token, checkpoint)
 	return operation, err
+}
+
+func (installer upgrader) restartUnchangedRunner(
+	request UpgradeRequest,
+	owner account,
+	config runnerconfig.Config,
+	token []byte,
+) error {
+	selected, err := installer.layout.currentBuild()
+	if err != nil {
+		return err
+	}
+	if selected != request.ExpectedBuildID {
+		return ErrConflict
+	}
+	// A failed caller may already be cancelled. Restart only the still-selected
+	// old executable; retain its maintenance gate and the original failed journal
+	// so Retry is possible. Only explicit Recover reopens admission.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := installer.system.Start(ctx); err != nil {
+		return err
+	}
+	if err := installer.system.Verify(ctx, verificationInput{account: owner, buildID: request.ExpectedBuildID}); err != nil {
+		return err
+	}
+	info, err := installer.probe(ctx, config, token)
+	if err != nil {
+		return err
+	}
+	validIdentity := info.NodeID == request.NodeID && info.NodeInstallationID == request.InstallationID
+	if !validIdentity || info.EngineBuildID != request.ExpectedBuildID || !info.Healthy {
+		return ErrService
+	}
+	return nil
 }
 
 func (installer upgrader) stopUpgradeIdle(

@@ -110,6 +110,8 @@
     "unconfirmed": "远端尚未确认此操作。读取状态时会保留同一操作标识，连接恢复后可重试此次升级。",
     "resumeAttempted": "已尝试恢复任务接入。为保护可能产生的新数据，已禁止还原旧数据库。",
     "background": "关闭面板不会取消升级，桌面后台会继续执行。重新打开可读取已保存的进度。",
+    "attentionStage": "升级需要处理（上次阶段：{{stage}}）",
+    "attention": "已保留原升级操作。读取状态后，再选择重试或恢复；连接失败不代表远端操作已停止。",
     "refresh": "读取升级状态",
     "retry": "重试此次升级",
     "recover": "恢复升级前状态",
@@ -145,7 +147,7 @@
       "installation_operation_conflict": "服务器操作与预期升级不一致，请先读取状态再继续。",
       "installation_path_not_owned": "已有程序不属于当前升级流程管理，请检查服务器安装状态后再继续。",
       "node_pairing_repair_required": "Runner 配对需要修复，请核对服务器身份后再继续。",
-      "runner_upgrade_required": "Runner 需要受支持的升级发布包，请更新桌面应用后重试此操作。",
+      "runner_upgrade_required": "运行数据未通过此升级包的兼容性校验。请先恢复升级前状态，再使用支持旧库迁移的发布包升级。",
       "installation_integrity_failed": "Runner 验证失败，请读取操作状态，再重试或使用可用的恢复入口。",
       "invalid_installation_request": "升级请求无效，请读取当前节点和操作状态后再继续。",
       "runner_installation_failed": "升级未能完成，请读取状态，再重试或使用可用的恢复入口。",
@@ -162,8 +164,8 @@
   "scheduling": {
     "label": "同时运行任务数",
     "help": "1–128 个，整个节点共享。保存后立即生效并持久保留；任务内部的请求并发仍受总预算限制。",
-    "apply": "应用",
-    "saving": "正在应用…",
+    "apply": "保存任务数",
+    "saving": "正在保存…",
     "invalid": "请输入 1–128 之间的整数。",
     "busy": "当前有 {{active}} 个任务在运行，请等待任务结束后再调低。"
   },

@@ -45,6 +45,39 @@ const nodeRegion = () => screen.getByRole("region", { name: "Upgrade test node" 
 afterEach(() => vi.useRealTimers())
 
 describe("explicit Runner upgrades", () => {
+  it("keeps a failed backup recoverable without presenting it as running", async () => {
+    const user = userEvent.setup()
+    const view = remoteUpgradeFixture({ stage: "backing_up", confirmed: true, restorable: false,
+      resume_attempted: false, error_code: "runner_upgrade_required" })
+    const f = fixture([remoteNodeFixture({ upgrade: view })])
+    show(f.client)
+    await open(user)
+    const region = within(nodeRegion())
+    const status = region.getByText("升级需要处理（上次阶段：备份运行数据）").closest("[role=status]")!
+    expect(status.querySelector("[data-slot=spinner]")).toBeNull()
+    expect(region.queryByText(/桌面后台会继续执行/)).not.toBeInTheDocument()
+    expect(region.getByRole("button", { name: "恢复升级前状态" })).toBeEnabled()
+    expect(region.getByRole("button", { name: "重试此次升级" })).toBeEnabled()
+    expect(f.client.retryRemoteNodeUpgrade).not.toHaveBeenCalled()
+    expect(f.client.recoverRemoteNodeUpgrade).not.toHaveBeenCalled()
+  })
+
+  it("marks lost observation as needing attention without declaring failure or completion", async () => {
+    const user = userEvent.setup()
+    const view = remoteUpgradeFixture({ stage: "backing_up", confirmed: false,
+      error_code: "remote_connection_failed" })
+    const f = fixture([remoteNodeFixture({ upgrade: view })])
+    show(f.client)
+    await open(user)
+    const region = within(nodeRegion())
+    const status = region.getByText("升级需要处理（上次阶段：备份运行数据）").closest("[role=status]")!
+    expect(status.querySelector("[data-slot=spinner]")).toBeNull()
+    expect(region.getByText(/读取状态后，再选择重试或恢复/)).toBeVisible()
+    expect(region.queryByRole("button", { name: "恢复升级前状态" })).not.toBeInTheDocument()
+    expect(region.queryByText("升级已完成")).not.toBeInTheDocument()
+    expect(region.getByRole("button", { name: "编辑" })).toBeDisabled()
+  })
+
   it("can recover a confirmed partial backup before restore permission exists", async () => {
     const user = userEvent.setup()
     const view = remoteUpgradeFixture({ stage: "backing_up", confirmed: true, restorable: false,

@@ -182,6 +182,7 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
   const selectedNode = snapshot?.default.kind === "remote"
     ? snapshot.nodes.find(node => node.id === snapshot.default.configuration_id) : null
   const defaultLabel = selectedNode?.name ?? (snapshot ? t("local") : t("loading"))
+  const editingNode = snapshot?.nodes.find(node => node.id === editor?.id)
 
   return <Sheet open={open} onOpenChange={changeOpen}>
     <Tooltip>
@@ -230,7 +231,13 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
           {editor ? <>
             <Button variant="ghost" size="sm" disabled={Boolean(busy)} onClick={() => setEditor(null)}><ArrowLeftIcon />{t("back")}</Button>
             <RemoteNodeEditor key={`${editor.id}:${editor.expected_revision}`} draft={editor}
-              node={snapshot?.nodes.find(node => node.id === editor.id)} disabled={unavailable} saving={busy === "save"}
+              node={editingNode} disabled={unavailable} saving={busy === "save"}
+              runtimeSettings={editingNode?.runner && <RemoteNodeScheduling
+                key={`${editingNode.id}:${editingNode.runner.max_active_jobs}`} node={editingNode} runner={editingNode.runner}
+                disabled={unavailable || editingNode.checking || !editingNode.eligible || upgrades.locked(editingNode)}
+                saving={busy === `scheduling:${editingNode.id}`} onSave={value => {
+                  if (!upgrades.lockedNow(editingNode)) void command(`scheduling:${editingNode.id}`, () => client.setRemoteNodeTaskConcurrency(value))
+                }} />}
               onSave={draft => void save(draft)} />
           </> : <>
             <div className="flex items-center justify-between gap-2">
@@ -289,11 +296,6 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
                   </div>
                 </div>
                 <NodeDetails node={node} runner={observedUpgradeRunner(node, upgrades.get(node).view)} />
-                {node.runner && <RemoteNodeScheduling key={`${node.id}:${node.runner.max_active_jobs}`}
-                  node={node} runner={node.runner} disabled={unavailable || node.checking || !node.eligible || upgrades.locked(node)}
-                  saving={busy === `scheduling:${node.id}`} onSave={value => {
-                    if (!upgrades.lockedNow(node)) void command(`scheduling:${node.id}`, () => client.setRemoteNodeTaskConcurrency(value))
-                  }} />}
                 {node.proposed_host_key && <Alert>
                   <p className="font-medium">{t(node.status === "host_changed" ? "hostChanged" : "hostUnverified")}</p>
                   <p className="mt-1">{t("verifyFingerprint")}</p>

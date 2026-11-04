@@ -149,6 +149,10 @@ func newUpgradeFixture(t *testing.T) *upgradeFixture {
 		}
 		return proof, nil
 	}
+	fixture.installer.preflightDB = func(ctx context.Context, name string) error {
+		_, err := fixture.installer.verifyDB(ctx, name)
+		return err
+	}
 	if err := os.WriteFile(filepath.Join(fixture.installer.layout.state, "runner.db"), []byte("original accepted business data"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -322,6 +326,10 @@ func TestUpgradeRejectsSchemaAndRetryContinuesSameOperation(t *testing.T) {
 	operation, err := fixture.installer.run(t.Context(), fixture.request, "upgrade")
 	if !errors.Is(err, ErrUpgradeRequired) || operation.Restorable {
 		t.Fatalf("schema: %+v %v", operation, err)
+	}
+	if operation.Stage != "checking" || fixture.stops != 0 || fixture.starts != 0 || fixture.paused != "" ||
+		fixture.backups != 0 || fixture.resumes != 0 {
+		t.Fatalf("failed preflight changed admission or service: %+v", operation)
 	}
 	selected, _ := fixture.installer.layout.currentBuild()
 	if selected != fixture.request.ExpectedBuildID {
@@ -532,6 +540,8 @@ func TestUpgradeRecoveryCanStopValidatedUnhealthyIdleRunner(t *testing.T) {
 
 func TestUpgradePartialBackupJournalDoesNotBlockExplicitOldRecovery(t *testing.T) {
 	fixture := newUpgradeFixture(t)
+	// Exercise an actual backup failure after the earlier compatibility check.
+	fixture.installer.preflightDB = func(context.Context, string) error { return nil }
 	fixture.failSchema = true
 	operation, err := fixture.installer.run(t.Context(), fixture.request, "upgrade")
 	if err == nil || operation.Restorable {
