@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 
@@ -30,18 +31,21 @@ func TestPerformanceOverviewRetainsStoredConclusionsAndCountsOnlyAssessedMetrics
 	report := overviewReport()
 	before, _ := json.Marshal(report)
 	overview := performanceOverview(&report)
-	if overview.Status != "failed" || overview.SampleCount != 1 || overview.PassedCount != 3 ||
-		overview.EvaluatedCount != 5 || overview.ObservedCount != 1 || overview.UnevaluatedCount != 0 {
+	if overview.Status != "failed" || overview.SampleCount != 1 || overview.PassedCount != 5 ||
+		overview.EvaluatedCount != 6 || overview.ObservedCount != 0 || overview.UnevaluatedCount != 0 {
 		t.Fatalf("unexpected overview: %+v", overview)
 	}
-	want := []string{"passed", "failed", "passed", "failed", "passed", "observed"}
+	want := []string{"passed", "failed", "passed", "passed", "passed", "passed"}
 	for index, metric := range overview.Metrics {
 		if metric.Status != want[index] {
 			t.Fatalf("metric %s: %s, want %s", metric.Key, metric.Status, want[index])
 		}
 	}
-	if !overview.Metrics[3].Reference || *overview.Metrics[3].Target != 4 {
-		t.Fatal("P95 limit must be explicitly identified as a saved SLO reference")
+	if !overview.Metrics[3].Reference || *overview.Metrics[3].Target != 40 {
+		t.Fatal("current P95 reference must remain separate from the saved per-request SLO limit")
+	}
+	if *overview.Metrics[4].Target != 12 || overview.Metrics[4].Comparison != "at_most" {
+		t.Fatal("saved E2E limit must take precedence over the default reference")
 	}
 	after, _ := json.Marshal(report)
 	if !bytes.Equal(before, after) {
@@ -49,16 +53,55 @@ func TestPerformanceOverviewRetainsStoredConclusionsAndCountsOnlyAssessedMetrics
 	}
 }
 
-func TestPerformanceOverviewDoesNotInventUnconfiguredTargets(t *testing.T) {
+func TestPerformanceOverviewAppliesFiveReferenceTargetsWithoutInventingSLO(t *testing.T) {
 	report := validArchivedQuickPerformanceReport()
 	overview := performanceOverview(&report)
-	if overview.PassedCount != 1 || overview.EvaluatedCount != 1 || overview.ObservedCount != 5 {
+	if overview.PassedCount != 5 || overview.EvaluatedCount != 5 || overview.ObservedCount != 1 {
 		t.Fatalf("unexpected unconfigured overview: %+v", overview)
 	}
-	for _, metric := range overview.Metrics[1:] {
-		if metric.Target != nil || metric.Status != "observed" || metric.Reference {
-			t.Fatalf("invented target for %s: %+v", metric.Key, metric)
-		}
+	if overview.Rating == nil || overview.Rating.Score != 5 || overview.Rating.MetricCount != 5 {
+		t.Fatalf("rating must disclose its five reference metrics: %+v", overview.Rating)
+	}
+	slo := overview.Metrics[1]
+	if slo.Target != nil || slo.Status != "observed" || slo.Reference {
+		t.Fatalf("invented target for %s: %+v", slo.Key, slo)
+	}
+}
+
+func TestPerformanceOverviewReferenceBoundariesDoNotChangeArchivedVerdicts(t *testing.T) {
+	for _, test := range []struct {
+		name                  string
+		success, ttft, tpot   float64
+		wantSuccess, wantTTFT string
+		wantTPOT              string
+	}{
+		{name: "below latency limits", success: 99, ttft: 14_999.99, tpot: 39.99,
+			wantSuccess: "passed", wantTTFT: "passed", wantTPOT: "passed"},
+		{name: "strict latency limits", success: 99, ttft: 15_000, tpot: 40,
+			wantSuccess: "passed", wantTTFT: "failed", wantTPOT: "failed"},
+		{name: "outside all limits", success: 98.99, ttft: 15_000.01, tpot: 40.01,
+			wantSuccess: "failed", wantTTFT: "failed", wantTPOT: "failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			report := validArchivedQuickPerformanceReport()
+			report.Success = false
+			report.Metrics.SuccessRatePercent = test.success
+			report.Metrics.TTFTP95, report.Metrics.TPOTP95 = test.ttft, test.tpot
+			// P90 deliberately remains below the limits; the requested layout retains P95.
+			report.Metrics.TTFTP90, report.Metrics.TPOTP90 = 1, 1
+			before, _ := json.Marshal(report)
+			overview := performanceOverview(&report)
+			want := map[int]string{0: test.wantSuccess, 2: test.wantTTFT, 3: test.wantTPOT}
+			for index, status := range want {
+				if overview.Metrics[index].Status != status || !overview.Metrics[index].Reference {
+					t.Fatalf("unexpected reference assessment: %+v", overview.Metrics[index])
+				}
+			}
+			after, _ := json.Marshal(report)
+			if !bytes.Equal(before, after) || report.Success || report.SLOAssessment != nil {
+				t.Fatal("current reference assessment changed archived report meaning")
+			}
+		})
 	}
 }
 
@@ -67,8 +110,11 @@ func TestPerformanceOverviewDoesNotEvaluateInterruptedOrEmptyRuns(t *testing.T) 
 	report.Progress.Stopped = true
 	report.SLOAssessment.Status = quicktest.PerformanceSLONotEvaluated
 	overview := performanceOverview(&report)
-	if overview.Status != "not_evaluated" || overview.EvaluatedCount != 0 || overview.UnevaluatedCount != 5 {
+	if overview.Status != "not_evaluated" || overview.EvaluatedCount != 0 || overview.UnevaluatedCount != 6 {
 		t.Fatalf("stopped run was assessed: %+v", overview)
+	}
+	if overview.Rating != nil {
+		t.Fatal("an unassessed run must not receive a rating")
 	}
 	report.Metrics = load.Metrics{}
 	report.Samples = []quicktest.PerformanceSample{}
@@ -95,7 +141,7 @@ func TestPerformanceOverviewRetainsObservedZeroLatencyAndZeroThroughput(t *testi
 	}
 	report.Metrics.Succeeded, report.Metrics.SuccessfulRequestQPS = 0, 0
 	metric := performanceOverview(&report).Metrics[5]
-	if metric.Value == nil || *metric.Value != 0 || metric.Status != "observed" {
+	if metric.Value == nil || *metric.Value != 0 || metric.Status != "failed" {
 		t.Fatalf("valid zero throughput was discarded: %+v", metric)
 	}
 }
@@ -136,8 +182,12 @@ func TestReportDetailIncludesOverviewWithoutChangingJSONExportOrArchivedData(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.PerformanceOverviews[report.ReportID].EvaluatedCount != 5 {
+	if detail.PerformanceOverviews[report.ReportID].EvaluatedCount != 6 {
 		t.Fatal("the report query did not supply its authoritative overview")
+	}
+	rating := detail.PerformanceOverviews[report.ReportID].Rating
+	if rating == nil || rating.Score != 4.17 || rating.MetricCount != 6 || rating.Method != "target_ratio_v1" {
+		t.Fatalf("unexpected target-closeness rating: %+v", rating)
 	}
 	encoded, err := renderJSON(detail, "watermark")
 	if err != nil || bytes.Contains(encoded, []byte("performance_overviews")) {
@@ -145,11 +195,100 @@ func TestReportDetailIncludesOverviewWithoutChangingJSONExportOrArchivedData(t *
 	}
 	for _, locale := range []string{"zh-CN", "en-US"} {
 		html, err := renderHTML(detail, "watermark", locale)
-		if err != nil || !bytes.Contains(html, []byte("3 / 5")) || !bytes.Contains(html, []byte(`class="po-metrics"`)) {
+		if err != nil || !bytes.Contains(html, []byte("5 / 6")) || !bytes.Contains(html, []byte(`class="po-metrics"`)) {
 			t.Fatalf("HTML is missing the same overview (%s): %v", locale, err)
 		}
-		if locale == "en-US" && !strings.Contains(string(html), "Reference limit") {
+		if locale == "en-US" && !strings.Contains(string(html), "Reference target") {
 			t.Fatal("HTML export omitted the reference-limit semantics")
 		}
+		if !strings.Contains(string(html), "4.17 / 5") || strings.Contains(string(html), "ZgotmplZ") {
+			t.Fatal("HTML rating must match Core and preserve valid fractional stars")
+		}
+	}
+}
+
+func TestPerformanceOverviewE2EAndThroughputReferenceBoundaries(t *testing.T) {
+	for _, test := range []struct {
+		name, e2eStatus, throughputStatus string
+		e2e, qps                          float64
+	}{
+		{name: "within limits", e2e: 29_999.99, qps: 2, e2eStatus: "passed", throughputStatus: "passed"},
+		{name: "at E2E limit", e2e: 30_000, qps: 2, e2eStatus: "failed", throughputStatus: "passed"},
+		{name: "below throughput", e2e: 30_000.01, qps: 1.99, e2eStatus: "failed", throughputStatus: "failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			report := validArchivedQuickPerformanceReport()
+			report.Metrics.E2EP95, report.Metrics.SuccessfulRequestQPS = test.e2e, test.qps
+			overview := performanceOverview(&report)
+			latency, throughput := overview.Metrics[4], overview.Metrics[5]
+			if latency.Status != test.e2eStatus || *latency.Target != 30_000 || latency.Comparison != "less_than" {
+				t.Fatalf("unexpected E2E reference: %+v", latency)
+			}
+			if throughput.Status != test.throughputStatus || *throughput.Target != 2 || !throughput.Reference {
+				t.Fatalf("unexpected throughput reference: %+v", throughput)
+			}
+			if overview.Rating == nil || overview.Rating.MetricCount != 5 {
+				t.Fatal("both references must contribute to the rating")
+			}
+		})
+	}
+	report := validArchivedQuickPerformanceReport()
+	report.Metrics.SuccessfulRequestQPS = 0
+	if metric := performanceOverview(&report).Metrics[5]; metric.Value != nil || metric.Status != "unavailable" {
+		t.Fatal("missing legacy throughput must not be treated as an observed zero")
+	}
+}
+
+func TestPerformanceTargetRating(t *testing.T) {
+	metric := func(status, comparison string, value, target float64) PerformanceOverviewMetric {
+		return PerformanceOverviewMetric{
+			Status: status, Comparison: comparison, Value: floatPointer(value), Target: floatPointer(target),
+		}
+	}
+	passed := metric("passed", "at_least", 100, 100)
+	for _, test := range []struct {
+		name    string
+		metrics []PerformanceOverviewMetric
+		score   float64
+		count   uint64
+	}{
+		{name: "full", metrics: []PerformanceOverviewMetric{passed}, score: 5, count: 1},
+		{name: "minimum ratio", metrics: []PerformanceOverviewMetric{
+			passed, passed, passed, passed, metric("failed", "at_least", 65, 100),
+		}, score: 4.65, count: 5},
+		{name: "maximum ratio", metrics: []PerformanceOverviewMetric{
+			passed, metric("failed", "at_most", 200, 100),
+		}, score: 3.75, count: 2},
+		{name: "strict maximum ratio", metrics: []PerformanceOverviewMetric{
+			passed, metric("failed", "less_than", 80, 40),
+		}, score: 3.75, count: 2},
+		{name: "zero success", metrics: []PerformanceOverviewMetric{
+			metric("failed", "at_least", 0, 100),
+		}, count: 1},
+		{name: "archived rounded pass", metrics: []PerformanceOverviewMetric{
+			metric("passed", "at_most", 1.004, 1),
+		}, score: 5, count: 1},
+		{name: "observed zero latency", metrics: []PerformanceOverviewMetric{
+			metric("passed", "at_most", 0, 100),
+		}, score: 5, count: 1},
+		{name: "exclude unassessed", metrics: []PerformanceOverviewMetric{
+			passed, metric("not_evaluated", "at_most", 200, 100), {Status: "observed"}, {Status: "unavailable"},
+		}, score: 5, count: 1},
+		{name: "no targets", metrics: []PerformanceOverviewMetric{{Status: "observed"}}},
+		{name: "no value", metrics: []PerformanceOverviewMetric{{Status: "failed", Target: floatPointer(100)}}},
+		{name: "nonfinite", metrics: []PerformanceOverviewMetric{metric("failed", "at_least", math.NaN(), 100)}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := performanceTargetRating(test.metrics)
+			if test.count == 0 {
+				if got != nil {
+					t.Fatalf("unexpected rating: %+v", got)
+				}
+				return
+			}
+			if got == nil || got.Score != test.score || got.MetricCount != test.count || got.MaxScore != 5 {
+				t.Fatalf("got %+v, want score %v from %d metrics", got, test.score, test.count)
+			}
+		})
 	}
 }

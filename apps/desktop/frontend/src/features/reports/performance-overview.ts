@@ -10,7 +10,7 @@ export interface PerformanceOverviewMetric {
   unit: "percent" | "ms" | "req/s"
   status: PerformanceOverviewStatus
   target: number | null
-  comparison: "at_least" | "at_most" | "none"
+  comparison: "at_least" | "at_most" | "less_than" | "none"
   reference: boolean
 }
 export interface PerformanceOverview {
@@ -20,7 +20,15 @@ export interface PerformanceOverview {
   evaluated_count: number
   observed_count: number
   unevaluated_count: number
+  rating?: PerformanceRating | null
   metrics: PerformanceOverviewMetric[]
+}
+
+export interface PerformanceRating {
+  method: "target_ratio_v1"
+  score: number
+  max_score: 5
+  metric_count: number
 }
 
 export function parsePerformanceOverviews(value: unknown, owners: string[]): Record<string, PerformanceOverview> | undefined {
@@ -35,13 +43,14 @@ export function parsePerformanceOverviews(value: unknown, owners: string[]): Rec
     const metrics = overview.metrics.map((item, index): PerformanceOverviewMetric => {
       if (!record(item) || item.key !== PERFORMANCE_OVERVIEW_KEYS[index] ||
         !["passed", "failed", "observed", "not_evaluated", "unavailable"].includes(String(item.status)) ||
-        !["at_least", "at_most", "none"].includes(String(item.comparison)) || typeof item.reference !== "boolean" ||
+        !["at_least", "at_most", "less_than", "none"].includes(String(item.comparison)) || typeof item.reference !== "boolean" ||
         !nullableNumber(item.value) || !nullableNumber(item.target)) throw invalidOverview()
       const unit = index < 2 ? "percent" : index < 5 ? "ms" : "req/s"
       if (item.unit !== unit || (item.comparison === "none") !== (item.target === null) ||
         ((item.status === "passed" || item.status === "failed") && (item.value === null || item.target === null)) ||
         (item.status === "unavailable" && item.value !== null) ||
-        (item.reference && (item.unit !== "ms" || item.target === null)) ||
+        (item.comparison === "less_than" && unit !== "ms") ||
+        (item.reference && item.target === null) ||
         (unit === "percent" && ((item.value !== null && item.value > 100) || (item.target !== null && item.target > 100)))) throw invalidOverview()
       return { key: PERFORMANCE_OVERVIEW_KEYS[index], value: item.value, unit,
         status: item.status as PerformanceOverviewStatus, target: item.target,
@@ -54,10 +63,19 @@ export function parsePerformanceOverviews(value: unknown, owners: string[]): Rec
       overview.unevaluated_count !== metrics.length - passed - failed - observed ||
       (overview.status === "passed" && (failed > 0 || overview.unevaluated_count > 0)) ||
       (overview.status === "failed" && failed === 0)) throw invalidOverview()
+    const rating = parsePerformanceRating(overview.rating, passed + failed)
     return [id, { status: overview.status as PerformanceOverview["status"], sample_count: overview.sample_count as number,
       passed_count: overview.passed_count as number, evaluated_count: overview.evaluated_count as number, observed_count: overview.observed_count as number,
-      unevaluated_count: overview.unevaluated_count as number, metrics }]
+      unevaluated_count: overview.unevaluated_count as number, metrics, ...(rating === undefined ? {} : { rating }) }]
   }))
+}
+
+function parsePerformanceRating(value: unknown, evaluatedCount: number): PerformanceRating | null | undefined {
+  if (value === undefined || value === null) return value
+  if (!record(value) || value.method !== "target_ratio_v1" || value.max_score !== 5 ||
+    typeof value.score !== "number" || !Number.isFinite(value.score) || value.score < 0 || value.score > 5 ||
+    value.metric_count !== evaluatedCount || evaluatedCount === 0) throw invalidOverview()
+  return { method: "target_ratio_v1", score: value.score, max_score: 5, metric_count: evaluatedCount }
 }
 
 function record(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value) }

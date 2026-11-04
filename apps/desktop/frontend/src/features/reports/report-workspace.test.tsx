@@ -4,6 +4,7 @@ import { I18nextProvider } from "react-i18next"
 import { describe, expect, it, vi } from "vitest"
 
 import { createAppI18n } from "@/i18n/i18n"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { ReportWorkspace } from "./report-workspace"
 import { parseReportDetail, type ReportDetail, type ReportSnapshot } from "./data"
 import type { QuickPerformanceSLOAssessment } from "@/features/quick-test/data"
@@ -18,10 +19,10 @@ describe("ReportWorkspace", () => {
     render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace
       snapshot={quickSnapshot(id, "全部请求成功")} preferredReportID={id}
       getDetail={async () => detail} exportReport={vi.fn()} saveReportExport={vi.fn()} copyReportPNG={vi.fn()}
-    /></I18nextProvider>)
+    /></I18nextProvider>, { wrapper: TooltipProvider })
     const report = await screen.findByRole("region", { name: "归档性能报告" })
     const headline = within(report).getByRole("region", { name: "关键性能指标" })
-    expect(headline).toHaveTextContent("3 / 5 项达标")
+    expect(headline).toHaveTextContent("3 / 6 项达标")
     expect(headline).toHaveTextContent("SLO 达标率94.0%")
     expect(headline).toHaveTextContent("成功吞吐0.65req/s")
     expect(within(report).getAllByRole("table", { name: "延迟分布统计" })).toHaveLength(1)
@@ -566,7 +567,7 @@ describe("ReportWorkspace", () => {
       expect(format).toBe("html")
       expect(within(element).queryByRole("table", { name: "容量阶梯结果", hidden: true })).not.toBeInTheDocument()
       expect(within(element).queryByRole("heading", { name: "SLO 与容量", hidden: true })).not.toBeInTheDocument()
-      expect(element).toHaveTextContent("3 / 5 项达标")
+      expect(element).toHaveTextContent("3 / 6 项达标")
       return { filename: `${quickID}.html`, mediaType: "text/html", blob: new Blob(["report"]) }
     })
     render(
@@ -578,6 +579,7 @@ describe("ReportWorkspace", () => {
         copyReportPNG={vi.fn()}
         exportVisualReport={exportVisualReport}
       />,
+      { wrapper: TooltipProvider },
     )
     await user.click(screen.getByRole("button", { name: "查看报告：容量评估未通过" }))
 
@@ -585,7 +587,7 @@ describe("ReportWorkspace", () => {
     expect(within(report).queryByRole("heading", { name: "SLO 与容量" })).not.toBeInTheDocument()
     const headline = within(report).getByRole("region", { name: "关键性能指标" })
     expect(within(headline).getByText("容量评估未通过")).toHaveClass("text-destructive")
-    expect(headline).toHaveTextContent("3 / 5 项达标")
+    expect(headline).toHaveTextContent("3 / 6 项达标")
     expect(headline).toHaveTextContent("SLO 达标率")
     expect(report).not.toHaveTextContent("Goodput 13 req/s")
     expect(report).toHaveTextContent(/峰值在途 \/ 配置并发\s*2 \/ 2/)

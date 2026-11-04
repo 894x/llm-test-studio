@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"math"
 	"strconv"
 
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
@@ -11,8 +12,10 @@ import (
 
 type htmlPerformanceOverview struct {
 	PerformanceOverview
-	Title, Samples, CountLabel, Observed, Unevaluated, Summary, Scope string
-	Metrics                                                           []htmlPerformanceOverviewMetric
+	Title, Samples, CountLabel, Observed, Unevaluated, Summary, Scope    string
+	RatingLabel, RatingScore, RatingCount, RatingRule, RatingUnavailable string
+	StarFills                                                            []string
+	Metrics                                                              []htmlPerformanceOverviewMetric
 }
 
 type htmlPerformanceOverviewMetric struct {
@@ -35,10 +38,16 @@ func renderPerformanceOverviewHTML(report *quicktest.PerformanceReport, locale s
 		Title:               "关键性能指标", Samples: fmt.Sprintf("稳态样本 · %d 次请求", overview.SampleCount),
 		CountLabel: "项达标", Observed: fmt.Sprintf("另有 %d 项仅观测", overview.ObservedCount),
 		Unevaluated: fmt.Sprintf("%d 项未评估", overview.UnevaluatedCount),
-		Scope:       "仅统计稳态阶段。成功率沿用全部请求成功标准；P95 对照已保存的 SLO 单请求上限，仅作参考，不替代原报告的逐请求 SLO 与容量结论。",
+		Scope: "仅统计稳态阶段。参考目标：成功率 ≥99%、TTFT P95 <15 秒、TPOT P95 <40 毫秒、" +
+			"E2E P95 <30 秒、成功吞吐 ≥2 req/s；已保存的 E2E 上限优先。SLO 沿用封存配置，未配置只观测。" +
+			"参考目标需结合负载理解，不改写原报告的运行、逐请求 SLO 与容量结论。",
 		Metrics:     make([]htmlPerformanceOverviewMetric, 0, len(overview.Metrics)),
+		RatingLabel: "渠道评分", RatingUnavailable: "渠道评分暂不可用",
+		RatingRule: "仅计算本次报告有目标且已评估的指标，各项等权。达标贡献 1；未达标时，下限按实测/目标、上限按目标/实测，" +
+			"限制为 0–1，平均乘 5 后保留两位小数。不同目标、负载的报告不宜直接比较；评分不替代达标结论。",
+		StarFills: make([]string, 0, 5),
 	}
-	targetLabel, referenceLabel, noTarget := "目标", "参考上限", "未设置目标"
+	targetLabel, referenceLabel, noTarget := "目标", "参考目标", "未设置目标"
 	if locale == "en-US" {
 		names = []string{"Request success rate", "SLO compliance", "TTFT P95 (includes reasoning)", "TPOT P95", "E2E P95", "Successful throughput"}
 		statuses = map[string]string{
@@ -53,10 +62,30 @@ func renderPerformanceOverviewHTML(report *quicktest.PerformanceReport, locale s
 		view.CountLabel = "metrics met"
 		view.Observed = fmt.Sprintf("%d observation-only metrics", overview.ObservedCount)
 		view.Unevaluated = fmt.Sprintf("%d unevaluated metrics", overview.UnevaluatedCount)
-		view.Scope = "Steady-state observations only. Success rate retains the all-requests-successful criterion. " +
-			"P95 comparisons use the saved per-request SLO limits as references; they do not replace " +
-			"the archived per-request SLO or capacity conclusions."
-		targetLabel, referenceLabel, noTarget = "Target", "Reference limit", "No target configured"
+		view.Scope = "Steady-state reference targets: success rate ≥99%, TTFT P95 <15 s, TPOT P95 <40 ms, " +
+			"E2E P95 <30 s and successful throughput ≥2 req/s. Saved E2E limits take precedence. " +
+			"SLO retains its archived configuration; unconfigured SLO remains observation-only. " +
+			"Interpret reference targets in the workload context; archived run, SLO and capacity conclusions remain unchanged."
+		targetLabel, referenceLabel, noTarget = "Target", "Reference target", "No target configured"
+		view.RatingLabel, view.RatingUnavailable = "Channel rating", "Channel rating unavailable"
+		view.RatingRule = "Only evaluated metrics with targets contribute equally. Met targets contribute 1; " +
+			"missed minimums use actual/target, missed maximums use target/actual, clamped to 0–1. " +
+			"The mean × 5 is rounded to two decimals. Different targets or workloads are not directly comparable; " +
+			"the rating does not replace target verdicts."
+	}
+	if rating := overview.Rating; rating != nil {
+		view.RatingScore = strconv.FormatFloat(rating.Score, 'f', 2, 64)
+		view.RatingCount = fmt.Sprintf("%d 项参与", rating.MetricCount)
+		if locale == "en-US" {
+			view.RatingCount = fmt.Sprintf("%d metrics rated", rating.MetricCount)
+			if rating.MetricCount == 1 {
+				view.RatingCount = "1 metric rated"
+			}
+		}
+		for index := range rating.MaxScore {
+			fill := math.Max(0, math.Min(1, rating.Score-float64(index))) * 100
+			view.StarFills = append(view.StarFills, strconv.FormatFloat(fill, 'f', 2, 64)+"%")
+		}
 	}
 	view.Summary = summaries[overview.Status]
 	for index, metric := range overview.Metrics {
@@ -73,6 +102,9 @@ func renderPerformanceOverviewHTML(report *quicktest.PerformanceReport, locale s
 			}
 			if metric.Comparison == "at_most" {
 				comparison = "≤"
+			}
+			if metric.Comparison == "less_than" {
+				comparison = "<"
 			}
 			row.Target = label + " " + comparison + " " + overviewMetricText(*metric.Target, metric.Unit)
 		}
@@ -101,11 +133,13 @@ var performanceOverviewHTMLTemplate = template.Must(template.New("performance-ov
 <style>
 .performance-overview{container-type:inline-size;margin:24px 0;color-scheme:light;--po-text:light-dark(#172033,#e2e2e2);--po-muted:light-dark(#657189,#a5a5a5);--po-pass:light-dark(#15803d,#4ade80);--po-fail:light-dark(#c24152,#ff9aa8);color:var(--po-text)}
 .performance-overview .po-heading,.performance-overview .po-summary{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:12px 0}.performance-overview .po-heading{justify-content:space-between}.performance-overview h2{font-size:16px;margin:0}.performance-overview .po-meta{font-size:12px;color:var(--po-muted)}
-.performance-overview .po-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:20px;padding:16px;border-radius:8px;background:light-dark(#f1f3f6,#272727)}
-.performance-overview .po-metric{min-width:0;overflow-wrap:anywhere}.performance-overview .po-value{font-size:26px;font-weight:600;margin:12px 0}.performance-overview .po-status{font-size:12px;margin:8px 0}.performance-overview [data-status=passed] .po-status{color:var(--po-pass)}.performance-overview [data-status=failed] .po-status,.performance-overview [data-status=failed] .po-value,.performance-overview .po-summary[data-status=failed]>strong{color:var(--po-fail)}
-@container(max-width:1000px){.performance-overview .po-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}@container(max-width:560px){.performance-overview .po-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.performance-overview .po-title,.performance-overview .po-rating{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.performance-overview .po-title{gap:16px}.performance-overview .po-rating{font-size:12px;border-radius:6px}.performance-overview .po-rating:focus-visible{outline:2px solid var(--po-muted);outline-offset:3px}.performance-overview .po-stars{display:inline-flex;gap:2px;font-size:18px;line-height:1}.performance-overview .po-star{position:relative;color:light-dark(#d5dae1,#505050)}.performance-overview .po-star-fill{position:absolute;inset:0 auto 0 0;overflow:hidden;color:light-dark(#8a5b12,#f2c97d)}.performance-overview .po-summary[data-status=passed]>strong{color:var(--po-pass)}
+.performance-overview .po-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));column-gap:12px;row-gap:20px;padding:16px;border-radius:8px;background:light-dark(#f1f3f6,#272727)}
+.performance-overview .po-metric{min-width:0;margin:-6px;padding:6px;border-radius:6px;overflow-wrap:anywhere;transition:background-color .2s}.performance-overview .po-metric:hover{background:light-dark(rgba(15,23,42,.06),rgba(255,255,255,.08))}.performance-overview .po-value{font-size:26px;font-weight:600;margin:12px 0}.performance-overview .po-status{font-size:12px;margin:8px 0}.performance-overview [data-status=passed] .po-status,.performance-overview [data-status=passed] .po-value{color:var(--po-pass)}.performance-overview [data-status=failed] .po-status,.performance-overview [data-status=failed] .po-value,.performance-overview .po-summary[data-status=failed]>strong{color:var(--po-fail)}
+@media(prefers-reduced-motion:reduce){.performance-overview .po-metric{transition:none}}
+@container(width < 800px){.performance-overview .po-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}@container(width < 560px){.performance-overview .po-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
-<div class="po-heading"><h2>{{.Title}}</h2><span class="po-meta">{{.Samples}}</span></div>
-<div class="po-summary" data-status="{{.Status}}"><strong>{{.Summary}}</strong>{{if .EvaluatedCount}}<span>{{.PassedCount}} / {{.EvaluatedCount}} {{.CountLabel}}</span>{{end}}{{if .ObservedCount}}<span class="po-meta">{{.Observed}}</span>{{end}}{{if .UnevaluatedCount}}<span class="po-meta">{{.Unevaluated}}</span>{{end}}</div>
+<div class="po-heading"><div class="po-title"><h2>{{.Title}}</h2>{{if .Rating}}<span class="po-rating" tabindex="0" title="{{.RatingRule}}" role="img" aria-label="{{.RatingLabel}} {{.RatingScore}} / 5 · {{.RatingCount}}"><span class="po-meta">{{.RatingLabel}}</span><span class="po-stars" aria-hidden="true">{{range .StarFills}}<span class="po-star">★<span class="po-star-fill" style="width:{{.}}">★</span></span>{{end}}</span><strong>{{.RatingScore}}</strong><span class="po-meta">{{.RatingCount}}</span></span>{{else}}<span class="po-meta">{{.RatingUnavailable}}</span>{{end}}</div><span class="po-meta">{{.Samples}}</span></div>
+<div class="po-summary" data-status="{{.Status}}"><strong>{{.Summary}} <span aria-hidden="true">{{if eq .Status "passed"}}✓{{else if eq .Status "failed"}}×{{else}}—{{end}}</span></strong>{{if .EvaluatedCount}}<span>{{.PassedCount}} / {{.EvaluatedCount}} {{.CountLabel}}</span>{{end}}{{if .ObservedCount}}<span class="po-meta">{{.Observed}}</span>{{end}}{{if .UnevaluatedCount}}<span class="po-meta">{{.Unevaluated}}</span>{{end}}</div>
 <div class="po-metrics">{{range .Metrics}}<div class="po-metric" data-status="{{.Status}}"><div class="po-meta">{{.Name}}</div><div class="po-value">{{.Value}}</div><div class="po-status">{{if eq .Status "passed"}}✓ {{else if eq .Status "failed"}}× {{else}}— {{end}}{{.StatusLabel}}</div><div class="po-meta">{{.Target}}</div></div>{{end}}</div>
 <p class="po-meta">{{.Scope}}</p></section>`))
