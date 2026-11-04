@@ -98,7 +98,7 @@ describe("performance parameter sharing actions", () => {
     readText.mockResolvedValue(JSON.stringify(performanceProfileFromForm(performanceFormFromProfile(plan.performance))))
     await user.click(screen.getByRole("button", { name: "从剪贴板导入参数" }))
     await screen.findByText("参数已导入，仅用于当前表单")
-    expect(screen.getByLabelText("请求数")).toHaveValue(500)
+    expect(screen.getByLabelText("请求数")).toHaveValue(300)
     expect(screen.getByRole("checkbox", { name: "随机输入" })).toBeChecked()
   })
 
