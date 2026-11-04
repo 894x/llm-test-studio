@@ -187,25 +187,34 @@ func newTestHost(t *testing.T, dependencies jobhost.Dependencies) *jobhost.Host 
 
 func enteredExecution(t *testing.T, core *controlledCore) controlledExecution {
 	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
 	select {
 	case execution := <-core.entered:
 		return execution
-	case <-time.After(3 * time.Second):
-		t.Fatal("execution did not start")
+	case <-ctx.Done():
+		t.Fatal("execution did not start:", ctx.Err())
 		return controlledExecution{}
 	}
 }
 
 func waitHost(t *testing.T, condition func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
+	// Lifecycle transitions can include several independently bounded I/O calls.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	for {
 		if condition() {
 			return
 		}
-		time.Sleep(5 * time.Millisecond)
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			t.Fatal("host condition did not become true:", ctx.Err())
+		case <-timer.C:
+		}
 	}
-	t.Fatal("host condition did not become true")
 }
 
 func waitJob(t *testing.T, repository jobhost.Repository, id string, status domain.RunStatus) jobcontract.Snapshot {

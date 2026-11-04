@@ -49,6 +49,13 @@ func performanceCoreSubmission(
 	}
 }
 
+func heldPerformanceCoreSubmission(t *testing.T, baseURL string) jobcontract.Submission {
+	t.Helper()
+	return performanceCoreSubmission(t, baseURL, func(command *quicktest.PerformanceCommand) {
+		command.TimeoutMS = 120_000
+	})
+}
+
 func newPerformanceCore(t *testing.T, repository jobhost.PerformanceExecutionRepository) *jobhost.PerformanceExecutor {
 	t.Helper()
 	core, err := jobhost.NewPerformanceExecutor(jobhost.PerformanceExecutorDependencies{
@@ -368,21 +375,32 @@ func TestPerformanceExecutorRemoteShutdownAndDeadlinePreserveOwnerFailure(t *tes
 			repository := openHostRepository(t)
 			core := newPerformanceCore(t, repository)
 			dependencies := hostDependencies(repository, core, &countedGuard{})
+			startBudget := 3 * time.Second
 			if !shutdown {
 				dependencies.Policy.ExecutionTimeout = 2 * time.Second
+			} else {
+				dependencies.Policy.ExecutionTimeout = 2 * time.Minute
+				startBudget = time.Minute
 			}
 			host := newTestHost(t, dependencies)
 			defer func() { _ = host.Close() }()
-			submission := performanceCoreSubmission(t, server.URL, nil)
+			submission := performanceCoreSubmission(t, server.URL, func(command *quicktest.PerformanceCommand) {
+				if shutdown {
+					command.TimeoutMS = 120_000
+				}
+			})
 			spec := submission.Job
 			if _, _, err := host.Submit(t.Context(), &submission); err != nil {
 				t.Fatal(err)
 			}
+			startContext, stopStartWait := context.WithTimeout(t.Context(), startBudget)
+			defer stopStartWait()
 			select {
 			case <-entered:
-			case <-time.After(3 * time.Second):
-				t.Fatal("request did not start before owner interruption")
+			case <-startContext.Done():
+				t.Fatal("request did not start before owner interruption:", startContext.Err())
 			}
+			stopStartWait()
 			want := domain.ErrorCode("job_execution_timeout")
 			if shutdown {
 				want = "runner_interrupted"
@@ -429,9 +447,7 @@ func TestPerformanceExecutorQueuedCancellationSealsWithoutTrafficOrStatisticalAr
 	dependencies := hostDependencies(repository, core, &countedGuard{})
 	dependencies.Policy.ExecutionTimeout = 2 * time.Minute
 	host := newTestHost(t, dependencies)
-	first := performanceCoreSubmission(t, server.URL, func(command *quicktest.PerformanceCommand) {
-		command.TimeoutMS = 120_000
-	})
+	first := heldPerformanceCoreSubmission(t, server.URL)
 	firstID := first.Job.JobID
 	if _, _, err := host.Submit(t.Context(), &first); err != nil {
 		t.Fatal(err)

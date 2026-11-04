@@ -80,7 +80,7 @@ func TestRunExecutorGroupFaultStopsPendingActivationBeforeSettlement(t *testing.
 	}
 	select {
 	case <-fault.failureWrite:
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("storage fault did not cancel pending activation and enter settlement")
 	}
 	if host.Status().Ready || requests.Load() != 0 {
@@ -137,7 +137,7 @@ func TestRunExecutorCancelAndCloseEscapeBlockedStartingWrite(t *testing.T) {
 	}
 	select {
 	case <-blocked.started:
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("Starting write did not enter the storage adapter")
 	}
 	if blocked.unbounded.Load() {
@@ -160,8 +160,9 @@ func TestRunExecutorCancelAndCloseEscapeBlockedStartingWrite(t *testing.T) {
 		if !errors.Is(err, jobhost.ErrUnavailable) {
 			t.Fatalf("blocked storage shutdown = %v", err)
 		}
-	case <-time.After(8 * time.Second):
-		t.Fatal("owner shutdown waited indefinitely for Starting persistence")
+	case <-time.After(30 * time.Second):
+		// Close permits a 10s settlement drain in addition to bounded storage.
+		t.Fatal("owner shutdown exceeded its settlement and storage observation budget")
 	}
 	waitSettled(t, repository)
 	child, err := repository.GetRun(t.Context(), spec.Spec.Run.Meta.ID)

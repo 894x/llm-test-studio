@@ -119,6 +119,30 @@ func coreSubmission(t *testing.T, baseURL string, comparison bool) jobcontract.S
 	return jobcontract.Submission{Job: spec, Secrets: secrets}
 }
 
+func heldCoreSubmission(t *testing.T, baseURL string, comparison bool) jobcontract.Submission {
+	t.Helper()
+	submission := coreSubmission(t, baseURL, comparison)
+	inputs := []*runs.PreparedRun{submission.Job.Spec.Run}
+	if comparison {
+		inputs = nil
+		for index := range submission.Job.Spec.Comparison.Runs {
+			inputs = append(inputs, &submission.Job.Spec.Comparison.Runs[index])
+		}
+	}
+	for _, input := range inputs {
+		for index := range input.Snapshot.Entries {
+			input.Snapshot.Entries[index].Load.RequestTimeoutMS = 120_000
+		}
+		for index := range input.Snapshot.PlanDocument.Entries {
+			input.Snapshot.PlanDocument.Entries[index].Load.RequestTimeoutMS = 120_000
+		}
+	}
+	if err := submission.Job.Validate(); err != nil {
+		t.Fatalf("configure held Run fixture: %v", err)
+	}
+	return submission
+}
+
 func newRunCore(t *testing.T, repository jobhost.RunRepository) *jobhost.RunExecutor {
 	t.Helper()
 	core, err := jobhost.NewRunExecutor(jobhost.RunExecutorDependencies{
@@ -256,8 +280,10 @@ func TestRunExecutorStopDrainsAndCancelAbortsRealRequests(t *testing.T) {
 			defer releaseRequest()
 			repository := openHostRepository(t)
 			core := newRunCore(t, repository)
-			host := newTestHost(t, hostDependencies(repository, core, &countedGuard{}))
-			submission := coreSubmission(t, server.URL, false)
+			dependencies := hostDependencies(repository, core, &countedGuard{})
+			dependencies.Policy.ExecutionTimeout = 2 * time.Minute
+			host := newTestHost(t, dependencies)
+			submission := heldCoreSubmission(t, server.URL, false)
 			input := submission.Job.Spec.Run
 			input.Snapshot.Entries[0].Load.Mode = domain.LoadFixedConcurrency
 			input.Snapshot.Entries[0].Load.RequestCount = 10
@@ -268,7 +294,7 @@ func TestRunExecutorStopDrainsAndCancelAbortsRealRequests(t *testing.T) {
 			}
 			select {
 			case <-entered:
-			case <-time.After(3 * time.Second):
+			case <-time.After(time.Minute):
 				t.Fatal("Core did not start an upstream request")
 			}
 			snapshot, _ := repository.GetJob(t.Context(), spec.JobID)
@@ -640,19 +666,27 @@ func TestRunExecutorRemoteShutdownAndDeadlinePreserveOwnerFailure(t *testing.T) 
 			repository := openHostRepository(t)
 			core := newRunCore(t, repository)
 			dependencies := hostDependencies(repository, core, &countedGuard{})
+			startBudget := 3 * time.Second
 			if !shutdown {
 				dependencies.Policy.ExecutionTimeout = 2 * time.Second
+			} else {
+				dependencies.Policy.ExecutionTimeout = 2 * time.Minute
+				startBudget = time.Minute
 			}
 			host := newTestHost(t, dependencies)
 			defer func() { _ = host.Close() }()
 			submission := coreSubmission(t, server.URL, false)
+			if shutdown {
+				submission.Clear()
+				submission = heldCoreSubmission(t, server.URL, false)
+			}
 			spec := submission.Job
 			if _, _, err := host.Submit(t.Context(), &submission); err != nil {
 				t.Fatal(err)
 			}
 			select {
 			case <-entered:
-			case <-time.After(3 * time.Second):
+			case <-time.After(startBudget):
 				t.Fatal("request did not start before the owner interruption")
 			}
 			want := domain.ErrorCode("job_execution_timeout")

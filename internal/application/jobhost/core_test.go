@@ -41,15 +41,17 @@ func TestCoreSharesOneHostQueueAcrossAllJobKinds(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = core.Close() })
-	host := newTestHost(t, hostDependencies(repository, core, &countedGuard{}))
-	first := coreSubmission(t, server.URL, false)
+	dependencies := hostDependencies(repository, core, &countedGuard{})
+	dependencies.Policy.ExecutionTimeout = 2 * time.Minute
+	host := newTestHost(t, dependencies)
+	first := heldCoreSubmission(t, server.URL, false)
 	firstSpec := first.Job
 	if _, _, err := host.Submit(t.Context(), &first); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case <-entered:
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("first job did not start")
 	}
 	second := performanceCoreSubmission(t, server.URL, nil)

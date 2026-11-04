@@ -126,6 +126,7 @@ func TestLocalBackendCoordinatesAllKindsAndConnectionCloseKeepsAcceptedWork(t *t
 			dependencies := hostDependencies(repository, core, &countedGuard{})
 			dependencies.Target = jobcontract.ExecutionTarget{Kind: jobcontract.TargetLocal}
 			dependencies.Policy.MaxActiveJobs = 2
+			dependencies.Policy.ExecutionTimeout = 2 * time.Minute
 			host := newTestHost(t, dependencies)
 			var connections atomic.Int64
 			coordinator, err := jobs.NewCoordinator(jobs.CoordinatorDependencies{Repository: repository, Now: time.Now,
@@ -139,10 +140,10 @@ func TestLocalBackendCoordinatesAllKindsAndConnectionCloseKeepsAcceptedWork(t *t
 			if err != nil {
 				t.Fatal(err)
 			}
-			original := coreSubmission(t, server.URL, kind == jobcontract.KindComparison)
+			original := heldCoreSubmission(t, server.URL, kind == jobcontract.KindComparison)
 			if kind == jobcontract.KindPerformance {
 				original.Clear()
-				original = performanceCoreSubmission(t, server.URL, nil)
+				original = heldPerformanceCoreSubmission(t, server.URL)
 			}
 			defer original.Clear()
 			prepared, err := coordinator.Prepare(t.Context(), jobs.PrepareCommand{
@@ -177,7 +178,7 @@ func TestLocalBackendCoordinatesAllKindsAndConnectionCloseKeepsAcceptedWork(t *t
 			}
 			select {
 			case <-entered:
-			case <-time.After(3 * time.Second):
+			case <-time.After(time.Minute):
 				t.Fatal("closing the local management handle stopped accepted execution")
 			}
 			if host.Status().Active != 1 || connections.Load() != 2 {

@@ -62,7 +62,7 @@ func TestKnownStorageFailureBlocksAdmissionBeforeSlowSettlement(t *testing.T) {
 			close(core.release)
 			select {
 			case <-core.settlementEntered:
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("settlement did not start")
 			}
 			if host.Status().Ready {

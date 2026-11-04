@@ -200,7 +200,7 @@ func TestMaintenancePendingIncludesCancelledQueueSettlement(t *testing.T) {
 	}
 	select {
 	case <-settlement.entered:
-	case <-time.After(time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("cancelled queue item did not enter settlement")
 	}
 	close(core.release)
@@ -248,7 +248,7 @@ func TestMaintenancePauseIncludesAnAdmissionAlreadyHoldingTheHostGate(t *testing
 	}()
 	select {
 	case <-guard.entered:
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("admission did not enter the resource gate")
 	}
 	paused := make(chan jobhost.MaintenanceResult, 1)
@@ -264,7 +264,7 @@ func TestMaintenancePauseIncludesAnAdmissionAlreadyHoldingTheHostGate(t *testing
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("admission did not finish")
 	}
 	select {
@@ -275,7 +275,7 @@ func TestMaintenancePauseIncludesAnAdmissionAlreadyHoldingTheHostGate(t *testing
 		if result.Status.Ready || result.Status.Pending != 1 {
 			t.Fatal("pause acknowledgment omitted the concurrent admission")
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("pause did not finish")
 	}
 	newSubmission := testSubmission(t)

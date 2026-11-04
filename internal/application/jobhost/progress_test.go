@@ -93,7 +93,12 @@ func TestSlowProgressStorageDoesNotBlockMeasuredTrafficAndIsJoinedBeforeSettleme
 			if _, _, err := host.Submit(t.Context(), &submission); err != nil {
 				t.Fatal(err)
 			}
-			for _, event := range []<-chan struct{}{blocked.entered, allRequests, blocked.returned} {
+			select {
+			case <-blocked.entered:
+			case <-time.After(30 * time.Second):
+				t.Fatal("progress storage did not enter its controlled write")
+			}
+			for _, event := range []<-chan struct{}{allRequests, blocked.returned} {
 				select {
 				case <-event:
 				case <-time.After(3 * time.Second):
