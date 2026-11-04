@@ -206,7 +206,7 @@ func TestBackgroundWatcherDiscoversSharedJobsAndReopensWithoutControllingExecuti
 	})
 	statuses := watcher.Snapshot().Nodes
 	if len(statuses) != 1 || statuses[0].ErrorCode != "" {
-		t.Fatal("background synchronization reported an unexpected error")
+		t.Fatalf("background synchronization reported an unexpected error: %+v", statuses)
 	}
 	stop()
 	if fixture.requests.Load() != requests {

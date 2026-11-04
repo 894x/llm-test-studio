@@ -347,12 +347,24 @@ func verifyOwnJobDuringHTTPBacklog(t *testing.T, heldCandidates int) {
 		if ownCurrent && ownImported {
 			break
 		}
-		timer := time.NewTimer(10 * time.Millisecond)
+		// These disk-backed reads share the mirror store's single connection
+		// with synchronization writes. Leave room for that work between samples.
+		timer := time.NewTimer(100 * time.Millisecond)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			t.Fatalf("new own job remained unmirrored after four production ticks; held=%d server=%s",
-				activeDownloads.Load(), final.Receipt.Status)
+			t.Fatalf("new own job remained unmirrored after four production ticks; "+
+				"held=%d server=%s current=%t imported=%t documents=%d "+
+				"mirror_error=%v document_error=%v observer=%+v",
+				activeDownloads.Load(),
+				final.Receipt.Status,
+				ownCurrent,
+				ownImported,
+				len(documents),
+				mirrorErr,
+				documentErr,
+				watcher.Snapshot().Nodes,
+			)
 		case <-timer.C:
 		}
 	}
