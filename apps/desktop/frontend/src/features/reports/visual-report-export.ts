@@ -51,9 +51,10 @@ export function standaloneReportHTML(element: HTMLElement, reportID: string): st
   const language = root.lang || "zh-CN"
   const direction = root.dir || "ltr"
   const theme = root.dataset.theme ? ` data-theme="${escapeAttribute(root.dataset.theme)}"` : ""
+  const colorTheme = root.dataset.colorTheme ? ` data-color-theme="${escapeAttribute(root.dataset.colorTheme)}"` : ""
   const styles = Array.from(document.styleSheets).flatMap(readStyleSheet).join("\n")
   return `<!doctype html>
-<html lang="${escapeAttribute(language)}" dir="${escapeAttribute(direction)}" class="${escapeAttribute(root.className)}"${theme}>
+<html lang="${escapeAttribute(language)}" dir="${escapeAttribute(direction)}" class="${escapeAttribute(root.className)}"${theme}${colorTheme}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

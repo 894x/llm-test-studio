@@ -1,13 +1,15 @@
 import {
+  useCallback,
   useLayoutEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react"
 
-import { ThemeContext, type ThemePreference } from "./theme-context"
+import { ThemeContext, type ColorTheme, type ThemePreference } from "./theme-context"
 
 const STORAGE_KEY = "llm-test-studio:ui-preferences:v1"
+const COLOR_THEME_STORAGE_KEY = "llm-test-studio:color-theme:v1"
 const DARK_QUERY = "(prefers-color-scheme: dark)"
 
 type NativeWindowThemeRuntime = Partial<{
@@ -40,6 +42,19 @@ function resolveTheme(theme: ThemePreference): "light" | "dark" {
   return dark ? "dark" : "light"
 }
 
+function loadColorTheme(): ColorTheme {
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem(COLOR_THEME_STORAGE_KEY) || "null",
+    ) as { version?: unknown; colorTheme?: unknown } | null
+    return saved?.version === 1 && saved.colorTheme === "high-contrast"
+      ? "high-contrast"
+      : "classic"
+  } catch {
+    return "classic"
+  }
+}
+
 function applyNativeWindowTheme(theme: ThemePreference) {
   const runtime = (window as Window & { runtime?: NativeWindowThemeRuntime })
     .runtime
@@ -63,6 +78,23 @@ function applyTheme(theme: ThemePreference) {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemePreference>(loadTheme)
+  const [colorTheme, setColorThemeState] = useState<ColorTheme>(loadColorTheme)
+
+  useLayoutEffect(() => {
+    document.documentElement.dataset.colorTheme = colorTheme
+  }, [colorTheme])
+
+  const setColorTheme = useCallback((next: ColorTheme) => {
+    setColorThemeState(next)
+    try {
+      window.localStorage.setItem(
+        COLOR_THEME_STORAGE_KEY,
+        JSON.stringify({ version: 1, colorTheme: next }),
+      )
+    } catch {
+      // Keep the selected colors usable when optional storage is unavailable.
+    }
+  }, [])
 
   useLayoutEffect(() => {
     applyTheme(theme)
@@ -83,8 +115,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [theme])
 
   const value = useMemo(
-    () => ({ theme, setTheme: setThemeState }),
-    [theme],
+    () => ({ theme, setTheme: setThemeState, colorTheme, setColorTheme }),
+    [theme, colorTheme, setColorTheme],
   )
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>

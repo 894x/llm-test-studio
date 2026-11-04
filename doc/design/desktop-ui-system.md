@@ -66,6 +66,31 @@ shadcn/ui，不引入 Naive UI 运行时，也不复制 Animetown 的组件代�
 
 所有组件只消费语义变量。禁止在 JSX 中使用主题专属的白、黑或任意状态色。
 
+### 配色主题与明暗模式
+
+界面设置分别提供“配色主题”（经典、高对比）与“明暗模式”（跟随系统、浅色、深色）。默认保留经典配色和既有明暗偏好；高对比同样支持两种明暗模式，跟随系统时仅切换明暗，不更改配色主题。根节点通过 `data-color-theme` 选择配色，`data-theme` 与 `.dark` 仍仅表示解析后的明暗模式；首屏脚本和 React 同步应用，浮层继承相同变量。
+
+高对比使用纯中性黑白灰，通过更清楚的文字、控件填充、表头、悬浮和选中底色建立层次，按钮、选择及焦点不带蓝调；仅真正的通过、警告、失败保留语义状态色。保留现有无边框表格及输入控件的几何。主要 Token 如下，其余映射见 `index.css`：
+
+| 高对比角色 | 暗色 | 亮色 |
+| --- | --- | --- |
+| Application background | `#121212` | `#f5f5f5` |
+| Elevated / glass surface | `#202020` | `#ffffff` |
+| Subtle surface | `#262626` | `#e8e8e8` |
+| Control surface | `#303030` | `#e0e0e0` |
+| Hover surface | `#404040` | `#d4d4d4` |
+| Active surface | `#464646` | `#c9c9c9` |
+| Table header surface | `#303030` | `#dedede` |
+| Primary text | `#fafafa` | `#171717` |
+| Secondary text | `#dedede` | `#383838` |
+| Muted text | `#bdbdbd` | `#4f4f4f` |
+| Accent | `#ededed` | `#303030` |
+| Focus | `#efefef` | `#303030` |
+
+配色偏好使用独立本机键 `llm-test-studio:color-theme:v1`，仅在用户选择时保存 `{ version: 1, colorTheme: "classic" | "high-contrast" }`；原 `ui-preferences:v1` 的明暗偏好格式保持。未保存、不识别或无法读取的可选配色偏好显示经典主题，不在启动时覆盖该配色记录。旧版本忽略新键，回退后原明暗偏好仍可用；没有数据库、Case/Suite/Plan、报告数据或 runner 协议变更，不需要数据迁移，也没有新增弃用期限。桌面视觉 HTML 导出保存 `data-color-theme`，图片、PDF 与复制图片继承当前主题。
+
+### 经典配色
+
 | 角色 | 暗色 | 亮色 |
 | --- | --- | --- |
 | Application background | `#1a1a1a` | `#f5f6f8` |
@@ -108,7 +133,7 @@ shadcn/ui，不引入 Naive UI 运行时，也不复制 Animetown 的组件代�
 | 需求 | 组件与约束 |
 | --- | --- |
 | 顶部目的地导航 | `Tabs` 或 `NavigationMenu`；当前项同时改变表面和文字，不只依赖颜色 |
-| 主题偏好 | `DropdownMenu` + 28px 圆形 `Button`；三项为跟随系统、浅色、深色 |
+| 主题偏好 | 界面设置内的 `DropdownMenu` 单选组；明暗模式为跟随系统、浅色、深色，配色主题为经典、高对比 |
 | 运行数据 | `Table`，无外框、行列分隔线和表头/表尾边框；悬浮或选中时显示整行 6px 圆角背景，不包 Card |
 | 状态 | `Badge` 的语义变体；详细原因进入 Tooltip 或检查器 |
 | 搜索 | `InputGroup` + `InputGroupInput`，不绝对定位自制按钮 |

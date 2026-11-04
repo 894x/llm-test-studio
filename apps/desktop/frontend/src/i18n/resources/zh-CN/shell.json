@@ -24,7 +24,8 @@
     "trigger": "界面设置，主题：{{theme}}",
     "tooltip": "界面设置",
     "language": "语言",
-    "appearance": "外观"
+    "appearance": "明暗模式",
+    "colorTheme": "配色主题"
   },
   "language": {
     "system": "跟随系统",
@@ -35,6 +36,10 @@
     "system": "跟随系统",
     "light": "浅色",
     "dark": "深色"
+  },
+  "colorTheme": {
+    "classic": "经典",
+    "high-contrast": "高对比"
   },
   "diagnostics": {
     "title": "诊断信息",

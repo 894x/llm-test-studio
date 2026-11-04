@@ -24,7 +24,8 @@
     "trigger": "Interface settings, theme: {{theme}}",
     "tooltip": "Interface settings",
     "language": "Language",
-    "appearance": "Appearance"
+    "appearance": "Color mode",
+    "colorTheme": "Color theme"
   },
   "language": {
     "system": "System",
@@ -35,6 +36,10 @@
     "system": "System",
     "light": "Light",
     "dark": "Dark"
+  },
+  "colorTheme": {
+    "classic": "Classic",
+    "high-contrast": "High contrast"
   },
   "diagnostics": {
     "title": "Diagnostics",

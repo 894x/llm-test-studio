@@ -8,6 +8,7 @@ describe("standaloneReportHTML", () => {
     document.documentElement.lang = ""
     document.documentElement.dir = ""
     delete document.documentElement.dataset.theme
+    delete document.documentElement.dataset.colorTheme
   })
 
   it("serializes the shared report node with its charts, watermark, and active theme", () => {
@@ -32,5 +33,11 @@ describe("standaloneReportHTML", () => {
     const exported = standaloneReportHTML(report, "report-en")
 
     expect(exported).toContain('<html lang="en-US" dir="ltr"')
+  })
+
+  it("keeps the chosen color theme in the standalone report", () => {
+    document.documentElement.dataset.colorTheme = "high-contrast"
+    const exported = standaloneReportHTML(document.createElement("article"), "contrast")
+    expect(exported).toContain('data-color-theme="high-contrast"')
   })
 })

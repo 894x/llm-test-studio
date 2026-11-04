@@ -7,7 +7,7 @@ import SunIcon from "lucide-react/dist/esm/icons/sun.mjs"
 import Settings2Icon from "lucide-react/dist/esm/icons/settings-2.mjs"
 import { useTranslation } from "react-i18next"
 
-import { useTheme, type ThemePreference } from "@/app/theme-context"
+import { useTheme, type ColorTheme, type ThemePreference } from "@/app/theme-context"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -32,7 +32,7 @@ import { useInterfaceZoom, type InterfaceZoom } from "./use-interface-zoom"
 import { ZoomFeedback } from "./zoom-feedback"
 
 function InterfaceSettingsMenu({ zoom }: { zoom: InterfaceZoom }) {
-  const { theme, setTheme } = useTheme()
+  const { theme, setTheme, colorTheme, setColorTheme } = useTheme()
   const { preference, setPreference } = useLanguage()
   const { t } = useTranslation("shell")
   const label = t(`theme.${theme}`)
@@ -85,6 +85,20 @@ function InterfaceSettingsMenu({ zoom }: { zoom: InterfaceZoom }) {
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="dark">
             <MoonIcon /> {t("theme.dark")}
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>{t("settings.colorTheme")}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          aria-label={t("settings.colorTheme")}
+          value={colorTheme}
+          onValueChange={(value) => setColorTheme(value as ColorTheme)}
+        >
+          <DropdownMenuRadioItem value="classic">
+            {t("colorTheme.classic")}
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="high-contrast">
+            {t("colorTheme.high-contrast")}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />

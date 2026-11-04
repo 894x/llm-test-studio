@@ -60,6 +60,19 @@
         root.setAttribute("data-theme", resolved)
         root.setAttribute("data-theme-preference", preference)
         root.style.colorScheme = resolved
+
+        let colorTheme = "classic"
+        try {
+          const saved = JSON.parse(
+            localStorage.getItem("llm-test-studio:color-theme:v1") || "null",
+          )
+          if (saved?.version === 1 && saved.colorTheme === "high-contrast") {
+            colorTheme = saved.colorTheme
+          }
+        } catch {
+          // A corrupt optional preference must not block the desktop shell.
+        }
+        root.setAttribute("data-color-theme", colorTheme)
       })()
     </script>
   </head>
