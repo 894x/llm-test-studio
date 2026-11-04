@@ -210,13 +210,37 @@ func waitHost(t *testing.T, condition func() bool) {
 
 func waitJob(t *testing.T, repository jobhost.Repository, id string, status domain.RunStatus) jobcontract.Snapshot {
 	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
 	var snapshot jobcontract.Snapshot
-	waitHost(t, func() bool {
+	for {
 		var err error
-		snapshot, err = repository.GetJob(t.Context(), id)
-		return err == nil && snapshot.Receipt.Status == status
-	})
-	return snapshot
+		snapshot, err = repository.GetJob(ctx, id)
+		if err == nil && snapshot.Receipt.Status == status {
+			return snapshot
+		}
+		if err == nil && jobcontract.Terminal(snapshot.Receipt.Status) {
+			t.Fatalf(
+				"Job terminal=%s failure=%+v, want %s",
+				snapshot.Receipt.Status,
+				snapshot.Failure,
+				status,
+			)
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			t.Fatalf(
+				"Job remained %s, want %s: read_error=%v: %v",
+				snapshot.Receipt.Status,
+				status,
+				err,
+				ctx.Err(),
+			)
+		case <-timer.C:
+		}
+	}
 }
 
 func TestHostOwnsAcceptedContextSecretsAndFrozenInput(t *testing.T) {

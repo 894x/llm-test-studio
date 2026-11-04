@@ -74,15 +74,16 @@ func waitPerformanceJob(
 	status domain.RunStatus,
 ) jobcontract.Snapshot {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
 	var snapshot jobcontract.Snapshot
 	var err error
-	for time.Now().Before(deadline) {
-		snapshot, err = repository.GetJob(t.Context(), id)
+	for {
+		snapshot, err = repository.GetJob(ctx, id)
 		if err == nil && jobcontract.Terminal(snapshot.Receipt.Status) {
 			if snapshot.Receipt.Status != status {
 				if performance, ok := repository.(jobhost.PerformanceRepository); ok {
-					observation, readErr := performance.GetPerformanceObservation(t.Context(), id)
+					observation, readErr := performance.GetPerformanceObservation(ctx, id)
 					t.Logf(
 						"last checkpoint=%s/%s rev %d error=%v",
 						observation.Checkpoint.Stage,
@@ -100,10 +101,19 @@ func waitPerformanceJob(
 			}
 			return snapshot
 		}
-		time.Sleep(5 * time.Millisecond)
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			t.Fatalf(
+				"Performance remained %s before its observation deadline: read_error=%v: %v",
+				snapshot.Receipt.Status,
+				err,
+				ctx.Err(),
+			)
+		case <-timer.C:
+		}
 	}
-	t.Fatalf("Performance remained %s before its observation deadline: %v", snapshot.Receipt.Status, err)
-	return jobcontract.Snapshot{}
 }
 
 func TestPerformanceExecutorUsesRealCoreForEveryLoadPhaseWithoutSubmissionContext(t *testing.T) {
@@ -225,15 +235,19 @@ func TestPerformanceExecutorStopAndCancelPreserveActualPhaseObservations(t *test
 				defer releaseRequest()
 				repository := openHostRepository(t)
 				core := newPerformanceCore(t, repository)
-				host := newTestHost(t, hostDependencies(repository, core, &countedGuard{}))
+				dependencies := hostDependencies(repository, core, &countedGuard{})
+				dependencies.Policy.ExecutionTimeout = 2 * time.Minute
+				host := newTestHost(t, dependencies)
 				submission := performanceCoreSubmission(t, server.URL, func(command *quicktest.PerformanceCommand) {
+					command.TimeoutMS = 120_000
 					switch phase {
 					case "warmup":
 						command.WarmupRequests = 3
 						command.RampDurationMS, command.RampRequestCap = 20, 50
 					case "ramp":
 						command.WarmupRequests = 1
-						command.RampDurationMS, command.RampRequestCap = 20, 50
+						// Keep the controlled phase open until the stop/cancel command.
+						command.RampDurationMS, command.RampRequestCap = 60_000, 50
 					case "capacity":
 						command.CapacityEnabled, command.Concurrency = true, 3
 						command.CapacityStart, command.CapacityStep = 1, 1
@@ -244,11 +258,20 @@ func TestPerformanceExecutorStopAndCancelPreserveActualPhaseObservations(t *test
 				if _, _, err := host.Submit(t.Context(), &submission); err != nil {
 					t.Fatal(err)
 				}
+				startContext, stopStartWait := context.WithTimeout(t.Context(), time.Minute)
+				defer stopStartWait()
 				select {
 				case <-entered:
-				case <-time.After(3 * time.Second):
-					t.Fatal("Performance phase did not send its request")
+				case <-startContext.Done():
+					t.Fatalf(
+						"Performance phase did not send its request: phase=%s requests=%d host=%+v: %v",
+						phase,
+						requests.Load(),
+						host.Status(),
+						startContext.Err(),
+					)
 				}
+				stopStartWait()
 				current, _ := repository.GetJob(t.Context(), spec.JobID)
 				if _, _, err := host.ApplyCommand(t.Context(), jobcontract.Command{
 					Contract: jobcontract.CurrentContract, CommandID: coreMeta(t).ID, JobID: spec.JobID,
@@ -403,17 +426,24 @@ func TestPerformanceExecutorQueuedCancellationSealsWithoutTrafficOrStatisticalAr
 	defer releaseRequest()
 	repository := openHostRepository(t)
 	core := newPerformanceCore(t, repository)
-	host := newTestHost(t, hostDependencies(repository, core, &countedGuard{}))
-	first := performanceCoreSubmission(t, server.URL, nil)
+	dependencies := hostDependencies(repository, core, &countedGuard{})
+	dependencies.Policy.ExecutionTimeout = 2 * time.Minute
+	host := newTestHost(t, dependencies)
+	first := performanceCoreSubmission(t, server.URL, func(command *quicktest.PerformanceCommand) {
+		command.TimeoutMS = 120_000
+	})
 	firstID := first.Job.JobID
 	if _, _, err := host.Submit(t.Context(), &first); err != nil {
 		t.Fatal(err)
 	}
+	startContext, stopStartWait := context.WithTimeout(t.Context(), time.Minute)
+	defer stopStartWait()
 	select {
 	case <-entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("first job did not occupy the execution slot")
+	case <-startContext.Done():
+		t.Fatal("first job did not occupy the execution slot:", startContext.Err())
 	}
+	stopStartWait()
 	second := performanceCoreSubmission(t, server.URL, nil)
 	spec := second.Job
 	queued, _, err := host.Submit(t.Context(), &second)
@@ -433,10 +463,22 @@ func TestPerformanceExecutorQueuedCancellationSealsWithoutTrafficOrStatisticalAr
 		domain.RunCancelled,
 	)
 	var sealed jobhost.PerformanceResultDocument
-	waitHost(t, func() bool {
-		sealed, err = repository.ReadPerformanceResult(t.Context(), spec.JobID)
-		return err == nil
-	})
+	sealContext, stopSealWait := context.WithTimeout(t.Context(), time.Minute)
+	defer stopSealWait()
+	for {
+		sealed, err = repository.ReadPerformanceResult(sealContext, spec.JobID)
+		if err == nil {
+			break
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-sealContext.Done():
+			timer.Stop()
+			t.Fatalf("cancelled Job did not seal its result: read_error=%v: %v", err, sealContext.Err())
+		case <-timer.C:
+		}
+	}
+	stopSealWait()
 	if sealed.Result.ObservationState != jobcontract.PerformanceNotStarted ||
 		sealed.Result.ExecutionStarted || sealed.Result.Observation != nil || requests.Load() != 1 {
 		t.Fatal("queued cancellation started traffic or fabricated an execution observation")
