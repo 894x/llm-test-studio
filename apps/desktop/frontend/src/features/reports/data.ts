@@ -6,6 +6,7 @@ import { DesktopDataError } from "@/app/data-error"
 import { translateDesktop as tx } from "@/i18n/runtime"
 import { parseQuickPerformanceReport, type QuickPerformanceReport } from "@/features/quick-test/data"
 import { parseExecutionOrigin, type ExecutionOrigin } from "./execution-origin"
+import { parsePerformanceOverviews, type PerformanceOverview } from "./performance-overview"
 
 export type ReportSource = "run" | "quick_performance"
 
@@ -71,6 +72,7 @@ export interface ReportEntryDetail {
 }
 export interface FormalReportDetail {
   schema_version: 1; source: "run"
+  performance_overviews?: Record<string, PerformanceOverview>
   performance_summary?: ReportPerformanceSummary
   dimension_statistics?: ReportDimensionStatistic[]
   report: {
@@ -109,6 +111,7 @@ export interface QuickPerformanceReportDetail {
   schema_version: 1
   source: "quick_performance"
   performance: QuickPerformanceReport
+  performance_overviews?: Record<string, PerformanceOverview>
 }
 
 export type ReportDetail = FormalReportDetail | QuickPerformanceReportDetail
@@ -161,7 +164,9 @@ export function parseReportDetail(value: unknown): ReportDetail {
     if (value.schema_version !== 1) throw invalidReport()
     const performance = parseQuickPerformanceReport(value.performance)
     if (!performance.archived || !performance.report_id) throw invalidReport()
-    return { schema_version: 1, source: "quick_performance", performance }
+    const overviews = parsePerformanceOverviews(value.performance_overviews, [performance.report_id])
+    return { schema_version: 1, source: "quick_performance", performance,
+      ...(overviews === undefined ? {} : { performance_overviews: overviews }) }
   }
   if (value.schema_version !== 1 || !isRecord(value.report) || !Array.isArray(value.entries) ||
     !Array.isArray(value.request_results) || !Array.isArray(value.unassigned_request_results) || "suites" in value) throw invalidReport()
@@ -184,6 +189,7 @@ export function parseReportDetail(value: unknown): ReportDetail {
   if (new Set(ids).size !== ids.length || ids.length !== requestResults.length || requestResults.some(result => !ids.includes(result.id))) throw invalidReport()
   const performanceSummary = value.performance_summary === undefined ? undefined : parsePerformanceSummary(value.performance_summary)
   const dimensionStatistics = value.dimension_statistics === undefined ? undefined : parseDimensionStatistics(value.dimension_statistics)
+  const overviews = parsePerformanceOverviews(value.performance_overviews, entries.filter(entry => entry.performance !== undefined).map(entry => entry.entry_id))
   if (performanceSummary && performanceSummary.item_count !== entries.filter(entry => entry.target_kind === "performance").length) throw invalidReport()
   return { schema_version: 1, source: "run", report: {
     id: report.id, run_id: report.run_id, protocol: report.protocol, run_status: report.run_status,
@@ -194,6 +200,7 @@ export function parseReportDetail(value: unknown): ReportDetail {
     distributions: parseRecordArray(report.distributions ?? []), case_results: caseResults,
   }, entries, request_results: requestResults, unassigned_request_results: unassigned,
     performance_summary: performanceSummary,
+    ...(overviews === undefined ? {} : { performance_overviews: overviews }),
     ...(dimensionStatistics === undefined ? {} : { dimension_statistics: dimensionStatistics }) }
 }
 

@@ -113,15 +113,16 @@ type Summary struct {
 // sealed conclusion and case-level results; RequestResults contains the load
 // and protocol observations used to derive the aggregate metrics.
 type Detail struct {
-	SchemaVersion            int                          `json:"schema_version"`
-	Source                   ReportSource                 `json:"source"`
-	Report                   domain.Report                `json:"report"`
-	RequestResults           []domain.Result              `json:"request_results"`
-	Entries                  []EntryDetail                `json:"entries"`
-	UnassignedRequestResults []domain.Result              `json:"unassigned_request_results"`
-	Performance              *quicktest.PerformanceReport `json:"performance,omitempty"`
-	PerformanceSummary       *PerformanceSummary          `json:"performance_summary,omitempty"`
-	DimensionStatistics      []DimensionStatistic         `json:"dimension_statistics,omitempty"`
+	SchemaVersion            int                            `json:"schema_version"`
+	Source                   ReportSource                   `json:"source"`
+	Report                   domain.Report                  `json:"report"`
+	RequestResults           []domain.Result                `json:"request_results"`
+	Entries                  []EntryDetail                  `json:"entries"`
+	UnassignedRequestResults []domain.Result                `json:"unassigned_request_results"`
+	Performance              *quicktest.PerformanceReport   `json:"performance,omitempty"`
+	PerformanceSummary       *PerformanceSummary            `json:"performance_summary,omitempty"`
+	DimensionStatistics      []DimensionStatistic           `json:"dimension_statistics,omitempty"`
+	PerformanceOverviews     map[string]PerformanceOverview `json:"performance_overviews,omitempty"`
 }
 
 type EntryDetail struct {
@@ -181,6 +182,7 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 				SchemaVersion: CurrentSchemaVersion, Source: SourceQuickPerformance,
 				Performance: &performance, RequestResults: []domain.Result{},
 				Entries: []EntryDetail{}, UnassignedRequestResults: []domain.Result{},
+				PerformanceOverviews: map[string]PerformanceOverview{reportID: performanceOverview(&performance)},
 			}, nil
 		}
 		if !errors.Is(err, quicktest.ErrPerformanceArchiveNotFound) {
@@ -227,6 +229,17 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 	if err != nil {
 		return Detail{}, classified(ErrInconsistent, err)
 	}
+	performanceOverviews := make(map[string]PerformanceOverview)
+	for _, entry := range suites {
+		if len(entry.Performance) == 0 {
+			continue
+		}
+		var performance quicktest.PerformanceReport
+		if err := json.Unmarshal(entry.Performance, &performance); err != nil {
+			return Detail{}, classified(ErrInconsistent, err)
+		}
+		performanceOverviews[entry.EntryID] = performanceOverview(&performance)
+	}
 	return Detail{
 		SchemaVersion:            CurrentDetailSchemaVersion,
 		Source:                   SourceRun,
@@ -236,6 +249,7 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 		UnassignedRequestResults: unassigned,
 		PerformanceSummary:       performanceSummary,
 		DimensionStatistics:      summarizeDimensions(suites),
+		PerformanceOverviews:     performanceOverviews,
 	}, nil
 }
 

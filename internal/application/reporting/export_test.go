@@ -310,8 +310,8 @@ func TestQuickPerformanceHTMLRendersUnavailableFineCohortAsDashes(t *testing.T) 
 		t.Fatalf("request with missing timing milestones did not render unavailable markers: %s", contents)
 	}
 	for _, want := range []string{
-		"<strong>- / - ms/token</strong><span>TPOT P50 / P95</span>",
-		"<strong>- / - ms</strong><span>E2E P50 / P95</span>",
+		`<div class="po-meta">TPOT P95</div><div class="po-value">—</div>`,
+		`<div class="po-meta">E2E P95</div><div class="po-value">—</div>`,
 	} {
 		if !strings.Contains(string(contents), want) {
 			t.Fatalf("zero-sample core metric did not render unavailable markers %q: %s", want, contents)

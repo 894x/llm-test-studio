@@ -8,8 +8,25 @@ import { ReportWorkspace } from "./report-workspace"
 import { parseReportDetail, type ReportDetail, type ReportSnapshot } from "./data"
 import type { QuickPerformanceSLOAssessment } from "@/features/quick-test/data"
 import { protocolReportFixture, protocolReportSnapshot, reportID } from "@/test/protocol-report-fixture"
+import { performanceOverviewFixture } from "@/test/performance-overview-fixture"
 
 describe("ReportWorkspace", () => {
+  it("uses the Core performance overview in the existing report without duplicating lower detail sections", async () => {
+    const id = reportID(80)
+    const detail: ReportDetail = { ...quickDetail(id) as Extract<ReportDetail, { source: "quick_performance" }>,
+      performance_overviews: { [id]: performanceOverviewFixture() } }
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace
+      snapshot={quickSnapshot(id, "全部请求成功")} preferredReportID={id}
+      getDetail={async () => detail} exportReport={vi.fn()} saveReportExport={vi.fn()} copyReportPNG={vi.fn()}
+    /></I18nextProvider>)
+    const report = await screen.findByRole("region", { name: "归档性能报告" })
+    const headline = within(report).getByRole("region", { name: "关键性能指标" })
+    expect(headline).toHaveTextContent("3 / 5 项达标")
+    expect(headline).toHaveTextContent("SLO 达标率94.0%")
+    expect(headline).toHaveTextContent("成功吞吐0.65req/s")
+    expect(within(report).getAllByRole("table", { name: "延迟分布统计" })).toHaveLength(1)
+    expect(within(report).getAllByText("测试配置")).toHaveLength(1)
+  })
   it("shows overall performance statistics and independently expands items in the view and visual export", async () => {
     const detail = protocolReportFixture()
     const quick = phaseFiveQuickDetail(reportID(20))
@@ -539,18 +556,23 @@ describe("ReportWorkspace", () => {
     expect(requestDetail).not.toHaveTextContent("sk-report-private")
   })
 
-  it("renders SLO goodput, violation counters, and the capacity rung table in visible and exported reports", async () => {
+  it("keeps core and capacity conclusions while omitting the lower SLO/capacity block from the view and visual exports", async () => {
     const user = userEvent.setup()
     const quickID = "77777777-7777-4777-8777-777777777774"
+    const detail = phaseFourQuickDetail(quickID, "failed") as unknown as Extract<ReportDetail, { source: "quick_performance" }>
+    detail.performance_overviews = { [quickID]: performanceOverviewFixture() }
+    const original = structuredClone(detail)
     const exportVisualReport = vi.fn(async (element: HTMLElement, format: "html" | "png" | "pdf") => {
       expect(format).toBe("html")
-      expect(within(element).getByRole("table", { name: "容量阶梯结果", hidden: true })).toBeInTheDocument()
+      expect(within(element).queryByRole("table", { name: "容量阶梯结果", hidden: true })).not.toBeInTheDocument()
+      expect(within(element).queryByRole("heading", { name: "SLO 与容量", hidden: true })).not.toBeInTheDocument()
+      expect(element).toHaveTextContent("3 / 5 项达标")
       return { filename: `${quickID}.html`, mediaType: "text/html", blob: new Blob(["report"]) }
     })
     render(
       <ReportWorkspace
         snapshot={quickSnapshot(quickID, "容量评估未通过")}
-        getDetail={vi.fn(async () => phaseFourQuickDetail(quickID, "failed") as unknown as ReportDetail)}
+        getDetail={vi.fn(async () => detail)}
         exportReport={vi.fn()}
         saveReportExport={vi.fn(async () => true)}
         copyReportPNG={vi.fn()}
@@ -560,33 +582,20 @@ describe("ReportWorkspace", () => {
     await user.click(screen.getByRole("button", { name: "查看报告：容量评估未通过" }))
 
     const report = await screen.findByRole("region", { name: "归档性能报告" })
-    expect(report).toHaveTextContent("SLO 与容量")
+    expect(within(report).queryByRole("heading", { name: "SLO 与容量" })).not.toBeInTheDocument()
     const headline = within(report).getByRole("region", { name: "关键性能指标" })
     expect(within(headline).getByText("容量评估未通过")).toHaveClass("text-destructive")
-    expect(headline).toHaveTextContent("传输与协议通过")
-    expect(headline).toHaveTextContent("SLO 通过")
-    expect(report).toHaveTextContent("TTFT ≤ 50 ms")
-    expect(report).toHaveTextContent("目标达标率 90%")
-    expect(report).toHaveTextContent("传输与协议通过")
-    expect(report).toHaveTextContent("SLO 通过")
-    expect(report).toHaveTextContent("好请求 4 / 4")
-    expect(report).toHaveTextContent("Goodput 13 req/s")
-    expect(report).toHaveTextContent("传输 0 · TTFT 0 · TPOT 0 · E2E 0")
-    expect(report).toHaveTextContent("最高通过并发 2")
-    expect(report).toHaveTextContent("首次未通过 3")
+    expect(headline).toHaveTextContent("3 / 5 项达标")
+    expect(headline).toHaveTextContent("SLO 达标率")
+    expect(report).not.toHaveTextContent("Goodput 13 req/s")
     expect(report).toHaveTextContent(/峰值在途 \/ 配置并发\s*2 \/ 2/)
-    const rungs = within(report).getByRole("table", { name: "容量阶梯结果" })
-    expect(rungs.closest('[data-slot="scroll-area"]')).toBeInTheDocument()
-    expect(within(rungs).getByRole("columnheader", { name: "目标" })).toBeInTheDocument()
-    expect(within(rungs).getByRole("columnheader", { name: "传输" })).toBeInTheDocument()
-    expect(within(rungs).getByRole("columnheader", { name: "SLO" })).toBeInTheDocument()
-    expect(within(rungs).getByRole("columnheader", { name: "Goodput" })).toBeInTheDocument()
-    expect(within(rungs).getByRole("row", { name: /#3.*3 并发.*未通过/ })).toBeInTheDocument()
+    expect(within(report).queryByRole("table", { name: "容量阶梯结果" })).not.toBeInTheDocument()
 
     expect(document.querySelector("[data-report-export-document]")).toBeNull()
     await user.click(screen.getByRole("button", { name: "HTML" }))
     await waitFor(() => expect(exportVisualReport).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(document.querySelector("[data-report-export-document]")).toBeNull())
+    expect(detail).toEqual(original)
   })
 
   it("uses the selected open-loop capacity rung as the archived steady-state send target", async () => {

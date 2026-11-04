@@ -179,6 +179,35 @@
     "observedCases": "观测",
     "performance": "关键性能指标",
     "ttftP95": "TTFT P95（含推理）",
+    "samples": "稳态样本 · {{value}} 次请求",
+    "itemsPassed": "项达标",
+    "observedItems": "另有 {{count}} 项仅观测",
+    "unevaluatedItems": "{{count}} 项未评估",
+    "target": "目标",
+    "reference": "参考上限",
+    "noTarget": "未设置目标",
+    "scope": "仅统计稳态阶段。成功率沿用全部请求成功标准；P95 对照已保存的 SLO 单请求上限，仅作参考，不替代原报告的逐请求 SLO 与容量结论。",
+    "overviewStatus": {
+      "passed": "已评估指标达标",
+      "failed": "部分指标未达标",
+      "observed": "仅观测",
+      "not_evaluated": "部分指标未评估"
+    },
+    "metricStatus": {
+      "passed": "达标",
+      "failed": "未达标",
+      "observed": "仅观测",
+      "not_evaluated": "未评估",
+      "unavailable": "无有效观测"
+    },
+    "metrics": {
+      "success_rate": "请求成功率",
+      "slo_rate": "SLO 达标率",
+      "ttft_p95": "TTFT P95（含推理）",
+      "tpot_p95": "TPOT P95",
+      "e2e_p95": "E2E P95",
+      "successful_qps": "成功吞吐"
+    },
     "capacityStatus": {
       "passed": "容量评估通过",
       "failed": "容量评估未通过",

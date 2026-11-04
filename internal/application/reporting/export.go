@@ -498,7 +498,9 @@ func formatNumber(value float64) string {
 	return strconv.FormatFloat(value, 'f', 2, 64)
 }
 
-var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype html>
+var reportHTMLTemplate = template.Must(template.New("report").Funcs(template.FuncMap{
+	"performanceOverview": renderPerformanceOverviewHTML,
+}).Parse(`<!doctype html>
 <html lang="{{.Language}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LLM Test Studio Report {{.Detail.Report.ID}}</title><style>
 :root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}h3{margin:22px 0 10px}h4{margin:16px 0 8px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}.suite{margin-top:30px;border:1px solid #d9e2ef;border-radius:14px;padding:22px}.case{margin-top:18px;border-top:1px solid #e6eaf0;padding-top:2px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}.issues{color:#b42318}.severity{display:inline-block;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600}.severity-critical{color:#b42318;background:#fde7ea}.severity-normal{color:#36536f;background:#e8eef5}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}.suite,tr{break-inside:avoid}}
@@ -521,6 +523,7 @@ var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype h
 <h3>{{$.Labels.CoreMetrics}}</h3><section class="grid">{{range .Metrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
 <h3>SLA</h3><section class="grid">{{range .SLA}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
 {{if .Performance}}<h3>{{$.Labels.QuickTitle}}</h3>
+{{performanceOverview .Performance $.Language}}
 <p>{{.Performance.Profile.LoadMode}} · {{.Performance.Profile.Concurrency}} concurrency · {{.Performance.Profile.InputTokens}} / {{.Performance.Profile.OutputTokens}} tokens</p>
 <p>{{$.Labels.Samples}}: {{.Performance.Progress.Completed}} · {{$.Labels.StatusPassed}}: {{.Performance.Progress.Succeeded}} · {{$.Labels.StatusFailed}}: {{.Performance.Progress.Failed}}</p>
 <p>E2E P95: {{.Performance.Metrics.E2EP95}} ms · {{$.Labels.RequestRate}}: {{.Performance.Metrics.RequestQPS}}</p>
@@ -535,9 +538,10 @@ var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype h
 </main></body></html>`))
 
 var quickReportHTMLTemplate = template.Must(template.New("quick-report").Funcs(template.FuncMap{
-	"sampledValue":   sampledMetricValue,
-	"sampledSamples": sampledMetricSamples,
-	"tpotSamples":    quickPerformanceTPOTSamples,
+	"performanceOverview": renderPerformanceOverviewHTML,
+	"sampledValue":        sampledMetricValue,
+	"sampledSamples":      sampledMetricSamples,
+	"tpotSamples":         quickPerformanceTPOTSamples,
 }).Parse(`<!doctype html>
 <html lang="{{.Language}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LLM Test Studio Quick Performance Report {{.Detail.Performance.ReportID}}</title><style>
@@ -546,14 +550,11 @@ var quickReportHTMLTemplate = template.Must(template.New("quick-report").Funcs(t
 <h1>{{.Labels.QuickTitle}}</h1><p class="muted">{{.Detail.Performance.ModelID}} · {{.Detail.Performance.BaseURL}} · {{.Detail.Performance.GeneratedAt}}</p>
 <h2 class="{{if .Detail.Performance.Success}}pass{{else}}fail{{end}}">{{.Labels.Conclusion}}: {{.Conclusion}}</h2>
 <p>{{.Labels.Report}} {{.Detail.Performance.ReportID}} · {{.Labels.Phase}} {{.Phase}}</p>
-<h2>{{.Labels.CoreMetrics}}</h2><section class="grid">
-<div class="card"><strong>{{.Detail.Performance.Metrics.SuccessRatePercent}}%</strong><span>{{.Labels.SuccessRate}}</span></div>
-<div class="card"><strong>{{.Detail.Performance.Metrics.RequestQPS}} req/s</strong><span>{{.Labels.RequestRate}}</span></div>
-
-<div class="card"><strong>{{sampledValue (tpotSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TPOTP50}} / {{sampledValue (tpotSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TPOTP95}} ms/token</strong><span>TPOT P50 / P95</span></div>
-<div class="card"><strong>{{sampledValue .Detail.Performance.Metrics.Succeeded .Detail.Performance.Metrics.E2EP50}} / {{sampledValue .Detail.Performance.Metrics.Succeeded .Detail.Performance.Metrics.E2EP95}} ms</strong><span>E2E P50 / P95</span></div>
-</section>
+<p>{{.Labels.RequestRate}}: {{.Detail.Performance.Metrics.RequestQPS}} req/s</p>
+{{performanceOverview .Detail.Performance .Language}}
 <h2>{{.Labels.StreamingTiming}}</h2><div class="scroll"><table><thead><tr><th>{{.Labels.Metric}}</th><th>{{.Labels.Average}}</th><th>P50</th><th>P95</th><th>P99</th><th>{{.Labels.Samples}}</th></tr></thead><tbody>
+<tr><td>TPOT (ms/token)</td><td>{{sampledValue (tpotSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TPOTAverage}}</td><td>{{sampledValue (tpotSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TPOTP50}}</td><td>{{sampledValue (tpotSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TPOTP95}}</td><td>{{sampledValue (tpotSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TPOTP99}}</td><td>{{sampledSamples (tpotSamples .Detail.Performance.Samples)}}</td></tr>
+<tr><td>E2E (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.Succeeded .Detail.Performance.Metrics.E2EAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.Succeeded .Detail.Performance.Metrics.E2EP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.Succeeded .Detail.Performance.Metrics.E2EP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.Succeeded .Detail.Performance.Metrics.E2EP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.Succeeded}}</td></tr>
 <tr><td>TTFB (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTFBSamples .Detail.Performance.Metrics.TTFBAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFBSamples .Detail.Performance.Metrics.TTFBP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFBSamples .Detail.Performance.Metrics.TTFBP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFBSamples .Detail.Performance.Metrics.TTFBP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTFBSamples}}</td></tr>
 <tr><td>{{.Labels.TTFTAny}} (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTFTAnySamples}}</td></tr>
 <tr><td>{{.Labels.TTFTVisible}} (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTFTVisibleSamples}}</td></tr>
@@ -789,13 +790,7 @@ func optionalPerformanceMetric(value float64, available bool) string {
 }
 
 func quickPerformanceTPOTSamples(samples []quicktest.PerformanceSample) uint64 {
-	var count uint64
-	for _, sample := range samples {
-		if sample.Success && sample.TPOTMS > 0 {
-			count++
-		}
-	}
-	return count
+	return performanceTPOTSamples(samples)
 }
 
 func sampledMetricText(samples uint64, value float64, suffix string) string {

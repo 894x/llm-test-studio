@@ -179,6 +179,35 @@
     "observedCases": "Observed only",
     "performance": "Key performance metrics",
     "ttftP95": "TTFT P95 (includes reasoning)",
+    "samples": "Steady-state sample · {{value}} requests",
+    "itemsPassed": "metrics met",
+    "observedItems": "{{count}} observation-only metrics",
+    "unevaluatedItems": "{{count}} unevaluated metrics",
+    "target": "Target",
+    "reference": "Reference limit",
+    "noTarget": "No target configured",
+    "scope": "Steady-state observations only. Success rate retains the all-requests-successful criterion. P95 comparisons use the saved per-request SLO limits as references; they do not replace the archived per-request SLO or capacity conclusions.",
+    "overviewStatus": {
+      "passed": "Evaluated metrics met",
+      "failed": "Some metrics missed their targets",
+      "observed": "Observation only",
+      "not_evaluated": "Some metrics not evaluated"
+    },
+    "metricStatus": {
+      "passed": "Met",
+      "failed": "Not met",
+      "observed": "Observation only",
+      "not_evaluated": "Not evaluated",
+      "unavailable": "No valid observations"
+    },
+    "metrics": {
+      "success_rate": "Request success rate",
+      "slo_rate": "SLO compliance",
+      "ttft_p95": "TTFT P95 (includes reasoning)",
+      "tpot_p95": "TPOT P95",
+      "e2e_p95": "E2E P95",
+      "successful_qps": "Successful throughput"
+    },
     "capacityStatus": {
       "passed": "Capacity evaluation passed",
       "failed": "Capacity evaluation failed",

@@ -1,5 +1,5 @@
 import { formatPerformanceInteger } from "@/features/reports/performance-format"
-import { desktopLocale, translateDesktop as tx, translateExecutionError } from "@/i18n/runtime"
+import { desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
 import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right.mjs"
@@ -18,7 +18,6 @@ import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { EmptyInspector, InspectorHeader, InspectorRow, PageFrame } from "@/features/shell/page-frame"
 import {
-  performanceCapacitySummary,
   performanceCompletion,
   performanceSLOStatusLabel,
 } from "@/features/quick-test/performance-summary"
@@ -41,6 +40,8 @@ import { blobToBase64 } from "./report-export-encoding"
 import { copyReportPNGToClipboard } from "./report-clipboard"
 import { ExecutionOriginDetails } from "./execution-origin-details"
 import { formatReportTimestamp } from "./report-timestamp"
+import { PerformanceOverviewPanel } from "./performance-overview-panel"
+import type { PerformanceOverview } from "./performance-overview"
 import type { HistoryChanged, HistoryVisibilityChange } from "@/features/history-recycle/data"
 import { RecycleHistoryButton, type HistoryRecycleClient } from "@/features/history-recycle/recycle-history-button"
 import { historyVisibility } from "@/features/history-recycle/visibility"
@@ -383,6 +384,7 @@ function RunReportBody({ detail, summary, paginate = true }: { detail: Extract<R
           caseNavigationRequest={caseNavigationRequest}
           paginate={paginate}
           collapsePerformance={detail.performance_summary !== undefined}
+          performanceOverview={detail.performance_overviews?.[suite.entry_id]}
         />
       ))}
       {unassignedResults.length ? (
@@ -404,6 +406,7 @@ function SuiteReportSection({
   caseNavigationRequest,
   paginate = true,
   collapsePerformance = false,
+  performanceOverview,
 }: {
   suite: ReportEntryDetail
   timeSliceID: string
@@ -411,6 +414,7 @@ function SuiteReportSection({
   caseNavigationRequest: number
   paginate?: boolean
   collapsePerformance?: boolean
+  performanceOverview?: PerformanceOverview
 }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("reports")
@@ -458,7 +462,7 @@ function SuiteReportSection({
         <summary className="cursor-pointer rounded-sm text-[11px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("inspector.coreMetrics")}</summary>
         <div className="grid gap-3 pt-2 md:grid-cols-2"><SuiteMetricSummary title={t("inspector.coreMetrics")} metrics={suite.metrics} /><SuiteMetricSummary title="SLA" metrics={suite.sla} /></div>
       </details> : null}
-      {suite.performance ? <QuickPerformanceBody detail={{schema_version:1,source:"quick_performance",performance:suite.performance}} timeSliceID={timeSliceID} includeRequestAnalysis /> : <EntryCaseTable entry={suite} selectedCaseID={selectedCaseID} caseNavigationRequest={caseNavigationRequest} paginate={paginate} />}
+      {suite.performance ? <QuickPerformanceBody detail={{schema_version:1,source:"quick_performance",performance:suite.performance}} overview={performanceOverview} timeSliceID={timeSliceID} includeRequestAnalysis /> : <EntryCaseTable entry={suite} selectedCaseID={selectedCaseID} caseNavigationRequest={caseNavigationRequest} paginate={paginate} />}
       </Collapsible.Content>
     </section>
     </Collapsible.Root>
@@ -528,22 +532,24 @@ function QuickPerformanceDetail({ detail }: { detail: Extract<ReportDetail, { so
   )
 }
 
-function QuickPerformanceBody({ detail, includeRequestAnalysis = false, showExecutionOrigin = false, timeSliceID = detail.performance.report_id ?? "" }: {
+function QuickPerformanceBody({ detail, overview = detail.performance_overviews?.[detail.performance.report_id ?? ""], includeRequestAnalysis = false, showExecutionOrigin = false, timeSliceID = detail.performance.report_id ?? "" }: {
   detail: Extract<ReportDetail, { source: "quick_performance" }>
   includeRequestAnalysis?: boolean
   showExecutionOrigin?: boolean
   timeSliceID?: string
+  overview?: PerformanceOverview
 }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("reports")
   const report = detail.performance
   const completion = performanceCompletion(report.profile.request_count, report.metrics.completed, report.progress.planned)
   const targetRanges = performanceTargetRanges(report)
-  const hasSLOCapacityData = report.slo_assessment !== undefined || report.capacity_result !== undefined
   const hasPhaseThreeData = report.request_budget !== undefined || report.warmup !== undefined || report.ramp !== undefined || report.time_slices !== undefined ||
     report.profile.warmup_requests !== undefined || report.profile.ramp_duration_ms !== undefined || report.profile.ramp_request_cap !== undefined || report.profile.slice_duration_ms !== undefined
-  return <section aria-label={tx("desktop:reports_archived_performance_report")} className="space-y-4 p-4">
-    <PerformanceReportHeadline report={report} />
+  return <section aria-label={tx("desktop:reports_archived_performance_report")} className="@container space-y-4 p-4">
+    {overview ? <PerformanceOverviewPanel overview={overview}>
+      {report.capacity_result ? <PerformanceAssessmentBadge status={report.capacity_result.status} label={t(`headline.capacityStatus.${report.capacity_result.status}`)} /> : null}
+    </PerformanceOverviewPanel> : <PerformanceReportHeadline report={report} />}
     {showExecutionOrigin && <ExecutionOriginDetails origin={report.execution_origin} />}
     <div>
       <h4 className="mb-2 text-xs font-semibold">{t("performance.config")}</h4>
@@ -569,34 +575,6 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false, showExec
         {hasPhaseThreeData ? <ContextValue label={tx("desktop:reports_slice_resolution")} value={performanceSliceConfiguration(report)} /> : null}
       </dl>
     </div>
-    {hasSLOCapacityData ? (
-      <>
-        <Separator />
-        <div>
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-xs font-semibold">{tx("desktop:quick-test_slo_and_capacity")}</h4>
-          </div>
-          {report.slo_assessment ? (
-            <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
-              <InlineSummaryValue label={tx("desktop:reports_thresholds")} value={formatSLOThresholds(report.slo_assessment.thresholds)} />
-              <InlineSummaryValue label={tx("desktop:reports_target_compliance")} value={`${formatMetric(report.slo_assessment.target_percent)}%`} />
-              <InlineSummaryValue label={tx("desktop:quick-test_good_requests")} value={`${formatMetric(report.slo_assessment.good_requests)} / ${formatMetric(report.slo_assessment.total_requests)}`} />
-              <InlineSummaryValue label={tx("desktop:reports_actual_compliance")} value={`${formatMetric(report.slo_assessment.good_request_percent)}%`} />
-              <InlineSummaryValue label="Goodput" value={`${formatPerformanceInteger(report.slo_assessment.goodput_qps)} req/s`} />
-              <InlineSummaryValue label={tx("desktop:reports_violations")} value={formatSLOViolations(report.slo_assessment.violations)} />
-            </div>
-          ) : null}
-          {report.capacity_result ? (
-            <>
-              <p className="mt-3 rounded-md border bg-background/70 px-3 py-2 text-xs font-semibold tabular-nums">
-                {performanceCapacitySummary(report.capacity_result, report.profile.load_mode ?? "fixed_concurrency")}
-              </p>
-              <CapacityRungTable report={report} />
-            </>
-          ) : null}
-        </div>
-      </>
-    ) : null}
     {hasPhaseThreeData ? (
       <>
         <Separator />
@@ -727,54 +705,11 @@ function SummaryValue({ label, value }: { label: string; value: string }) {
   return <div className="min-w-0"><div className="text-[10px] text-muted-foreground">{label}</div><div className="mt-0.5 truncate font-medium tabular-nums" title={value}>{value}</div></div>
 }
 
-function InlineSummaryValue({ label, value }: { label: string; value: string }) {
-  return <div className="min-w-0 px-3 py-2 font-medium tabular-nums" title={`${label} ${value}`}>{label} {value}</div>
-}
-
 function PerformanceAssessmentBadge({ status, label }: { status: NonNullable<QuickPerformanceReport["slo_assessment"]>["status"]; label: string }) {
   return <Badge
     variant={status === "failed" ? "destructive" : "outline"}
     className={status === "passed" ? "border-success/25 bg-success-soft text-success-strong" : status === "not_evaluated" ? "border-warning/25 bg-warning-soft text-warning" : undefined}
   >{label}</Badge>
-}
-
-function CapacityRungTable({ report }: { report: QuickPerformanceReport }) {
-  const { t: tx } = useTranslation()
-  const capacity = report.capacity_result
-  if (!capacity) return null
-  const unit = report.profile.load_mode === "open_loop" ? "RPS" : tx("desktop:quick-test_concurrency")
-  return <ScrollArea className="mt-3">
-    <Table aria-label={tx("desktop:reports_capacity_ladder_results")} className="min-w-[1120px]">
-      <TableHeader><TableRow className="hover:bg-transparent">
-        <TableHead className="h-8 pl-3 text-[11px]">{tx("desktop:quick-test_step")}</TableHead>
-        <TableHead className="h-8 text-[11px]">{tx("desktop:reports_target")}</TableHead>
-        <TableHead className="h-8 text-[11px]">{tx("desktop:reports_transport")}</TableHead>
-        <TableHead className="h-8 text-[11px]">SLO</TableHead>
-        <TableHead className="h-8 text-[11px]">{tx("desktop:quick-test_good_requests")}</TableHead>
-        <TableHead className="h-8 text-[11px]">{tx("desktop:reports_compliance")}</TableHead>
-        <TableHead className="h-8 text-[11px]">Goodput</TableHead>
-        <TableHead className="h-8 text-[11px]">TTFT P95</TableHead>
-        <TableHead className="h-8 text-[11px]">TPOT P95</TableHead>
-        <TableHead className="h-8 text-[11px]">E2E P95</TableHead>
-        <TableHead className="h-8 pr-3 text-[11px]">{tx("desktop:reports_failure_reason")}</TableHead>
-      </TableRow></TableHeader>
-      <TableBody>{capacity.rungs.map((rung) => (
-        <TableRow key={rung.index} className="h-9">
-          <TableCell className="py-1 pl-3 text-xs tabular-nums">#{rung.index + 1}</TableCell>
-          <TableCell className="py-1 text-xs font-medium tabular-nums">{formatMetric(rung.target)} {unit}</TableCell>
-          <TableCell className="py-1 text-xs">{rung.success ? tx("desktop:quick-test_passed") : tx("desktop:quick-test_failed_301")}</TableCell>
-          <TableCell className="py-1 text-xs">{shortSLOStatus(rung.slo_assessment.status)}</TableCell>
-          <TableCell className="py-1 text-xs tabular-nums">{rung.slo_assessment.good_requests} / {rung.slo_assessment.total_requests}</TableCell>
-          <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.slo_assessment.good_request_percent)}%</TableCell>
-          <TableCell className="py-1 text-xs tabular-nums">{formatPerformanceInteger(rung.slo_assessment.goodput_qps)} req/s</TableCell>
-          <TableCell className="py-1 text-xs tabular-nums">{formatPerformanceInteger(rung.metrics.ttft_p95_ms)} ms</TableCell>
-          <TableCell className="py-1 text-xs tabular-nums">{formatPerformanceInteger(rung.metrics.tpot_p95_ms)} ms/token</TableCell>
-          <TableCell className="py-1 text-xs tabular-nums">{formatPerformanceInteger(rung.metrics.e2e_p95_ms)} ms</TableCell>
-          <TableCell className="py-1 pr-3 text-xs text-muted-foreground">{rung.failures.length ? rung.failures.map((failure) => `${translateExecutionError(failure.error_code)} ${failure.count}`).join(" · ") : "—"}</TableCell>
-        </TableRow>
-      ))}</TableBody>
-    </Table>
-  </ScrollArea>
 }
 
 function ContextValue({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
@@ -835,20 +770,6 @@ type QuickPerformanceReport = Extract<ReportDetail, { source: "quick_performance
 function performanceTargetRate(report: QuickPerformanceReport): string {
   const target = report.progress.capacity_target ?? report.profile.rate_per_second
   return report.profile.load_mode === "open_loop" && target !== undefined ? `${formatMetric(target)} req/s` : tx("desktop:quick-test_fixed_concurrency")
-}
-function formatSLOThresholds(thresholds: NonNullable<QuickPerformanceReport["slo_assessment"]>["thresholds"]): string {
-  const enabled = [
-    thresholds.ttft_ms > 0 ? `TTFT ≤ ${formatMetric(thresholds.ttft_ms)} ms` : "",
-    thresholds.tpot_ms > 0 ? `TPOT ≤ ${formatMetric(thresholds.tpot_ms)} ms/token` : "",
-    thresholds.e2e_ms > 0 ? `E2E ≤ ${formatMetric(thresholds.e2e_ms)} ms` : "",
-  ].filter(Boolean)
-  return enabled.join(" · ") || tx("desktop:reports_disabled")
-}
-function formatSLOViolations(violations: NonNullable<QuickPerformanceReport["slo_assessment"]>["violations"]): string {
-  return tx("desktop:reports_transport_value_ttft_value_tpot_value_e2e_value", { value1: violations.transport, value2: violations.ttft, value3: violations.tpot, value4: violations.e2e })
-}
-function shortSLOStatus(status: NonNullable<QuickPerformanceReport["slo_assessment"]>["status"]): string {
-  return status === "passed" ? tx("desktop:quick-test_passed") : status === "failed" ? tx("desktop:quick-test_failed_301") : tx("desktop:reports_not_evaluated")
 }
 function performanceArrivalPattern(report: QuickPerformanceReport): string {
   if (report.profile.arrival_pattern === "poisson") return tx("desktop:quick-test_poisson_arrivals")
