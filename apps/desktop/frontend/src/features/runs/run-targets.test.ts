@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { FIXTURE_CATALOG } from "./fixtures"
+import { FIXTURE_CATALOG } from "@/test/workspace-fixtures"
 import { eligibleRuntimeChannels, eligibleRuntimeModels } from "./run-targets"
 
 describe("protocol-only runtime bindings", () => {

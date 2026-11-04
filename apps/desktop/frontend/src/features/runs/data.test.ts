@@ -1,6 +1,6 @@
 import { expect, it } from "vitest"
 
-import { FIXTURE_WORKSPACE } from "./fixtures"
+import { FIXTURE_WORKSPACE } from "@/test/workspace-fixtures"
 import { presentWorkspace } from "./data"
 
 it("presents Suite observations without claiming a fixed request budget", () => {

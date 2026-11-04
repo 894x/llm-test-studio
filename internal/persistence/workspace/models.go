@@ -52,7 +52,10 @@ func (repository Catalog) DeleteModel(ctx context.Context, id string, expectedRe
 	return repository.withMutationLock(ctx, func(state *filesystemCatalogMutationState) error {
 		return repository.deleteModelUnlocked(ctx, state, id, expectedRevision)
 	}, func(verifyCtx context.Context) (bool, error) {
-		_, err := repository.GetModel(verifyCtx, id)
+		model, err := repository.GetModel(verifyCtx, id)
+		if err == nil && model.Builtin {
+			return true, nil
+		}
 		return catalogRecordIsMissing(err)
 	})
 }

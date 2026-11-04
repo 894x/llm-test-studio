@@ -1,10 +1,11 @@
+// Fixed unit-test scenarios; production preview loads file-authored built-ins.
 import { FIXTURE_PERFORMANCE_PLANS } from "@/features/catalog/builtin-performance-plans.fixture"
 import type {
   CoreRunStatus,
   WorkspacePlan,
   WorkspaceRun,
   WorkspaceSnapshot,
-} from "./data"
+} from "@/features/runs/data"
 import type { CatalogPlanEntry, CatalogSnapshot, CatalogTestCase } from "@/features/catalog/data"
 import type { ReportSnapshot } from "@/features/reports/data"
 

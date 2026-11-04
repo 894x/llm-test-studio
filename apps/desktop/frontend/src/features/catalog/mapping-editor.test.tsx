@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
-import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
+import { FIXTURE_CATALOG } from "@/test/workspace-fixtures"
 import { CatalogEditor } from "./catalog-editors"
 import type { CatalogActions } from "./data"
 

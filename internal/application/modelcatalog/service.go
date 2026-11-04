@@ -26,17 +26,26 @@ var (
 )
 
 type Service struct {
+	builtin  map[string]domain.Model
 	path     string
 	lockPath string
 	mu       sync.Mutex
 }
 
-func New(path string) (*Service, error) {
+type Option func(*Service) error
+
+func New(path string, options ...Option) (*Service, error) {
 	if strings.TrimSpace(path) == "" || !filepath.IsAbs(path) {
 		return nil, ErrInvalid
 	}
 	path = filepath.Clean(path)
-	return &Service{path: path, lockPath: path + ".lock"}, nil
+	service := &Service{path: path, lockPath: path + ".lock", builtin: map[string]domain.Model{}}
+	for _, option := range options {
+		if err := option(service); err != nil {
+			return nil, err
+		}
+	}
+	return service, nil
 }
 
 func (service *Service) List(ctx context.Context) ([]domain.Model, error) {
@@ -86,6 +95,7 @@ func (service *Service) Create(ctx context.Context, model domain.Model) error {
 				return ErrConflict
 			}
 		}
+		model.Builtin = false
 		models = append(models, cloneModel(model))
 		return service.save(ctx, models)
 	})
@@ -110,6 +120,7 @@ func (service *Service) Update(ctx context.Context, expectedRevision uint64, mod
 				return ErrConflict
 			}
 			models[index] = cloneModel(model)
+			models[index].Builtin = false
 			return service.save(ctx, models)
 		}
 		return ErrNotFound
@@ -131,6 +142,9 @@ func (service *Service) Delete(ctx context.Context, id string, expectedRevision 
 			if current.ID != id {
 				continue
 			}
+			if current.Builtin {
+				return ErrInvalid
+			}
 			if current.Revision != expectedRevision {
 				return ErrConflict
 			}
@@ -147,7 +161,7 @@ func (service *Service) load(ctx context.Context) ([]domain.Model, error) {
 	}
 	raw, err := os.ReadFile(service.path)
 	if errors.Is(err, os.ErrNotExist) {
-		return []domain.Model{}, nil
+		raw, err = []byte("[]"), nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read model catalog: %w", err)
@@ -171,6 +185,11 @@ func (service *Service) load(ctx context.Context) ([]domain.Model, error) {
 		}
 		seen[model.ID] = struct{}{}
 	}
+	for id, model := range service.builtin {
+		if _, overridden := seen[id]; !overridden {
+			models = append(models, cloneModel(model))
+		}
+	}
 	sort.Slice(models, func(left, right int) bool {
 		if models[left].CreatedAt.Equal(models[right].CreatedAt) {
 			return models[left].ID < models[right].ID
@@ -181,7 +200,13 @@ func (service *Service) load(ctx context.Context) ([]domain.Model, error) {
 }
 
 func (service *Service) save(ctx context.Context, models []domain.Model) error {
-	raw, err := json.MarshalIndent(models, "", "  ")
+	userModels := make([]domain.Model, 0, len(models))
+	for _, model := range models {
+		if !model.Builtin {
+			userModels = append(userModels, model)
+		}
+	}
+	raw, err := json.MarshalIndent(userModels, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode model catalog: %w", err)
 	}

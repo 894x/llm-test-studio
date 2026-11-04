@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { connectionURLHint, resolveConnectionURL, taskConnectionURLs } from "./connection-url"
-import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
+import { FIXTURE_CATALOG } from "@/test/workspace-fixtures"
 
 describe("connectionURLHint", () => {
   it("accepts remote HTTP base and full URLs", () => {

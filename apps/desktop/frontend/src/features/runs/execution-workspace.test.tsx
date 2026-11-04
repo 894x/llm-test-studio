@@ -6,7 +6,7 @@ import { EMPTY_REPORTS } from "@/features/reports/data"
 import { controlFixture, executionClient, jobFixture, JOB_ID, REPORT_ID, submissionFixture } from "@/test/jobs-fixture"
 import type { QuickPerformanceReport } from "@/features/quick-test/data"
 import { RunWorkspace } from "./execution-workspace"
-import { FIXTURE_WORKSPACE, FIXTURE_REPORTS } from "./fixtures"
+import { FIXTURE_WORKSPACE, FIXTURE_REPORTS } from "@/test/workspace-fixtures"
 import type { WorkspaceSnapshot } from "./data"
 
 const empty: WorkspaceSnapshot = { schema_version: 1, plans: [], runs: [] }

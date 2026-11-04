@@ -246,7 +246,8 @@ func (service *Service) buildSnapshot(
 			return Snapshot{}, err
 		}
 		snapshot.Models = append(snapshot.Models, ModelSummary{
-			ID: model.ID, Revision: model.Revision, Name: model.Name, Protocols: append([]domain.Protocol{}, model.Protocols...),
+			Builtin: model.Builtin,
+			ID:      model.ID, Revision: model.Revision, Name: model.Name, Protocols: append([]domain.Protocol{}, model.Protocols...),
 			Capabilities: append([]string{}, model.Capabilities...),
 		})
 	}

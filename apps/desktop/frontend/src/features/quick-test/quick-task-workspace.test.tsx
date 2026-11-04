@@ -4,7 +4,7 @@ import { useState } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { createAppI18n } from "@/i18n/i18n"
-import { FIXTURE_CATALOG, FIXTURE_WORKSPACE, FIXTURE_REPORTS } from "@/features/runs/fixtures"
+import { FIXTURE_CATALOG, FIXTURE_WORKSPACE, FIXTURE_REPORTS } from "@/test/workspace-fixtures"
 import { createTaskDraft, type TaskDraft } from "./task-draft"
 import { QuickTaskWorkspace, type QuickTaskJobEntry } from "./quick-task-workspace"
 import { controlFixture, executionClient, jobFixture, submissionFixture } from "@/test/jobs-fixture"
@@ -376,14 +376,17 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("combobox", { name: "测试任务" }))
     expect(screen.queryByRole("option", { name: /连通性测试/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole("option", { name: plan.name }))
-    expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(500)
-    expect(screen.getByLabelText("并发数", { exact: true })).toHaveValue(40)
+    expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(original!.request_count)
+    expect(screen.getByLabelText("目标发送 RPS", { exact: true })).toHaveValue(original!.rate_per_second)
     expect(screen.getByLabelText("时间切片（秒）")).toHaveValue(5)
     expect(screen.getByRole("checkbox", { name: "随机输入" })).toBeChecked()
     await user.clear(screen.getByLabelText("请求数", { exact: true }))
     await user.type(screen.getByLabelText("请求数", { exact: true }), "37")
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
-    expect(actions.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({ request_count: 37, concurrency: 40, random_input: true })))
+    expect(actions.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
+      request_count: 37, load_mode: "open_loop", concurrency: 0,
+      rate_per_second: original!.rate_per_second, random_input: true,
+    })))
     expect(actions.launchJob.mock.calls[0][0].performance).not.toHaveProperty("task")
     expect(plan.performance).toEqual(original)
     await screen.findAllByText(/快速性能测试暂不可用/)

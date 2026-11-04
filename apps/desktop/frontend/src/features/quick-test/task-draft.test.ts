@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
+import { FIXTURE_CATALOG } from "@/test/workspace-fixtures"
 import { FILE_SUITE, FILE_SELECTION } from "@/test/local-file-fixture"
 import { DesktopDataError } from "@/app/data-error"
 import {

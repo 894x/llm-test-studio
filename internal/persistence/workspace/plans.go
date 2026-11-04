@@ -82,7 +82,10 @@ func (repository Catalog) DeletePlan(ctx context.Context, id string, expectedRev
 	return repository.withMutationLock(ctx, func(state *filesystemCatalogMutationState) error {
 		return state.write(func() error { return mapFileCatalogError(repository.Plans.Delete(ctx, id, expectedRevision)) })
 	}, func(verifyCtx context.Context) (bool, error) {
-		_, err := repository.GetPlan(verifyCtx, id)
+		plan, err := repository.GetPlan(verifyCtx, id)
+		if err == nil && plan.Builtin {
+			return true, nil
+		}
 		return catalogRecordIsMissing(err)
 	})
 }

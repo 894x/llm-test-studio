@@ -125,6 +125,7 @@ func (document Document) Validate() error {
 type Service struct {
 	cache    fileconfig.ParsedCache[Document]
 	builtin  map[string]Document
+	defaults map[string]Document
 	root     string
 	lockPath string
 	mu       sync.Mutex
@@ -134,6 +135,16 @@ type Option func(*Service) error
 
 // WithBuiltin adds immutable authored plans to the same catalog as user plans.
 func WithBuiltin(bundle fs.FS) Option {
+	return withBundle(bundle, false)
+}
+
+// WithDefaults supplies file-authored defaults while preserving user documents
+// with the same identity. Existing performance presets keep their reserved IDs.
+func WithDefaults(bundle fs.FS) Option {
+	return withBundle(bundle, true)
+}
+
+func withBundle(bundle fs.FS, overridable bool) Option {
 	return func(service *Service) error {
 		if bundle == nil {
 			return ErrInvalid
@@ -156,6 +167,16 @@ func WithBuiltin(bundle fs.FS) Option {
 				return err
 			}
 			document.Builtin = true
+			if _, duplicate := service.builtin[id]; duplicate {
+				return fmt.Errorf("%w: duplicate built-in plan %q", ErrCorrupt, id)
+			}
+			if _, duplicate := service.defaults[id]; duplicate {
+				return fmt.Errorf("%w: duplicate default plan %q", ErrCorrupt, id)
+			}
+			if overridable {
+				service.defaults[id] = document
+				continue
+			}
 			service.builtin[id] = document
 		}
 		return nil
@@ -167,7 +188,10 @@ func New(root string, options ...Option) (*Service, error) {
 		return nil, ErrInvalid
 	}
 	root = filepath.Clean(root)
-	service := &Service{root: root, lockPath: root + ".lock", builtin: map[string]Document{}}
+	service := &Service{
+		root: root, lockPath: root + ".lock",
+		builtin: map[string]Document{}, defaults: map[string]Document{},
+	}
 	for _, option := range options {
 		if err := option(service); err != nil {
 			return nil, err
@@ -390,6 +414,11 @@ func (service *Service) loadAllProjected(ctx context.Context, project func(Docum
 		seen[document.ID] = struct{}{}
 		documents = append(documents, document)
 	}
+	for id, document := range service.defaults {
+		if _, overridden := seen[id]; !overridden {
+			documents = append(documents, project(document))
+		}
+	}
 	sort.Slice(documents, func(left, right int) bool {
 		if documents[left].CreatedAt.Equal(documents[right].CreatedAt) {
 			return documents[left].ID < documents[right].ID
@@ -415,6 +444,9 @@ func (service *Service) loadOneProjected(ctx context.Context, id string, project
 	}
 	raw, err := os.ReadFile(service.path(id))
 	if errors.Is(err, os.ErrNotExist) {
+		if document, exists := service.defaults[id]; exists {
+			return project(document), nil
+		}
 		return Document{}, ErrNotFound
 	}
 	if err != nil {

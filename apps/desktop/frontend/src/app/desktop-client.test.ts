@@ -5,7 +5,7 @@ import {
   FIXTURE_CATALOG,
   FIXTURE_REPORTS,
   FIXTURE_WORKSPACE,
-} from "@/features/runs/fixtures"
+} from "@/test/workspace-fixtures"
 import { EMPTY_COMPARISONS } from "@/features/comparisons/data"
 import { parseQuickPerformanceReport } from "@/features/quick-test/data"
 

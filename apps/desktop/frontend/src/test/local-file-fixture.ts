@@ -1,6 +1,6 @@
 import type { CatalogSnapshot, CatalogSuite, CatalogTestCase, FileSuiteInput } from "@/features/catalog/data"
 import type { LocalFileSelection } from "@/app/desktop-client"
-import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
+import { FIXTURE_CATALOG } from "@/test/workspace-fixtures"
 
 export const FILE_INPUT: FileSuiteInput = {
   key: "image", label: "测试图片", type: "file", required: true,

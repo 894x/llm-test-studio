@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
+import { FIXTURE_CATALOG } from "@/test/workspace-fixtures"
 import { parseCatalogSnapshot, parseSuiteInput, selectCatalog } from "./data"
 import { FILE_CATALOG, FILE_INPUT } from "@/test/local-file-fixture"
 

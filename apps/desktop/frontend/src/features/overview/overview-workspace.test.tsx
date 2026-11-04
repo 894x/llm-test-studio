@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
-import { FIXTURE_CATALOG, FIXTURE_REPORTS, FIXTURE_WORKSPACE } from "@/features/runs/fixtures"
+import { FIXTURE_CATALOG, FIXTURE_REPORTS, FIXTURE_WORKSPACE } from "@/test/workspace-fixtures"
 import { EMPTY_WORKSPACE } from "@/features/runs/data"
 import { OverviewWorkspace, type OverviewDestination } from "./overview-workspace"
 

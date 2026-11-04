@@ -16,7 +16,7 @@ import {
   FIXTURE_CATALOG,
   FIXTURE_REPORTS,
   FIXTURE_WORKSPACE,
-} from "./features/runs/fixtures"
+} from "@/test/workspace-fixtures"
 import type { WorkspaceSnapshot } from "./features/runs/data"
 import { selectCatalog, type CatalogScope } from "./features/catalog/data"
 import type { ReportSnapshot } from "./features/reports/data"

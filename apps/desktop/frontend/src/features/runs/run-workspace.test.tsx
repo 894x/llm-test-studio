@@ -8,7 +8,7 @@ import { executionClient } from "@/test/jobs-fixture"
 
 import { NewRunSheet } from "./run-workspace"
 import { RunWorkspace } from "./execution-workspace"
-import { FIXTURE_WORKSPACE, FIXTURE_CATALOG } from "./fixtures"
+import { FIXTURE_WORKSPACE, FIXTURE_CATALOG } from "@/test/workspace-fixtures"
 
 beforeEach(() => {
   const media = window.matchMedia("(min-width: 1180px)")

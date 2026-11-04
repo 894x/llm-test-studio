@@ -86,13 +86,13 @@ export function DeleteCatalogButton({
   kind, item, action, mutate, pending,
 }: {
   kind: CatalogEntityKind
-  item?: { id: string; revision: number }
+  item?: { id: string; revision: number; builtin?: boolean }
   action: (command: DeleteCommand) => Promise<CatalogSnapshot>
   mutate: CatalogMutation
   pending: boolean
 }) {
   const { t } = useTranslation("catalog")
-  if (!item) return null
+  if (!item || item.builtin) return null
   const noun = t(`editor.noun.${kind}`)
   return (
     <AlertDialog>
@@ -147,6 +147,7 @@ function ModelForm({ item, catalog, actions, mutate, pending, formTitle, onSaved
     await mutate(() => item ? actions.updateModel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createModel(command), t("editor.savedOperation", { title: formTitle })); onSaved()
   }}>
     <TextField label={t("editor.fields.modelName")} value={name} onChange={setName} />
+    {item?.builtin ? <FieldDescription>{t("models.builtinOverrideHint")}</FieldDescription> : null}
     <Field className="block space-y-2"><FieldLabel>{t("protocolDesign.supportedProtocols")}</FieldLabel><FieldDescription>{t("editor.fields.modelProtocolsHint")}</FieldDescription>
       <div className="grid grid-cols-2 gap-2">{protocolOptions.map(([value, label]) => <CheckField key={value} label={label}
         checked={protocols.includes(value)} disabled={pending || usedProtocols.has(value) || (protocols.length === 1 && protocols.includes(value))}

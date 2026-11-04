@@ -15,8 +15,11 @@ describe("performance parameter clipboard format", () => {
     expect(performanceProfileFromForm(parsePerformanceParameters(JSON.stringify(enabled)))).toEqual(enabled)
     expect(() => parsePerformanceParameters(JSON.stringify({ ...profile, affinity_enabled: "yes" }))).toThrow()
   })
-  it.each(FIXTURE_PERFORMANCE_PLANS)("round trips $name ($protocol)", plan => {
-    const parameters = performanceProfileFromForm(performanceFormFromProfile(plan.performance))
+  it.each(FIXTURE_PERFORMANCE_PLANS.flatMap(plan =>
+    plan.entries.map(entry => ({ ...entry, protocol: plan.protocol })),
+  ))("round trips $name ($protocol)", entry => {
+    expect(entry.performance).toBeDefined()
+    const parameters = performanceProfileFromForm(performanceFormFromProfile(entry.performance))
     const imported = parsePerformanceParameters(JSON.stringify(parameters, null, 2))
     expect(performanceProfileFromForm(imported)).toEqual(parameters)
   })

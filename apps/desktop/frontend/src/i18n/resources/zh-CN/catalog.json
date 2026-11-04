@@ -56,6 +56,7 @@
     "requestCount": "{{count}} 个请求"
   },
   "models": {
+    "builtinOverrideHint": "编辑后保存为本地覆盖；删除本地覆盖后恢复内置默认。",
     "title": "模型与渠道",
     "description": "管理逻辑模型、调用渠道与上游模型映射",
     "count": "{{models}} 个模型 · {{channels}} 个渠道",

@@ -56,6 +56,7 @@
     "requestCount": "{{count}} requests"
   },
   "models": {
+    "builtinOverrideHint": "Editing saves a local override. Removing that override restores the built-in default.",
     "title": "Models & Channels",
     "description": "Manage logical models, provider channels, and upstream model mappings",
     "count": "{{models}} models · {{channels}} channels",

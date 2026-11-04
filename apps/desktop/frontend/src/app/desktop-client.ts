@@ -8,7 +8,7 @@ import { EMPTY_REMOTE_NODES, parseRemoteNodes, parseRemoteNodeUpgrade, parseNull
   type RemoteNodeAction, type RemoteNodeTaskConcurrencyCommand, type HostKeyConfirmation, type DefaultExecutionCommand } from "@/features/remote-nodes/data"
 import { parseQuickTaskDetail, type QuickTaskDetail, type RememberQuickTaskCredentialCommand } from "@/features/quick-test/task-draft"
 import { translateDesktop as tx } from "@/i18n/runtime"
-import { type WorkspaceSnapshot } from "@/features/runs/data"
+import { EMPTY_WORKSPACE, type WorkspaceSnapshot } from "@/features/runs/data"
 import {
   EMPTY_COMPARISONS,
   parseComparisonSnapshot,
@@ -501,7 +501,9 @@ export function createFixtureClient(
       return structuredClone(catalogState)
     },
     async saveQuickTestTarget(command) {
-      const matches = catalogState.models.filter(model => model.name === command.model_name)
+      const namedModels = catalogState.models.filter(model => model.name === command.model_name)
+      const userModels = namedModels.filter(model => !model.builtin)
+      const matches = userModels.length > 0 ? userModels : namedModels
       if (matches.length > 1) throw new DesktopClientError("catalog_revision_conflict")
       let model = matches[0]
       if (!model) {
@@ -510,6 +512,7 @@ export function createFixtureClient(
       } else if (!model.protocols.includes(command.protocol)) {
         model.protocols.push(command.protocol)
         model.revision += 1
+        delete model.builtin
       }
       const channelID = nextID()
       catalogState.channels.push({ id: channelID, revision: 1, name: command.name, base_url: command.base_url, enabled: true, credential_configured: true, model_count: 1 })
@@ -610,9 +613,8 @@ export function createFixtureClient(
 }
 
 function createLazyFixtureClient(): DesktopClient {
-  const client = import("@/features/runs/fixtures").then(
-    ({ FIXTURE_CATALOG, FIXTURE_REPORTS, FIXTURE_WORKSPACE }) =>
-      createFixtureClient(FIXTURE_WORKSPACE, FIXTURE_CATALOG, FIXTURE_REPORTS),
+  const client = import("@/features/catalog/builtin-catalog.fixture").then(
+    ({ BUILTIN_CATALOG }) => createFixtureClient(EMPTY_WORKSPACE, BUILTIN_CATALOG, EMPTY_REPORTS),
   )
   return {
     previewHistoryRecycle: async target => (await client).previewHistoryRecycle(target),

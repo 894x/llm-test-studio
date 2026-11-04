@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { getI18n } from "react-i18next"
 import { describe, expect, it, vi } from "vitest"
 
-import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
+import { FIXTURE_CATALOG } from "@/test/workspace-fixtures"
 import { CasesWorkspace, ModelChannelWorkspace, PlansWorkspace } from "./catalog-workspaces"
 import { EMPTY_CATALOG, type CatalogActions } from "./data"
 

@@ -33,14 +33,9 @@ func (service *Service) SaveTarget(ctx context.Context, command catalog.SaveQuic
 		if err != nil {
 			return err
 		}
-		var original domain.Model
-		for _, model := range models {
-			if model.Name == command.ModelName {
-				if original.ID != "" {
-					return fmt.Errorf("model name is ambiguous: %w", catalog.ErrConflict)
-				}
-				original = model
-			}
+		original, err := selectTargetModel(models, command.ModelName)
+		if err != nil {
+			return err
 		}
 		model := original
 		changed := original.ID == "" || !original.SupportsProtocol(command.Protocol)
@@ -106,4 +101,23 @@ func (service *Service) SaveTarget(ctx context.Context, command catalog.SaveQuic
 		return err
 	})
 	return result, err
+}
+
+func selectTargetModel(models []domain.Model, name string) (domain.Model, error) {
+	for _, builtin := range []bool{false, true} {
+		var selected domain.Model
+		for _, model := range models {
+			if model.Name != name || model.Builtin != builtin {
+				continue
+			}
+			if selected.ID != "" {
+				return domain.Model{}, fmt.Errorf("model name is ambiguous: %w", catalog.ErrConflict)
+			}
+			selected = model
+		}
+		if selected.ID != "" {
+			return selected, nil
+		}
+	}
+	return domain.Model{}, nil
 }

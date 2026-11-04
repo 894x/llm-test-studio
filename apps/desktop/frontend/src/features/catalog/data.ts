@@ -24,6 +24,7 @@ export interface CatalogCaseReference {
 }
 
 export interface CatalogModel {
+  builtin?: boolean
   id: string
   revision: number
   name: string
@@ -281,6 +282,7 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
 function parseModel(value: unknown): CatalogModel {
   if (
     !isRecord(value) ||
+    (value.builtin !== undefined && typeof value.builtin !== "boolean") ||
     !isUUID(value.id) ||
     !isPositiveInteger(value.revision) ||
     !isNonBlank(value.name) ||
@@ -297,6 +299,7 @@ function parseModel(value: unknown): CatalogModel {
     name: value.name,
     protocols: [...value.protocols] as CatalogProtocol[],
     capabilities: [...value.capabilities],
+    ...(value.builtin === undefined ? {} : { builtin: value.builtin }),
   }
 }
 

@@ -1,7 +1,7 @@
 import { Activity, type ReactNode } from "react"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
-import { FIXTURE_WORKSPACE } from "./fixtures"
+import { FIXTURE_WORKSPACE } from "@/test/workspace-fixtures"
 import { useRunHistory } from "./use-run-history"
 import type { RunHistoryPage } from "@/app/desktop-client"
 

@@ -396,7 +396,7 @@ function ModelTable({
                   className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs [overflow-wrap:anywhere] no-underline hover:no-underline"
                   aria-label={t("models.viewModel", { name: model.name })}
                 >
-                  {model.name}
+                  {model.name}{model.builtin ? <span className="ml-2 text-[10px] text-muted-foreground">{t("plans.builtin")}</span> : null}
                 </Button>
               </TableCell>
               <TableCell className="py-1 text-xs">{model.protocols.map(value => PROTOCOL_LABELS[value]).join(" · ")}</TableCell>

@@ -13,23 +13,16 @@ import (
 	bridge "github.com/894x/llm-test-studio/apps/desktop/internal/bridge"
 	native "github.com/894x/llm-test-studio/apps/desktop/internal/native"
 	casebundle "github.com/894x/llm-test-studio/data/cases"
-	"github.com/894x/llm-test-studio/data/performanceplans"
-	suitebundle "github.com/894x/llm-test-studio/data/suites"
-	"github.com/894x/llm-test-studio/internal/application/casecatalog"
 	"github.com/894x/llm-test-studio/internal/application/catalog"
-	"github.com/894x/llm-test-studio/internal/application/channelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/channelconfig"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
 	"github.com/894x/llm-test-studio/internal/application/historyrecycle"
 	"github.com/894x/llm-test-studio/internal/application/jobs"
-	"github.com/894x/llm-test-studio/internal/application/modelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/overview"
-	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/quickhistory"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/runs"
-	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
@@ -109,45 +102,15 @@ func newInitializer(options Options, acquiredOwnership *fileconfig.ExclusiveLock
 		}
 		executableDirectory := filepath.Dir(executable)
 		dataDirectory := filepath.Join(executableDirectory, "data")
-		modelFiles, err := modelcatalog.New(filepath.Join(dataDirectory, "models.json"))
+		suiteFiles := options.SuiteBundle
+		if isNilInterface(suiteFiles) {
+			suiteFiles = nil
+		}
+		catalogRepository, err := workspacestore.OpenCatalog(dataDirectory, workspacestore.CatalogOptions{
+			Cases: bundle, Suites: suiteFiles,
+		})
 		if err != nil {
-			return bridge.Dependencies{}, fmt.Errorf("create filesystem model catalog: %w", err)
-		}
-		channelFiles, err := channelcatalog.New(filepath.Join(dataDirectory, "channels.json"))
-		if err != nil {
-			return bridge.Dependencies{}, fmt.Errorf("create filesystem channel catalog: %w", err)
-		}
-		planFiles, err := plancatalog.New(
-			filepath.Join(dataDirectory, "plans"),
-			plancatalog.WithBuiltin(performanceplans.Bundle),
-		)
-		if err != nil {
-			return bridge.Dependencies{}, fmt.Errorf("create filesystem plan catalog: %w", err)
-		}
-		userCaseRoot, err := casecatalog.UserRootForExecutable(executable)
-		if err != nil {
-			return bridge.Dependencies{}, fmt.Errorf("locate executable case directory: %w", err)
-		}
-		caseFiles, err := casecatalog.New(casecatalog.Options{Builtin: bundle, UserRoot: userCaseRoot})
-		if err != nil {
-			return bridge.Dependencies{}, fmt.Errorf("create filesystem case catalog: %w", err)
-		}
-		suiteBundleFS := options.SuiteBundle
-		if isNilInterface(suiteBundleFS) {
-			suiteBundleFS = suitebundle.Bundle
-		}
-		userSuiteRoot, err := suitecatalog.UserRootForExecutable(executable)
-		if err != nil {
-			return bridge.Dependencies{}, fmt.Errorf("locate executable suite directory: %w", err)
-		}
-		suiteFiles, err := suitecatalog.New(suitecatalog.Options{Builtin: suiteBundleFS, UserRoot: userSuiteRoot})
-		if err != nil {
-			return bridge.Dependencies{}, fmt.Errorf("create filesystem suite catalog: %w", err)
-		}
-		catalogRepository := workspacestore.Catalog{
-			LockPath: filepath.Join(dataDirectory, ".llm-test-studio-authored-catalog.lock"),
-			Models:   modelFiles, Channels: channelFiles,
-			Cases: caseFiles, Suites: suiteFiles, Plans: planFiles,
+			return bridge.Dependencies{}, err
 		}
 		baseCredentialStore := options.CredentialStore
 		if isNilInterface(baseCredentialStore) {

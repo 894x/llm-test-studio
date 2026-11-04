@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,6 +15,8 @@ import (
 
 	bridge "github.com/894x/llm-test-studio/apps/desktop/internal/bridge"
 	native "github.com/894x/llm-test-studio/apps/desktop/internal/native"
+	builtinbundle "github.com/894x/llm-test-studio/data"
+	"github.com/894x/llm-test-studio/data/performanceplans"
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
@@ -175,8 +178,16 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	if err != nil {
 		t.Fatalf("query initialized workspace: %v", err)
 	}
-	if snapshot.SchemaVersion != workspace.CurrentSchemaVersion || len(snapshot.Plans) != 18 || len(snapshot.Runs) != 0 {
-		t.Fatalf("initialized workspace = %+v, want 18 built-in plans and no runs in schema v%d", snapshot, workspace.CurrentSchemaVersion)
+	wantPlans := discoveredBuiltinPlanCount(t)
+	validWorkspace := snapshot.SchemaVersion == workspace.CurrentSchemaVersion
+	validCounts := len(snapshot.Plans) == wantPlans && len(snapshot.Runs) == 0
+	if !validWorkspace || !validCounts {
+		t.Fatalf(
+			"initialized workspace has %d plans and %d runs, want %d plans and no runs",
+			len(snapshot.Plans),
+			len(snapshot.Runs),
+			wantPlans,
+		)
 	}
 	if _, err := dependencies.Query.Snapshot(context.Background()); err != nil {
 		t.Fatalf("query initialized workspace repeatedly: %v", err)
@@ -185,10 +196,12 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	if err != nil {
 		t.Fatalf("query initialized catalog: %v", err)
 	}
-	emptyBindings := len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+
-		len(catalogSnapshot.ChannelModels) == 0 && len(catalogSnapshot.Plans) == 18
+	emptyBindings := len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels) == 0
+	validDefaultCounts := len(catalogSnapshot.Models) > 0 && len(catalogSnapshot.Plans) == wantPlans
 	validCatalogCounts := len(catalogSnapshot.TestCases) == 1085 && len(catalogSnapshot.Suites) == 78
-	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion || !emptyBindings || !validCatalogCounts {
+	validCatalog := catalogSnapshot.SchemaVersion == catalog.CurrentSnapshotSchemaVersion &&
+		emptyBindings && validDefaultCounts && validCatalogCounts
+	if !validCatalog {
 		t.Fatalf(
 			"initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, "+
 				"want 1085 file-backed cases and 78 scenario suites",
@@ -288,11 +301,12 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		t.Fatalf("case counts across restart = %d/%d, want 1085/1085", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
 	validSuiteCounts := len(firstSnapshot.Suites) == 78 && len(secondSnapshot.Suites) == 78
-	builtinPlans := len(firstSnapshot.Plans) == 18 && len(secondSnapshot.Plans) == 18
+	wantPlans := discoveredBuiltinPlanCount(t)
+	builtinPlans := len(firstSnapshot.Plans) == wantPlans && len(secondSnapshot.Plans) == wantPlans
 	if !validSuiteCounts || !builtinPlans {
 		t.Fatalf(
 			"suite/plan counts across restart = %d/%d suites, %d/%d plans, "+
-				"want 78 scenario suites and 18 built-in performance plans",
+				"want 78 scenario suites and every discovered built-in plan",
 			len(firstSnapshot.Suites),
 			len(secondSnapshot.Suites),
 			len(firstSnapshot.Plans),
@@ -853,4 +867,17 @@ func assertProductionOperationalSchemaV1(t *testing.T, database string) {
 
 func productionCaseDocument(name string) string {
 	return `{"schema_version":2,"id":"062b66ef-8d2e-59a1-95cb-dadf03dfe264","key":"T001","name":"` + name + `","dimension":"boundary","enabled":true,"default":false,"severity":"normal","execution_mode":"automatic","definitions":{"openai-chat":{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[]}}}`
+}
+
+func discoveredBuiltinPlanCount(t *testing.T) int {
+	t.Helper()
+	performance, err := fs.Glob(performanceplans.Bundle, "*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	functional, err := fs.Glob(builtinbundle.Bundle, "plans/*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(performance) + len(functional)
 }

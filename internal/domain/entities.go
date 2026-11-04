@@ -63,6 +63,7 @@ func (ref CaseRevisionRef) Validate() error {
 
 type Model struct {
 	EntityMeta
+	Builtin      bool       `json:"-"`
 	Name         string     `json:"name"`
 	Protocols    []Protocol `json:"protocols"`
 	Capabilities []string   `json:"capabilities,omitempty"`
