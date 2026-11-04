@@ -272,7 +272,7 @@
   },
   "inspector": {
     "source": "Source",
-    "quickPerformance": "Quick performance test",
+    "quickPerformance": "Performance test",
     "planExecution": "Plan execution",
     "run": "Run",
     "plan": "Test plan",
@@ -303,7 +303,7 @@
     "failed": "Failed"
   },
   "system": {
-    "quickPerformance": "Quick performance test",
+    "quickPerformance": "Performance test",
     "quickPassed": "All requests passed",
     "quickFailed": "Performance test failed",
     "passed": "Passed",

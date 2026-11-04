@@ -24,6 +24,16 @@ export interface StartRunTargetCommand {
   model_id: string
   channel_id: string
   case_concurrency?: number
+  connection?: PlanRunConnection
+}
+
+export interface PlanRunConnection {
+  protocol: import("@/features/catalog/data").CatalogProtocol
+  model: string
+  channel_id?: string
+  base_url?: string
+  api_key?: string
+  credential_run_id?: string
 }
 
 export interface StartQuickTaskCommand {

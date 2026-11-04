@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net/url"
 	"strings"
 	"time"
 	"unicode"
@@ -92,65 +91,19 @@ func (service *Preparer) BuildQuickTask(
 	if err != nil {
 		return PreparedRun{}, nil, err
 	}
-	modelMeta, err := domain.NewEntityMeta(now)
+	connection := ConnectionCommand{
+		Protocol: suite.Protocol, Model: command.Model, ChannelID: command.ChannelID,
+		BaseURL: command.BaseURL, APIKey: command.APIKey, CredentialRunID: command.CredentialRunID,
+	}
+	model, channel, mapping, err := service.resolveRunConnection(ctx, connection)
 	if err != nil {
 		return PreparedRun{}, nil, err
-	}
-	channelMeta, err := domain.NewEntityMeta(now)
-	if err != nil {
-		return PreparedRun{}, nil, err
-	}
-	channel := domain.Channel{EntityMeta: channelMeta, BaseURL: command.BaseURL, Enabled: true}
-	if command.ChannelID != "" {
-		channel, err = service.quickTasks.GetChannel(ctx, command.ChannelID)
-		if err != nil {
-			return PreparedRun{}, nil, fmt.Errorf("load quick task channel: %w", err)
-		}
-		usableChannel := channel.ID == command.ChannelID && channel.Enabled && channel.CredentialID != ""
-		if !usableChannel || channel.Validate() != nil {
-			return PreparedRun{}, nil, ErrNotRunnable
-		}
-		mappings, err := service.quickTasks.ListChannelModels(ctx)
-		if err != nil {
-			return PreparedRun{}, nil, fmt.Errorf("load quick task mappings: %w", err)
-		}
-		knownModel := false
-		supported := false
-		for _, mapping := range mappings {
-			if mapping.ChannelID != channel.ID || mapping.UpstreamModelName != command.Model {
-				continue
-			}
-			if mapping.Validate() != nil {
-				return PreparedRun{}, nil, ErrNotRunnable
-			}
-			knownModel = true
-			supported = supported || mapping.SupportsProtocol(suite.Protocol)
-		}
-		if knownModel && !supported {
-			return PreparedRun{}, nil, ErrNotRunnable
-		}
-	} else {
-		if len(command.BaseURL) > 4096 || (command.CredentialRunID == "" && !validQuickTaskAPIKey(command.APIKey)) {
-			return PreparedRun{}, nil, ErrInvalid
-		}
-		endpoint, err := url.Parse(command.BaseURL)
-		if err != nil {
-			return PreparedRun{}, nil, ErrInvalid
-		}
-		channel.Name = endpoint.Host
-		if channel.Validate() != nil {
-			return PreparedRun{}, nil, ErrNotRunnable
-		}
 	}
 	load := domain.LoadProfile{
 		Mode: domain.LoadSingle, Concurrency: min(caseConcurrency, uint32(len(cases))),
 		RequestCount: 1, RequestTimeoutMS: timeout,
 	}
 	sla := domain.SLAProfile{Thresholds: map[string]float64{}}
-	mapping := domain.ChannelModel{
-		EntityMeta: modelMeta, ModelID: modelMeta.ID, ChannelID: channel.ID,
-		Protocols: []domain.Protocol{suite.Protocol}, UpstreamModelName: command.Model,
-	}
 	entry := domain.RunEntrySnapshot{
 		EntryID: meta.ID, TargetKind: domain.PlanTargetSuite, TargetID: suite.ID,
 		Name: suite.Name, Key: suite.Key, Suite: &suite,
@@ -172,7 +125,7 @@ func (service *Preparer) BuildQuickTask(
 		Plan:          domain.EntityRevisionRef{ID: meta.ID, Revision: meta.Revision},
 		PlanDocument:  &plan, Mapping: &mapping,
 		Model: domain.ModelSnapshot{
-			EntityRevisionRef: domain.EntityRevisionRef{ID: modelMeta.ID, Revision: modelMeta.Revision},
+			EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: model.Revision},
 			Name:              command.Model, Protocol: suite.Protocol,
 		},
 		Channel: domain.ChannelSnapshot{
@@ -192,20 +145,7 @@ func (service *Preparer) BuildQuickTask(
 	if err := ctx.Err(); err != nil {
 		return PreparedRun{}, nil, err
 	}
-	var lease *credentials.Lease
-	if command.ChannelID != "" {
-		ref, refErr := credentials.NewStoreRef(domain.CredentialChannelAPIKey, channel.CredentialID)
-		if refErr != nil {
-			return PreparedRun{}, nil, ErrNotRunnable
-		}
-		lease, err = service.credentials.Get(ctx, ref)
-	} else if command.CredentialRunID != "" {
-		lease, err = service.LeaseQuickTaskCredential(ctx, command.CredentialRunID, channel.BaseURL, suite.Protocol)
-	} else {
-		secret := []byte(command.APIKey)
-		lease, err = credentials.NewTemporaryLease(secret)
-		clear(secret)
-	}
+	lease, err := service.leaseRunConnection(ctx, channel, connection)
 	if err != nil {
 		return PreparedRun{}, nil, fmt.Errorf("lease quick task credential: %w", err)
 	}

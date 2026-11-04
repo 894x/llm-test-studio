@@ -208,7 +208,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const client = executionClient(successfulPerformanceReport())
     render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} client={client} />)
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     const randomInput = within(dialog).getByRole("checkbox", { name: "随机输入" })
     expect(randomInput).not.toBeChecked()
     await user.click(randomInput)
@@ -275,10 +275,10 @@ describe("QuickPerformanceSheet", () => {
       .mockRejectedValueOnce(new DesktopClientError("operation_cancelled"))
       .mockRejectedValueOnce(new DesktopClientError("quick_test_unavailable"))
     render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} client={client} />)
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     expect(await within(dialog).findByText("操作已取消")).toBeInTheDocument()
-    expect(within(dialog).queryByText("快速性能测试暂不可用，请检查本地日志")).not.toBeInTheDocument()
+    expect(within(dialog).queryByText("性能测试暂不可用，请检查本地日志")).not.toBeInTheDocument()
 
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     expect(await within(dialog).findByText("快速测试暂不可用")).toBeInTheDocument()
@@ -301,7 +301,7 @@ describe("QuickPerformanceSheet", () => {
       />,
     )
 
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     expect(within(dialog).getByLabelText("请求数")).toHaveValue(10)
     expect(within(dialog).getByLabelText("持续时间（秒）")).toHaveValue(0)
     expect(within(dialog).getByLabelText("并发数")).toHaveValue(1)
@@ -399,7 +399,7 @@ describe("QuickPerformanceSheet", () => {
         client={executionClient(phaseFivePerformanceReport())}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
     const report = await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
@@ -423,7 +423,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
 
     const mode = within(dialog).getByRole("combobox", { name: "负载模式" })
     expect(mode).toHaveValue("固定并发")
@@ -493,7 +493,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
 
     expect(within(dialog).getByLabelText("SLO TTFT（ms）")).toHaveValue(0)
     expect(within(dialog).getByLabelText("SLO TPOT（ms/token）")).toHaveValue(0)
@@ -536,7 +536,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await replaceNumber(user, within(dialog).getByLabelText("SLO TTFT（ms）"), "50")
     await replaceNumber(user, within(dialog).getByLabelText("SLO 目标达标率（%）"), "90")
     await replaceNumber(user, within(dialog).getByLabelText("爬坡时间（秒）"), "3601")
@@ -592,7 +592,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await replaceNumber(user, within(dialog).getByLabelText("SLO TTFT（ms）"), "50")
     await replaceNumber(user, within(dialog).getByLabelText("SLO 目标达标率（%）"), "90")
     await user.click(within(dialog).getByRole("checkbox", { name: "容量阶梯" }))
@@ -631,7 +631,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await replaceNumber(user, within(dialog).getByLabelText("SLO TTFT（ms）"), "50")
     await replaceNumber(user, within(dialog).getByLabelText("SLO 目标达标率（%）"), "90")
     await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
@@ -666,7 +666,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
 
     expect(within(dialog).queryByRole("combobox", { name: "到达分布" })).not.toBeInTheDocument()
     await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
@@ -743,7 +743,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
 
     expect(within(dialog).getByLabelText("热身请求数")).toHaveValue(0)
     expect(within(dialog).getByLabelText("爬坡时间（秒）")).toHaveValue(0)
@@ -789,7 +789,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await replaceNumber(user, within(dialog).getByLabelText("热身请求数"), "1000")
     await replaceNumber(user, within(dialog).getByLabelText("爬坡时间（秒）"), "1")
     await replaceNumber(user, within(dialog).getByLabelText("请求数"), "8001")
@@ -825,7 +825,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await replaceNumber(user, within(dialog).getByLabelText("请求数"), "0")
     await replaceNumber(user, within(dialog).getByLabelText("持续时间（秒）"), "1")
     await replaceNumber(user, within(dialog).getByLabelText("热身请求数"), "9000")
@@ -866,7 +866,7 @@ describe("QuickPerformanceSheet", () => {
           client={client}
         />,
       )
-      const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+      const dialog = screen.getByRole("dialog", { name: "性能测试" })
       await replaceNumber(user, within(dialog).getByLabelText("请求数"), "0")
       await replaceNumber(user, within(dialog).getByLabelText("持续时间（秒）"), "1")
       await replaceNumber(user, within(dialog).getByLabelText("爬坡时间（秒）"), "1")
@@ -908,7 +908,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await user.click(within(dialog).getByRole("combobox", { name: "工作负载" }))
     await user.click(screen.getByRole("option", { name: "正态分布" }))
     await replaceNumber(user, within(dialog).getByLabelText("输入 Token 标准差"), "101")
@@ -948,7 +948,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await replaceNumber(user, within(dialog).getByLabelText("请求数"), "0")
     await replaceNumber(user, within(dialog).getByLabelText("持续时间（秒）"), "1")
     await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
@@ -990,7 +990,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await replaceNumber(user, within(dialog).getByLabelText("请求数"), "0")
     await replaceNumber(user, within(dialog).getByLabelText("持续时间（秒）"), "1")
     await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
@@ -1060,7 +1060,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
     const status = await within(dialog).findByRole("status", { name: "性能测试进度" })
@@ -1111,7 +1111,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
     await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
@@ -1137,7 +1137,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
     const report = await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
@@ -1164,7 +1164,7 @@ describe("QuickPerformanceSheet", () => {
         client={executionClient(selectedReport)}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
     const report = await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
@@ -1201,7 +1201,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
     const status = await within(dialog).findByRole("status", { name: "性能测试进度" })
@@ -1246,7 +1246,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
     const status = await within(dialog).findByRole("status", { name: "性能测试进度" })
@@ -1273,7 +1273,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await replaceNumber(user, within(dialog).getByLabelText("请求数"), "0")
     await replaceNumber(user, within(dialog).getByLabelText("持续时间（秒）"), "1")
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
@@ -1293,7 +1293,7 @@ describe("QuickPerformanceSheet", () => {
         client={executionClient(phaseThreePerformanceReport())}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
     const report = await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
@@ -1320,7 +1320,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await replaceNumber(user, within(dialog).getByLabelText("请求数"), "0")
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
@@ -1359,7 +1359,7 @@ describe("QuickPerformanceSheet", () => {
         client={executionClient(mixedPerformanceReport())}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
     const report = await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
@@ -1392,7 +1392,7 @@ describe("QuickPerformanceSheet", () => {
         client={client}
       />,
     )
-    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const dialog = screen.getByRole("dialog", { name: "性能测试" })
     const concurrency = within(dialog).getByLabelText("并发数")
     await replaceNumber(user, concurrency, "0")
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))

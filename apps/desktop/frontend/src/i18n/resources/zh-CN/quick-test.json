@@ -33,7 +33,7 @@
     "waiting": "等待"
   },
   "title": "快速测试",
-  "description": "功能测试选择任务并填写连接；性能测试可选择计划填入参数，再按需调整。",
+  "description": "功能测试选择任务；性能测试临时配置负载；计划测试完整运行内置或自建计划。",
   "connection": "连接信息",
   "fillChannel": "从渠道填充",
   "manual": "手动输入地址与 API Key",
@@ -51,7 +51,7 @@
     "requestParameters": "请求参数",
     "affinity": "启用亲和性",
     "affinityHint": "本次测试复用会话标识，需网关支持并配置亲和规则。",
-    "title": "快速性能测试",
+    "title": "性能测试",
     "description": "使用当前连接运行流式负载；实际发起请求后会自动封存报告。",
     "selectBinding": "运行性能计划",
     "selectBindingHint": "为本次运行选择模型和渠道；已保存的性能配置不会改变。",
@@ -63,7 +63,7 @@
     "continue": "继续",
     "needTarget": "请求数和持续时间至少填写一项",
     "invalid": "性能测试参数超出允许范围",
-    "error": "快速性能测试暂不可用，请检查本地日志",
+    "error": "性能测试暂不可用，请检查本地日志",
     "requestCount": "请求数",
     "duration": "持续时间（秒）",
     "concurrency": "并发数",
@@ -172,7 +172,7 @@
     "missingChannel": "原渠道已不可用，请选择其他渠道或填写临时连接。",
     "endpointHint": "支持基础或完整地址，灰色路径自动补全。",
     "performanceUnavailable": "此任务使用独立的视频执行流程。",
-    "performance": "快速性能测试",
+    "performance": "性能测试",
     "performanceHint": "使用当前连接运行文本流式性能测试。",
     "notStarted": "尚未启动测试。",
     "waiting": "等待运行状态更新…",
@@ -203,7 +203,7 @@
     "failed": "保存渠道失败，请检查连接信息。"
   },
   "workspace": {
-    "functional": "快速功能测试",
+    "functional": "功能测试",
     "mode": "切换测试模式",
     "history": "测试记录",
     "active": "{{count}} 项运行中",
@@ -236,5 +236,27 @@
     "invalidParameters": "剪贴板内容不是完整有效的性能参数 JSON，当前参数未更改。",
     "parametersChanged": "当前参数或运行状态已变化，请重新导入。",
     "import": "从剪贴板导入参数"
+  },
+  "plan": {
+    "title": "计划测试",
+    "loading": "正在加载测试计划…",
+    "loadFailed": "测试计划加载失败，已选内容已保留。",
+    "retry": "重试加载测试计划",
+    "label": "测试计划",
+    "choose": "选择内置或自建计划",
+    "hint": "完整运行所选计划；再次运行使用当前保存版本。",
+    "empty": "暂无可用计划",
+    "emptyHint": "可在「计划」中创建测试计划。",
+    "missingPlan": "原计划已不可用，请选择其他计划。",
+    "start": "开始计划测试",
+    "startFailed": "计划测试启动失败，请检查模型、渠道或本地日志。",
+    "noHistory": "计划运行后会在这里保留记录，也可查看已有计划运行和报告。",
+    "protocolMismatch": "所选计划与连接协议不一致，请重新选择计划。",
+    "refillConnection": "此历史运行使用临时连接，请重新填写地址和 API Key；历史报告仍可直接打开。"
+  },
+  "modes": {
+    "functional": "功能测试",
+    "performance": "性能测试",
+    "plan": "计划测试"
   }
 }

@@ -32,7 +32,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { FieldGroup } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -47,13 +47,13 @@ import type { ReportSnapshot } from "@/features/reports/data"
 import type { QuickPerformanceConnection } from "./quick-performance-sheet"
 import { RetainedWorkspace } from "@/features/shell/retained-workspace"
 import { createTaskDraft, quickTaskCommand, restoreTaskDraft, type TaskDraft } from "./task-draft"
-import { cn } from "@/lib/utils"
+import { QuickTestField } from "./quick-test-field"
 import { PROTOCOLS } from "@/features/catalog/protocols"
 import { resolveConnectionURL, taskConnectionURLs } from "./connection-url"
 import { ConnectionURLInput } from "./connection-url-input"
 import { protocolOptions } from "@/features/catalog/protocols"
 import { SaveChannelSheet } from "./save-channel-sheet"
-import { QuickTestModeSwitch } from "./quick-test-mode-switch"
+import { QuickTestModeSwitch, type QuickTestMode } from "./quick-test-mode-switch"
 import { QuickTestHistory, type QuickTestHistoryItem } from "./quick-test-history"
 import { ModelIcon, ProtocolIcon } from "./model-icon"
 import type { HistoryChanged, HistoryVisibilityChange } from "@/features/history-recycle/data"
@@ -61,8 +61,11 @@ import { RecycleHistoryButton, type HistoryRecycleClient } from "@/features/hist
 import { historyVisibility } from "@/features/history-recycle/visibility"
 
 const QuickPerformancePanel = lazy(() => import("./quick-performance-sheet").then(module => ({ default: module.QuickPerformancePanel })))
+const PlanTestWorkspace = lazy(() => import("./plan-test-workspace").then(module => ({ default: module.PlanTestWorkspace })))
 
-type Actions = JobClient & Partial<HistoryRecycleClient> & Pick<
+type Actions = JobClient & Partial<HistoryRecycleClient> & Partial<Pick<DesktopClient,
+  "getRunHistory" | "getRunSummaries" | "getReportGeneration" | "subscribeRemoteResults"
+>> & Pick<
   DesktopClient,
   | "getQuickTask"
   | "getReportDetail"
@@ -102,7 +105,58 @@ function performanceProfile({
   return profile
 }
 
-export function QuickTaskWorkspace({
+type QuickTaskWorkspaceProps = Omit<Parameters<typeof QuickTaskContent>[0], "mode" | "onModeChange" | "modeControl" | "selectedProtocol" | "onProtocolChange">
+
+export function QuickTaskWorkspace(props: QuickTaskWorkspaceProps) {
+  const { t } = useTranslation("quickTest")
+  const [mode, setMode] = useState<QuickTestMode>("functional")
+  const [connectionMode, setConnectionMode] = useState<"functional" | "performance">("functional")
+  const [selectedProtocol, setSelectedProtocol] = useState<CatalogProtocol>(props.draft.task?.protocol ?? "openai-chat")
+  const focusMode = useRef(false)
+  const focusModeControl = useCallback((root: HTMLDivElement) => {
+    if (!focusMode.current || root.closest("[hidden]")) return
+    focusMode.current = false
+    root.querySelector<HTMLElement>('[role="radio"][data-state="checked"]')?.focus()
+  }, [])
+  const changeMode = (next: QuickTestMode) => {
+    focusMode.current = true
+    setMode(next)
+    if (next !== "plan") setConnectionMode(next)
+  }
+  const modeControl = <QuickTestModeSwitch mode={mode} onChange={changeMode} onReady={focusModeControl} />
+  return <>
+    <div hidden={mode === "plan"} data-quick-test-mode className="flex min-h-0 min-w-0 flex-1 flex-col [&[hidden]]:hidden">
+      <RetainedWorkspace active={mode !== "plan"} fallback={null}>
+        <QuickTaskContent {...props} mode={connectionMode} modeControl={modeControl} selectedProtocol={selectedProtocol} onProtocolChange={setSelectedProtocol}
+          onModeChange={next => { setConnectionMode(next); setMode(next) }} />
+      </RetainedWorkspace>
+    </div>
+    <div hidden={mode !== "plan"} data-quick-test-mode className="flex min-h-0 min-w-0 flex-1 flex-col [&[hidden]]:hidden">
+      <RetainedWorkspace active={mode === "plan"} fallback={<p role="status" className="p-4 text-xs text-muted-foreground">{t("plan.loading")}</p>}>
+        <PlanTestWorkspace catalog={props.catalog} catalogResources={props.catalogResources}
+          loadPlans={props.loadPerformancePlans} modeControl={modeControl} actions={props.actions}
+          onJobLaunched={props.onJobLaunched} onJobChange={props.onJobChange}
+          onOpenExecution={props.onOpenExecution} onOpenReport={props.onOpenReport}
+          connection={{ protocol: selectedProtocol, model: props.draft.model, channel_id: props.draft.channel_id,
+            base_url: props.draft.base_url, api_key: props.draft.api_key, credential_run_id: props.draft.credential_run_id }}
+          onConnectionChange={next => {
+            setSelectedProtocol(next.protocol)
+            props.onDraftChange(current => ({ ...current, model: next.model, channel_id: next.channel_id ?? "",
+              base_url: next.base_url ?? "", api_key: next.api_key ?? "", credential_run_id: next.credential_run_id }))
+          }}
+          onSaveChannel={props.onSaveChannel}
+          onHistoryChanged={props.onHistoryChanged} historyChanges={props.historyChanges} />
+      </RetainedWorkspace>
+    </div>
+  </>
+}
+
+function QuickTaskContent({
+  selectedProtocol,
+  onProtocolChange: setSelectedProtocol,
+  mode,
+  onModeChange: setMode,
+  modeControl,
   catalog,
   catalogResources,
   loadPerformancePlans,
@@ -127,6 +181,11 @@ export function QuickTaskWorkspace({
   onHistoryChanged,
   historyChanges = [],
 }: {
+  selectedProtocol: CatalogProtocol
+  onProtocolChange: (protocol: CatalogProtocol) => void
+  mode: "functional" | "performance"
+  onModeChange: (mode: "functional" | "performance") => void
+  modeControl: ReactNode
   catalog: CatalogSnapshot
   catalogResources?: CatalogResources
   loadPerformancePlans?: () => Promise<unknown>
@@ -193,7 +252,6 @@ export function QuickTaskWorkspace({
   const [caseConcurrency, setCaseConcurrency] = useState(DEFAULT_CASE_CONCURRENCY)
   const [refreshError, setRefreshError] = useState(false)
   const refreshGeneration = useRef(0)
-  const [mode, setMode] = useState<"functional" | "performance">("functional")
   useEffect(() => {
     if (mode === "performance") void loadPerformancePlans?.().catch(() => {})
   }, [mode, loadPerformancePlans])
@@ -220,7 +278,6 @@ export function QuickTaskWorkspace({
   const [selectedHistoryID, setSelectedHistoryID] = useState("")
   const busy = !!pending || performancePending
   const [saveChannelOpen, setSaveChannelOpen] = useState(false)
-  const [selectedProtocol, setSelectedProtocol] = useState<CatalogProtocol>(draft.task?.protocol ?? "openai-chat")
   const protocol = mode === "performance" ? selectedProtocol : draft.task?.protocol ?? selectedProtocol
   const performancePlans = catalog.plans.filter(plan => plan.performance && plan.protocol === protocol)
   const currentTasks = catalog.suites.filter(item => item.protocol === protocol)
@@ -703,7 +760,7 @@ export function QuickTaskWorkspace({
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[240px_minmax(0,1fr)] gap-4 p-4 xl:grid-cols-[256px_minmax(0,1fr)] overflow-hidden">
         <aside className="flex min-h-0 min-w-0 flex-col" aria-label={t("workspace.history")}>
           <div className="shrink-0 space-y-4 pb-4 pt-2">
-            <QuickTestModeSwitch performance={mode === "performance"} onChange={checked => setMode(checked ? "performance" : "functional")} />
+            {modeControl}
             <div className="flex flex-wrap items-center justify-between gap-1"><h2 className="text-sm font-semibold">{t("workspace.history")}</h2><span className="text-[11px] text-muted-foreground">{t("workspace.active", { count: history.filter(item => item.active).length })}</span>
               {history.some(item => item.waitingForReport) ? <span role="status" className="text-[11px] text-muted-foreground">{t("workspace.syncingReports", { count: history.filter(item => item.waitingForReport).length })}</span> : null}
             </div>
@@ -1148,17 +1205,6 @@ function TaskField({
   className?: string
 }) {
   return (
-    <Field className={cn("min-w-0 flex-col items-stretch gap-2", className)} data-invalid={!!error || undefined}>
-      <div className="flex min-w-0 items-baseline gap-2">
-        <FieldLabel htmlFor={`quick-task-${id}`} className="shrink-0 [overflow-wrap:anywhere]">{label}</FieldLabel>
-        {labelHint || error ? (
-          <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1 [overflow-wrap:anywhere]">
-            {labelHint}
-            {error ? <FieldError id={`quick-task-${id}-error`} className="min-w-0 text-[11px] font-normal">{error}</FieldError> : null}
-          </div>
-        ) : null}
-      </div>
-      {children}
-    </Field>
+    <QuickTestField id={`quick-task-${id}`} label={label} labelHint={labelHint} error={error} className={className}>{children}</QuickTestField>
   )
 }

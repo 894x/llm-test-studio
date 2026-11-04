@@ -260,7 +260,7 @@
     "loadFixed": "Fixed concurrency",
     "loadOpen": "Open loop",
     "protocolPlan": "Protocol plan",
-    "performancePlan": "Quick performance test",
+    "performancePlan": "Performance test",
     "category": "Category",
     "builtin": "Built-in",
     "saveAs": "Save as plan",

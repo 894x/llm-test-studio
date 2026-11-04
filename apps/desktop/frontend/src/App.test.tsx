@@ -578,7 +578,7 @@ describe("desktop run workspace", () => {
     await screen.findByRole("heading", { name: "运行工作区" })
     for (const [label, heading, evidence] of [
       ["总览", "工作台总览", "6 个模型"],
-      ["快速测试", "快速功能测试", "测试记录"],
+      ["快速测试", "功能测试", "测试记录"],
       ["模型与渠道", "模型与渠道", "gpt-5.2"],
       ["用例", "测试用例", "基础对话"],
       ["计划", "测试计划", "营销文案基准"],
@@ -930,11 +930,11 @@ describe("desktop run workspace", () => {
 			source: "quick_performance",
 			generated_at: performance.generated_at!,
 			run_status: "completed",
-			plan_name: "快速性能测试",
+			plan_name: "性能测试",
 			model_name: "gpt-new",
 			channel_name: "api.example.test",
 			passed: true,
-			verdict: "快速性能测试通过",
+			verdict: "性能测试通过",
 			issue_count: 0,
 			case_count: 1, failed_case_count: 0, passed_case_count: 1, verified_case_count: 1, observed_case_count: 0, indeterminate_case_count: 0,
 			attachment_count: 0,
@@ -951,14 +951,14 @@ describe("desktop run workspace", () => {
 		await user.type(screen.getByLabelText("API Key"), "sk-private-value")
 		await user.type(screen.getByLabelText("模型 ID"), "gpt-new")
 		await user.keyboard("{Escape}")
-		await user.click(await screen.findByRole("switch", { name: "切换测试模式" }))
-		const panel = await screen.findByRole("region", { name: "快速性能测试" })
+		await toggleQuickTestMode(user)
+		const panel = await screen.findByRole("region", { name: "性能测试" })
 		await user.click(within(panel).getByRole("button", { name: "开始性能测试" }))
 
 		await waitFor(() => expect(vi.mocked(client.getQuickTestHistory).mock.calls.length).toBeGreaterThanOrEqual(2))
     expect(client.getReports).not.toHaveBeenCalled()
 		const history = screen.getByRole("list", { name: "测试记录" })
-		await user.click(await within(history).findByRole("button", { name: "打开报告 快速性能测试" }))
+		await user.click(await within(history).findByRole("button", { name: "打开报告 性能测试" }))
 		expect(window.location.hash).toBe("#reports")
 		expect(await screen.findByRole("region", { name: "归档性能报告" })).toHaveTextContent("1 / 1")
 		expect(client.getReportDetail).toHaveBeenCalledWith(reportID)
@@ -1583,7 +1583,7 @@ describe("desktop run workspace", () => {
     expect(screen.getByRole("table", { name: "Model catalog" })).toBeInTheDocument()
 
     for (const [navigation, heading, table] of [
-      ["Quick Test", "Quick functional test", null],
+      ["Quick Test", "Functional test", null],
       ["Cases", "Test Cases", "Test case catalog"],
       ["Plans", "Test Plans", "Test plan catalog"],
       ["Reports", "Test Reports", "Test report catalog"],
@@ -2000,7 +2000,7 @@ describe("desktop run workspace", () => {
     render(<App client={client} />)
     await screen.findByLabelText("模型 ID")
     expect(client.getCatalog).not.toHaveBeenCalledWith("quick_test")
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     const count = await screen.findByLabelText("请求数", { exact: true })
     expect(client.getCatalog).toHaveBeenCalledWith("quick_test")
     expect(screen.getByRole("status", { name: "正在加载性能计划…" })).toBeVisible()
@@ -2010,8 +2010,8 @@ describe("desktop run workspace", () => {
     await act(async () => plans.resolve(selectCatalog(FIXTURE_CATALOG, "quick_test")))
     expect(screen.getByRole("combobox", { name: "测试任务" })).toBeEnabled()
     expect(count).toHaveValue(37)
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
+    await toggleQuickTestMode(user)
     expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(37)
     expect(vi.mocked(client.getCatalog).mock.calls.filter(([scope]) => scope === "quick_test")).toHaveLength(1)
   })
@@ -2242,4 +2242,10 @@ function completedJob() {
   const job = jobFixture()
   return jobFixture({ submission: submissionFixture({ confirmation: { status: "completed", revision: 2, accepted_at: JOB_TIME } }),
     execution: { ...job.execution!, status: "completed", revision: 2, latest_sequence: 3 }, performance_result_ready: true })
+}
+
+async function toggleQuickTestMode(user: ReturnType<typeof userEvent.setup>) {
+  const performance = await screen.findByRole("radio", { name: "性能测试" })
+  await user.click(performance.getAttribute("aria-checked") === "true"
+    ? screen.getByRole("radio", { name: "功能测试" }) : performance)
 }

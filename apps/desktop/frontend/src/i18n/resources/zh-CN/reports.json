@@ -272,7 +272,7 @@
   },
   "inspector": {
     "source": "来源",
-    "quickPerformance": "快速性能测试",
+    "quickPerformance": "性能测试",
     "planExecution": "执行计划",
     "run": "运行",
     "plan": "测试计划",
@@ -303,7 +303,7 @@
     "failed": "未通过"
   },
   "system": {
-    "quickPerformance": "快速性能测试",
+    "quickPerformance": "性能测试",
     "quickPassed": "全部请求成功",
     "quickFailed": "性能测试未通过",
     "passed": "通过",

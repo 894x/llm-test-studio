@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next"
 import FileChartColumnIcon from "lucide-react/dist/esm/icons/file-chart-column.mjs"
 import FlaskConicalIcon from "lucide-react/dist/esm/icons/flask-conical.mjs"
 import GaugeIcon from "lucide-react/dist/esm/icons/gauge.mjs"
+import ListChecksIcon from "lucide-react/dist/esm/icons/list-checks.mjs"
 import RefreshCwIcon from "lucide-react/dist/esm/icons/refresh-cw.mjs"
 import SquareIcon from "lucide-react/dist/esm/icons/square.mjs"
 import SquarePenIcon from "lucide-react/dist/esm/icons/square-pen.mjs"
@@ -23,7 +24,7 @@ type HistoryRecycleRenderer = (item: QuickTestHistoryItem, renderTrigger?: (prop
 
 export interface QuickTestHistoryItem {
   id: string
-  mode: "functional" | "performance"
+  mode: "functional" | "performance" | "plan"
   title: string
   model: string
   channel: string
@@ -96,7 +97,7 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
           const segments = hasOutcomeCounts ? (() => {
             const planned = item.planned!
             const outcomes = [
-              { key: "succeeded", count: item.succeeded!, text: `${t(item.mode === "functional" ? "common:status.passed" : "desktop:quick-test_succeeded")} ${item.succeeded}`, color: "bg-outcome-pass" },
+              { key: "succeeded", count: item.succeeded!, text: `${t(item.mode !== "performance" ? "common:status.passed" : "desktop:quick-test_succeeded")} ${item.succeeded}`, color: "bg-outcome-pass" },
               { key: "failed", count: item.failed!, text: `${t("desktop:quick-test_failed")} ${item.failed}`, color: "bg-outcome-fail" },
               ...(item.observed ? [{ key: "observed", count: item.observed, text: `${t("reports:headline.observedCases")} ${item.observed}`, color: "bg-outcome-review" }] : []),
               ...(item.indeterminate ? [{ key: "indeterminate", count: item.indeterminate, text: `${t("reports:headline.indeterminateCases")} ${item.indeterminate}`, color: "bg-outcome-review" }] : []),
@@ -208,7 +209,7 @@ function HistoryHeading({ item, selected, busy, onSelect, status }: {
   const { t } = useTranslation("quickTest")
   const titleRef = useRef<HTMLParagraphElement>(null)
   const [open, setOpen] = useState(false)
-  const Icon = item.mode === "performance" ? GaugeIcon : FlaskConicalIcon
+  const Icon = item.mode === "performance" ? GaugeIcon : item.mode === "plan" ? ListChecksIcon : FlaskConicalIcon
   return <>
     <Tooltip open={open} onOpenChange={next => setOpen(next && !!titleRef.current && titleRef.current.scrollWidth > titleRef.current.clientWidth)}>
       <TooltipTrigger asChild><Button type="button" variant="ghost" disabled={busy} aria-label={item.title} aria-description={t("task.restore")} aria-current={selected ? "true" : undefined} onClick={onSelect} className="absolute inset-0 size-full cursor-pointer rounded-md p-0 hover:bg-transparent focus-visible:ring-inset" /></TooltipTrigger>

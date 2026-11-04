@@ -33,7 +33,7 @@
     "waiting": "Waiting"
   },
   "title": "Quick Test",
-  "description": "Choose a task and connection for functional tests, or load and adjust a performance plan.",
+  "description": "Choose a functional task, configure a performance test, or run a complete built-in or custom plan.",
   "connection": "Connection",
   "fillChannel": "Fill from channel",
   "manual": "Enter address and API Key manually",
@@ -51,7 +51,7 @@
     "requestParameters": "Request parameters",
     "affinity": "Enable affinity",
     "affinityHint": "Reuse a session key for this test. Requires matching gateway affinity rules.",
-    "title": "Quick performance test",
+    "title": "Performance test",
     "description": "Run a streaming workload with the current connection. Reports are archived after requests are executed.",
     "selectBinding": "Run performance plan",
     "selectBindingHint": "Choose the model and channel for this run. The saved performance profile stays unchanged.",
@@ -63,7 +63,7 @@
     "continue": "Continue",
     "needTarget": "Enter a request count or duration",
     "invalid": "Performance-test parameters are out of range",
-    "error": "Quick performance test is unavailable; check local logs",
+    "error": "Performance test is unavailable; check local logs",
     "requestCount": "Request count",
     "duration": "Duration (seconds)",
     "concurrency": "Concurrency",
@@ -172,7 +172,7 @@
     "missingChannel": "The original channel is unavailable. Choose another channel or enter a temporary connection.",
     "endpointHint": "Base or full URL; the gray path is added automatically.",
     "performanceUnavailable": "This task uses a separate video execution flow.",
-    "performance": "Quick performance test",
+    "performance": "Performance test",
     "performanceHint": "Run a text streaming performance test with the current connection.",
     "notStarted": "No test has been started.",
     "waiting": "Waiting for the Run status…",
@@ -203,7 +203,7 @@
     "failed": "Could not save the channel. Check the connection details."
   },
   "workspace": {
-    "functional": "Quick functional test",
+    "functional": "Functional test",
     "mode": "Switch test mode",
     "history": "Test history",
     "active": "{{count}} running",
@@ -236,5 +236,27 @@
     "invalidParameters": "The clipboard does not contain complete, valid performance parameter JSON. Current parameters were kept.",
     "parametersChanged": "Parameters or test state changed. Import again.",
     "import": "Import parameters from clipboard"
+  },
+  "plan": {
+    "title": "Plan test",
+    "loading": "Loading test plans…",
+    "loadFailed": "Could not load test plans. Your selection is preserved.",
+    "retry": "Retry loading test plans",
+    "label": "Test plan",
+    "choose": "Choose a built-in or custom plan",
+    "hint": "Run the complete plan. Reruns use its currently saved revision.",
+    "empty": "No plans available",
+    "emptyHint": "Create a test plan in Plans.",
+    "missingPlan": "The original plan is unavailable. Choose another plan.",
+    "start": "Start plan test",
+    "startFailed": "Could not start the plan test. Check the model, channel, or local logs.",
+    "noHistory": "Plan runs appear here together with existing plan history and reports.",
+    "protocolMismatch": "The plan and connection protocols differ. Choose a matching plan.",
+    "refillConnection": "This historical run used a temporary connection. Re-enter its address and API key; its original report remains available."
+  },
+  "modes": {
+    "functional": "Functional",
+    "performance": "Performance",
+    "plan": "Plan"
   }
 }

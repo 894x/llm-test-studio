@@ -259,7 +259,7 @@
   "quick-test_select_a_catalog_model_or_enter_an_id": "选择目录模型或手动输入",
   "quick-test_enter_a_request_count_greater_than_0_or_set_a": "请输入大于 0 的请求数，或填写持续时间。",
   "quick-test_enter_a_duration_greater_than_0_or_set_a_request": "请输入大于 0 的持续时间，或填写请求数。",
-  "quick-test_quick_performance_testing_is_unavailable_check_the_local_logs": "快速性能测试暂不可用，请检查本地日志",
+  "quick-test_quick_performance_testing_is_unavailable_check_the_local_logs": "性能测试暂不可用，请检查本地日志",
   "quick-test_open_arrival_rps": "开放到达（RPS）",
   "quick-test_arrival_distribution": "到达分布",
   "quick-test_constant_interval": "恒定间隔",

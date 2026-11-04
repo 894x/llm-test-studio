@@ -260,7 +260,7 @@
     "loadFixed": "固定并发",
     "loadOpen": "开放环",
     "protocolPlan": "协议测试计划",
-    "performancePlan": "快速性能测试",
+    "performancePlan": "性能测试",
     "category": "类别",
     "builtin": "内置",
     "saveAs": "另存为计划",

@@ -131,16 +131,27 @@ func (service *Preparer) BuildTarget(
 		return PreparedRun{}, nil, fmt.Errorf("invalid plan: %w", err)
 	}
 	timings = append(timings, startPhaseTiming{operation: "start_run_load_plan", duration: time.Since(phaseStartedAt)})
-	if !domain.IsUUID(command.ModelID) || !domain.IsUUID(command.ChannelID) {
-		return PreparedRun{}, nil, ErrNotRunnable
-	}
 	phaseStartedAt = time.Now()
-	model, channel, mapping, err := service.repository.ResolvePlanTargetSelection(
-		ctx,
-		plan,
-		command.ModelID,
-		command.ChannelID,
-	)
+	var model domain.Model
+	var channel domain.Channel
+	var mapping domain.ChannelModel
+	if command.Connection != nil {
+		conflictingSelection := command.ModelID != "" || command.ChannelID != ""
+		if conflictingSelection || command.Connection.Protocol != plan.Protocol {
+			return PreparedRun{}, nil, ErrInvalid
+		}
+		model, channel, mapping, err = service.resolveRunConnection(ctx, *command.Connection)
+	} else {
+		if !domain.IsUUID(command.ModelID) || !domain.IsUUID(command.ChannelID) {
+			return PreparedRun{}, nil, ErrNotRunnable
+		}
+		model, channel, mapping, err = service.repository.ResolvePlanTargetSelection(
+			ctx,
+			plan,
+			command.ModelID,
+			command.ChannelID,
+		)
+	}
 	if err != nil {
 		return PreparedRun{}, nil, fmt.Errorf("resolve run binding: %w", err)
 	}
@@ -180,15 +191,21 @@ func (service *Preparer) BuildTarget(
 	timings = append(timings, startPhaseTiming{
 		operation: "start_run_resolve_entries", duration: time.Since(phaseStartedAt),
 	})
-	if channel.CredentialID == "" || channel.Validate() != nil {
+	if channel.Validate() != nil {
 		return PreparedRun{}, nil, ErrNotRunnable
 	}
 	phaseStartedAt = time.Now()
-	storeRef, refErr := credentials.NewStoreRef(domain.CredentialChannelAPIKey, channel.CredentialID)
-	if refErr != nil {
-		return PreparedRun{}, nil, ErrNotRunnable
+	var lease *credentials.Lease
+	var leaseErr error
+	if command.Connection != nil {
+		lease, leaseErr = service.leaseRunConnection(ctx, channel, *command.Connection)
+	} else {
+		storeRef, refErr := credentials.NewStoreRef(domain.CredentialChannelAPIKey, channel.CredentialID)
+		if refErr != nil {
+			return PreparedRun{}, nil, ErrNotRunnable
+		}
+		lease, leaseErr = service.credentials.Get(ctx, storeRef)
 	}
-	lease, leaseErr := service.credentials.Get(ctx, storeRef)
 	if leaseErr != nil {
 		return PreparedRun{}, nil, fmt.Errorf("lease channel credential: %w", leaseErr)
 	}

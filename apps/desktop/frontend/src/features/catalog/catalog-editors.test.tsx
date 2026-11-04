@@ -152,7 +152,7 @@ describe("current protocol catalog editors", () => {
     await user.click(screen.getByRole("button", {name:"添加计划项"}))
     fireEvent.change(screen.getByLabelText("计划项名称"), {target:{value:"压力一"}})
     await user.click(screen.getByRole("combobox", { name: "类别" }))
-    await user.click(screen.getByRole("option", { name: "快速性能测试" }))
+    await user.click(screen.getByRole("option", { name: "性能测试" }))
     fireEvent.change(screen.getByLabelText("请求数"), { target: { value: "0" } })
     await user.click(screen.getByRole("button", { name: "保存计划" }))
     expect(screen.getByLabelText("请求数")).toHaveAttribute("aria-invalid", "true")

@@ -31,11 +31,15 @@ type Repository interface {
 }
 
 type StartCommand struct {
-	PlanID          string `json:"plan_id"`
-	ModelID         string `json:"model_id"`
-	ChannelID       string `json:"channel_id"`
-	CaseConcurrency uint32 `json:"case_concurrency,omitempty"`
+	PlanID          string             `json:"plan_id"`
+	ModelID         string             `json:"model_id"`
+	ChannelID       string             `json:"channel_id"`
+	CaseConcurrency uint32             `json:"case_concurrency,omitempty"`
+	Connection      *ConnectionCommand `json:"connection,omitempty"`
 }
+
+func (command StartCommand) String() string   { return "StartCommand{redacted}" }
+func (command StartCommand) GoString() string { return command.String() }
 
 type CredentialStore interface {
 	Get(context.Context, credentials.StoreRef) (*credentials.Lease, error)
@@ -115,14 +119,14 @@ type Dependencies struct {
 	QuickTaskCredentials credentials.Store
 	// MissingRun declares the repository adapter's private not-found sentinel;
 	// see PreparationDependencies.MissingRun.
-	MissingRun        error
-	Executor          Executor
-	Clock             Clock
-	MetaFactory       MetaFactory
-	Environment       EnvironmentProvider
-	Reporter          ReportGenerator
-	ReportError       func(error)
-	ReportDiagnostic  func(Diagnostic)
+	MissingRun       error
+	Executor         Executor
+	Clock            Clock
+	MetaFactory      MetaFactory
+	Environment      EnvironmentProvider
+	Reporter         ReportGenerator
+	ReportError      func(error)
+	ReportDiagnostic func(Diagnostic)
 }
 
 type Service struct {

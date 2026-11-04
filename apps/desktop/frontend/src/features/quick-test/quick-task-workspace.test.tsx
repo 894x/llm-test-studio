@@ -137,6 +137,24 @@ function setup(
 }
 
 describe("Suite quick task workspace", () => {
+  it("retains performance parameters and connection fields across the plan-test mode", async () => {
+    const user = userEvent.setup()
+    const actions = setup({ ...createTaskDraft(FIXTURE_CATALOG.suites[1]), base_url: "https://retained.test/v1", api_key: "session-key", model: "retained-model" })
+    await user.click(screen.getByRole("radio", { name: "性能测试" }))
+    await user.clear(await screen.findByLabelText("请求数", { exact: true }))
+    await user.type(screen.getByLabelText("请求数", { exact: true }), "19")
+    await user.click(screen.getByRole("radio", { name: "计划测试" }))
+    expect(await screen.findByRole("combobox", { name: "测试计划" })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole("radio", { name: "计划测试" })).toHaveFocus())
+    expect(screen.getByRole("combobox", { name: "模型 ID" })).toHaveValue("retained-model")
+    expect(screen.getByRole("textbox", { name: "接口地址" })).toHaveValue("https://retained.test/v1")
+    await user.click(screen.getByRole("radio", { name: "性能测试" }))
+    expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(19)
+    expect(within(screen.getByRole("region", { name: "连接信息" })).getByLabelText("API Key")).toHaveValue("session-key")
+    expect(screen.getByRole("textbox", { name: "接口地址" })).toHaveValue("https://retained.test/v1")
+    expect(actions.launchJob).not.toHaveBeenCalled()
+  })
+
   it("cancels a confirmed Job before its Run has synchronized and preserves pending delivery feedback", async () => {
     const user = userEvent.setup()
     const actions = setup({ ...createTaskDraft(task), base_url: "https://example.test", api_key: "private-key", model: "remote-model" },
@@ -218,7 +236,7 @@ describe("Suite quick task workspace", () => {
       undefined, { ...FIXTURE_WORKSPACE, runs: [] }, undefined, { schema_version: 1, reports: [] })
     const jobs = [1, 2, 3].map(index => jobFixture({ job_id: `a1111111-1111-4111-8111-11111111111${index}`, report_ids: [] }))
     actions.getJob.mockImplementation(async id => jobs.find(job => job.job_id === id)!)
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     await screen.findByRole("button", { name: "开始性能测试" })
     for (let index = 0; index < jobs.length; index++) {
       actions.launchJob.mockResolvedValueOnce(jobs[index])
@@ -232,10 +250,10 @@ describe("Suite quick task workspace", () => {
     expect(within(history).getAllByRole("listitem")).toHaveLength(3)
     expect(screen.getByText("3 项运行中")).toBeVisible()
     // Restoring an active record remounts the parameter editor, not its observers.
-    await user.click(within(history).getAllByRole("button", { name: "快速性能测试" })[2])
+    await user.click(within(history).getAllByRole("button", { name: "性能测试" })[2])
     expect(screen.getByLabelText("模型 ID")).toHaveValue("model-1")
     expect(actions.launchJob).toHaveBeenCalledTimes(3)
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     expect(screen.getByRole("button", { name: "开启功能测试" })).toBeEnabled()
     jobs[0] = { ...jobs[0], execution: { ...jobs[0].execution!, status: "failed", revision: 2,
       failure: { phase: "execution", error_code: "request_failed" } } }
@@ -244,7 +262,7 @@ describe("Suite quick task workspace", () => {
     const failed = rows.find(row => row.textContent?.includes("model-1"))!
     expect(failed).toHaveTextContent("失败")
     expect(rows.find(row => row.textContent?.includes("model-2"))).toHaveTextContent("运行")
-    await user.click(within(failed).getByRole("button", { name: "执行详情 快速性能测试" }))
+    await user.click(within(failed).getByRole("button", { name: "执行详情 性能测试" }))
     await waitFor(() => expect(actions.onOpenExecution).toHaveBeenCalledWith(jobs[0]))
   }, 10_000)
 
@@ -253,10 +271,10 @@ describe("Suite quick task workspace", () => {
     const actions = setup({ ...createTaskDraft(FIXTURE_CATALOG.suites[1]), base_url: "https://example.test", api_key: "private-key", model: "model" })
     let accept!: (job: ReturnType<typeof jobFixture>) => void
     actions.launchJob.mockReturnValueOnce(new Promise(resolve => { accept = resolve }))
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     await user.click(await screen.findByRole("button", { name: "开始性能测试" }))
     await waitFor(() => expect(actions.launchJob).toHaveBeenCalledTimes(1))
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     expect(screen.getByRole("button", { name: "开启功能测试" })).toBeDisabled()
     await act(async () => accept(jobFixture()))
     await waitFor(() => expect(screen.getByRole("button", { name: "开启功能测试" })).toBeEnabled())
@@ -311,7 +329,7 @@ describe("Suite quick task workspace", () => {
     actions.setVisible(true)
     const history = screen.getByRole("list", { name: "测试记录" })
     expect(within(history).getByText(task.name)).toBeInTheDocument()
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     actions.getJob.mockRejectedValue(new Error("private transport error"))
     await new Promise(resolve => setTimeout(resolve, 1600))
     expect(within(history).getByText("运行")).toBeInTheDocument()
@@ -371,7 +389,7 @@ describe("Suite quick task workspace", () => {
     const original = structuredClone(plan.performance)
     const actions = setup({ ...createTaskDraft(FIXTURE_CATALOG.suites[1]), base_url: "https://example.test", api_key: "temporary-key", model: "model" })
     actions.launchJob.mockRejectedValue(new Error("fixture only"))
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     expect(screen.queryByRole("combobox", { name: "性能计划" })).not.toBeInTheDocument()
     await user.click(screen.getByRole("combobox", { name: "测试任务" }))
     expect(screen.queryByRole("option", { name: /连通性测试/ })).not.toBeInTheDocument()
@@ -389,18 +407,18 @@ describe("Suite quick task workspace", () => {
     })))
     expect(actions.launchJob.mock.calls[0][0].performance).not.toHaveProperty("task")
     expect(plan.performance).toEqual(original)
-    await screen.findAllByText(/快速性能测试暂不可用/)
+    await screen.findAllByText(/性能测试暂不可用/)
   })
 
   it("can configure a performance test when no functional suites exist", async () => {
     const user = userEvent.setup()
     const actions = setup({ ...createTaskDraft(null), base_url: "https://example.test", api_key: "temporary-key", model: "model" }, undefined, undefined, { ...FIXTURE_CATALOG, suites: [] })
     actions.launchJob.mockRejectedValue(new Error("fixture only"))
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(10)
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     expect(actions.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({ protocol: "openai-chat", request_count: 10 })))
-    await screen.findAllByText(/快速性能测试暂不可用/)
+    await screen.findAllByText(/性能测试暂不可用/)
   })
   it.each(["completed", "failed", "cancelled"] as const)(
     "opens the matching archived report from %s history without restoring the draft",
@@ -660,7 +678,7 @@ describe("Suite quick task workspace", () => {
     await user.click(row)
     await waitFor(() => expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(23))
     expect(actions.getReportDetail).toHaveBeenCalledExactlyOnceWith(archivedPerformanceID)
-    expect(screen.getByRole("switch", { name: "切换测试模式" })).toBeChecked()
+    expect(screen.getByRole("radio", { name: "性能测试" })).toBeChecked()
     expect(screen.getByLabelText("接口地址")).toHaveValue("https://previous.test/v1")
     expect(screen.getByLabelText("模型 ID")).toHaveValue("past-performance-model")
     expect(screen.getByLabelText("API Key")).toHaveValue("")
@@ -689,7 +707,7 @@ describe("Suite quick task workspace", () => {
     expect(screen.getByLabelText("接口地址")).toHaveValue("https://unchanged.test")
     expect(screen.getByLabelText("模型 ID")).toHaveValue("unchanged-model")
     expect(screen.getByLabelText("API Key")).toHaveValue("private-key")
-    expect(screen.getByRole("switch", { name: "切换测试模式" })).not.toBeChecked()
+    expect(screen.getByRole("radio", { name: "性能测试" })).not.toBeChecked()
   })
 
   it("restores a local failed performance attempt without retaining its temporary key", async () => {
@@ -699,7 +717,7 @@ describe("Suite quick task workspace", () => {
     const failed = jobFixture({ execution: { ...jobFixture().execution!, status: "failed", failure: { phase: "execution", error_code: "request_failed" } } })
     actions.launchJob.mockResolvedValue({ ...failed, execution: null })
     actions.getJob.mockResolvedValue(failed)
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     await user.clear(screen.getByLabelText("请求数", { exact: true }))
     await user.type(screen.getByLabelText("请求数", { exact: true }), "37")
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
@@ -708,7 +726,7 @@ describe("Suite quick task workspace", () => {
     await user.type(screen.getByLabelText("请求数", { exact: true }), "5")
     await user.type(screen.getByLabelText("接口地址"), "/other")
     await user.type(screen.getByLabelText("API Key"), "new-private-key")
-    await user.click(screen.getByRole("button", { name: "快速性能测试" }))
+    await user.click(screen.getByRole("button", { name: "性能测试" }))
     expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(37)
     expect(screen.getByLabelText("接口地址")).toHaveValue("https://local-past.test")
     expect(screen.getByLabelText("API Key")).toHaveValue("")
@@ -749,13 +767,13 @@ describe("Suite quick task workspace", () => {
       model: "model",
     })
     actions.launchJob.mockRejectedValue(new Error("fixture only"))
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     expect(actions.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
         url: "https://example.test",
         api_key: "private-key",
       })))
-    await screen.findAllByText(/快速性能测试暂不可用/)
+    await screen.findAllByText(/性能测试暂不可用/)
   })
 
   it.each([
@@ -772,18 +790,18 @@ describe("Suite quick task workspace", () => {
         failure: status === "failed" ? { phase: "execution", error_code: "request_failed" } : null } })
     actions.launchJob.mockResolvedValue({ ...completed, execution: null, performance_result_ready: false })
     actions.getJob.mockResolvedValue(completed)
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     const list = screen.getByRole("list", { name: "测试记录" })
-    const row = within(list).getByRole("button", { name: "快速性能测试" }).closest("li")!
+    const row = within(list).getByRole("button", { name: "性能测试" }).closest("li")!
     await waitFor(() => expect(row).toHaveTextContent("等待报告同步"))
-    expect(within(row).queryByRole("button", { name: "打开报告 快速性能测试" })).not.toBeInTheDocument()
+    expect(within(row).queryByRole("button", { name: "打开报告 性能测试" })).not.toBeInTheDocument()
     actions.updateReports({ schema_version: 1, reports: [{ ...archivedPerformanceSummary,
       run_status: "completed", passed, failed_case_count: passed ? 0 : 2,
     }] })
-    expect(within(row).getByRole("button", { name: "打开报告 快速性能测试" })).toBeInTheDocument()
+    expect(within(row).getByRole("button", { name: "打开报告 性能测试" })).toBeInTheDocument()
     expect(row).not.toHaveTextContent("等待报告同步")
-    expect(within(list).getByRole("button", { name: "快速性能测试" }).closest("li")).toBe(row)
+    expect(within(list).getByRole("button", { name: "性能测试" }).closest("li")).toBe(row)
     expect(within(row).getByText(expected, { exact: true })).toBeInTheDocument()
     expect(within(list).queryByRole("button", { name: "Saved performance test" })).not.toBeInTheDocument()
   })
@@ -796,13 +814,13 @@ describe("Suite quick task workspace", () => {
       execution: { ...jobFixture().execution!, status: "completed" } })
     actions.launchJob.mockResolvedValue(job)
     actions.getJob.mockResolvedValue(job)
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     const list = screen.getByRole("list", { name: "测试记录" })
     await waitFor(() => expect(actions.getAvailableReports).toHaveBeenCalledWith([archivedPerformanceID]))
     expect(list).toHaveTextContent("等待报告同步")
     actions.getAvailableReports.mockResolvedValue([archivedPerformanceID])
-    expect(await within(list).findByRole("button", { name: "打开报告 快速性能测试" }, { timeout: 4000 })).toBeVisible()
+    expect(await within(list).findByRole("button", { name: "打开报告 性能测试" }, { timeout: 4000 })).toBeVisible()
     expect(list).not.toHaveTextContent("等待报告同步")
   })
 
@@ -817,26 +835,26 @@ describe("Suite quick task workspace", () => {
     } } })
     actions.launchJob.mockResolvedValue({ ...running, execution: null })
     actions.getJob.mockResolvedValue(running)
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     if (protocol === "seedance") {
       await user.click(screen.getByRole("combobox", { name: "协议" }))
       await user.click(screen.getByRole("option", { name: "OpenAI Chat" }))
     }
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     const list = screen.getByRole("list", { name: "测试记录" })
-    const row = within(list).getByRole("button", { name: "快速性能测试" }).closest("li")!
+    const row = within(list).getByRole("button", { name: "性能测试" }).closest("li")!
     await waitFor(() => expect(row).toHaveTextContent("3 / 10"))
     expect(row).toHaveTextContent("发送")
     expect(row).toHaveTextContent("成功 2 · 失败 1 · 在途 1")
     expect(screen.getByLabelText("API Key")).toBeEnabled()
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     expect(screen.getByRole("button", { name: "开启功能测试" })).toBeEnabled()
     expect(within(row).getByRole("status")).toBeInTheDocument()
     actions.getJob.mockResolvedValue({ ...running, execution: { ...running.execution!, status: "failed", revision: 2,
       failure: { phase: "execution", error_code: "request_failed" } } })
     await waitFor(() => expect(row).toHaveTextContent("等待报告同步"), { timeout: 3500 })
     expect(within(row).queryByRole("progressbar")).not.toBeInTheDocument()
-    expect(within(list).getByRole("button", { name: "快速性能测试" }).closest("li")).toBe(row)
+    expect(within(list).getByRole("button", { name: "性能测试" }).closest("li")).toBe(row)
     expect(row).toHaveTextContent("失败")
     expect(screen.getByLabelText("API Key")).toHaveValue("private-key")
     expect(screen.getByLabelText("API Key")).toBeEnabled()
@@ -846,7 +864,7 @@ describe("Suite quick task workspace", () => {
   it("keeps both mode drafts and validates the shared connection before performance execution", async () => {
     const user = userEvent.setup()
     const actions = setup(createTaskDraft(FIXTURE_CATALOG.suites[1]))
-    const mode = screen.getByRole("switch", { name: "切换测试模式" })
+    const mode = screen.getByRole("radio", { name: "性能测试" })
     mode.focus()
     await user.keyboard(" ")
     expect(mode).toBeChecked()
@@ -856,12 +874,12 @@ describe("Suite quick task workspace", () => {
     expect(actions.launchJob).not.toHaveBeenCalled()
     expect(screen.getByLabelText("接口地址")).toHaveAttribute("aria-invalid", "true")
     expect(screen.getByLabelText("接口地址")).toHaveFocus()
-    await user.click(mode)
+    await toggleQuickTestMode(user)
     await user.clear(screen.getByLabelText("用例超时（s）"))
     await user.type(screen.getByLabelText("用例超时（s）"), "25")
-    await user.click(mode)
+    await toggleQuickTestMode(user)
     expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(17)
-    await user.click(mode)
+    await toggleQuickTestMode(user)
     expect(screen.getByLabelText("用例超时（s）")).toHaveValue(25)
     expect(actions.launchJob).not.toHaveBeenCalled()
   })
@@ -933,10 +951,10 @@ describe("Suite quick task workspace", () => {
       model: "model",
     })
     actions.launchJob.mockRejectedValue(new Error("fixture only"))
-    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await toggleQuickTestMode(user)
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     expect(actions.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({ credential_run_id: FIXTURE_WORKSPACE.runs[0].id, api_key: "" })))
-    await screen.findAllByText(/快速性能测试暂不可用/)
+    await screen.findAllByText(/性能测试暂不可用/)
     await user.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
     await user.type(screen.getByLabelText("接口地址"), "/other")
@@ -952,4 +970,10 @@ function quickTaskLaunch(quick_task: unknown) {
 function performanceLaunch(performance: unknown) {
   return { location: { kind: "local", configuration_id: "" }, kind: "performance",
     plan: null, quick_task: null, performance, comparison: null }
+}
+
+async function toggleQuickTestMode(user: ReturnType<typeof userEvent.setup>) {
+  const performance = await screen.findByRole("radio", { name: "性能测试" })
+  await user.click(performance.getAttribute("aria-checked") === "true"
+    ? screen.getByRole("radio", { name: "功能测试" }) : performance)
 }
