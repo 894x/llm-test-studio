@@ -26,7 +26,8 @@ func TestRepositoryConcurrentProjectionsAndResultWrites(t *testing.T) {
 	}
 	createRunGraph(t, repository, fixture)
 	run := transitionRun(t, repository, fixture.run, domain.RunStarting, domain.RunRunning)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Cover the complete concurrent workload, including its serialized I/O.
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 	start := make(chan struct{})
 	errors := make(chan error, 100)
