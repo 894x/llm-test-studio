@@ -98,7 +98,25 @@ jobs:
 
       - name: Install NSIS
         if: runner.os == 'Windows'
-        run: choco install nsis --no-progress -y
+        shell: pwsh
+        run: |
+          choco install nsis --no-progress -y
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $nsisDirectories = @(
+            (Join-Path ${env:ProgramFiles(x86)} 'NSIS'),
+            (Join-Path $env:ProgramFiles 'NSIS')
+          )
+          $nsisDirectory = $nsisDirectories | Where-Object {
+            Test-Path -LiteralPath (Join-Path $_ 'makensis.exe') -PathType Leaf
+          } | Select-Object -First 1
+          if (-not $nsisDirectory) { throw 'NSIS installed without a discoverable makensis.exe' }
+          $nsisDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & (Join-Path $nsisDirectory 'makensis.exe') /VERSION
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify NSIS compiler on PATH
+        if: runner.os == 'Windows'
+        run: makensis /VERSION
 
       - name: Build Windows application and installer
         if: runner.os == 'Windows'
