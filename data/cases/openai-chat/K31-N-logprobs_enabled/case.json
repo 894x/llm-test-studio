@@ -47,8 +47,8 @@
         {
           "id": "logprobs",
           "source": "response",
-          "pointer": "/choices/0/message/logprobs",
-          "operator": "exists"
+          "pointer": "/choices/0/logprobs/content",
+          "operator": "non_empty"
         }
       ]
     }

@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "2e725c3d-6e78-5f28-b627-4508eb3046ab",
   "key": "k31.prompt_cache_options_mode_invalid",
-  "name": "K3.1 Pro · 缓存 · 非法 mode 应拒绝",
+  "name": "K3.1 Pro · 缓存 · prompt_cache_options.mode=explicit 官方接受",
   "dimension": "cache",
   "enabled": true,
   "default": false,
@@ -31,14 +31,13 @@
           "id": "status",
           "source": "http.status",
           "operator": "equals",
-          "value": 400
+          "value": 200
         },
         {
-          "id": "error_message",
+          "id": "choices",
           "source": "response",
-          "pointer": "/error/message",
           "operator": "non_empty",
-          "transform": "trim"
+          "pointer": "/choices"
         }
       ]
     }
