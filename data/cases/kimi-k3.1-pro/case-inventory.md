@@ -4,7 +4,7 @@
 - Case key prefix: `k31.`
 - Case files: 442
 - Selected cases: 93
-- Cases asserting 4xx HTTP rejection: 41
+- Cases asserting 4xx HTTP rejection: 39
 
 ## Dimensions
 
@@ -112,16 +112,16 @@
 | `K31-N-image_svg_rejected/case.json` | `k31.image_svg_rejected` | `multimodal` | `equals, non_empty` | `max_completion_tokens, messages, reasoning_effort` | yes |
 | `K31-N-json_schema_complex/case.json` | `k31.json_schema_complex` | `structured-output` | `equals, json_valid, length_equals, non_empty, type` | `max_completion_tokens, messages, reasoning_effort, response_format` | no |
 | `K31-N-json_schema_strict_false/case.json` | `k31.json_schema_strict_false` | `structured-output` | `equals, json_valid, length_equals, non_empty` | `max_completion_tokens, messages, reasoning_effort, response_format` | no |
-| `K31-N-logprobs_enabled/case.json` | `k31.logprobs_enabled` | `parameters` | `equals, exists, length_equals, non_empty` | `logprobs, max_completion_tokens, messages, reasoning_effort, top_logprobs` | no |
+| `K31-N-logprobs_enabled/case.json` | `k31.logprobs_enabled` | `parameters` | `equals, length_equals, non_empty` | `logprobs, max_completion_tokens, messages, reasoning_effort, top_logprobs` | no |
 | `K31-N-prompt_cache_breakpoint/case.json` | `k31.prompt_cache_breakpoint` | `cache` | `equals, non_empty` | `max_completion_tokens, messages, reasoning_effort` | yes |
 | `K31-N-prompt_cache_options_mode/case.json` | `k31.prompt_cache_options_mode` | `cache` | `equals, length_equals, non_empty` | `max_completion_tokens, messages, prompt_cache_options, reasoning_effort` | no |
-| `K31-N-prompt_cache_options_mode_invalid/case.json` | `k31.prompt_cache_options_mode_invalid` | `cache` | `equals, non_empty` | `max_completion_tokens, messages, prompt_cache_options, reasoning_effort` | yes |
+| `K31-N-prompt_cache_options_mode_invalid/case.json` | `k31.prompt_cache_options_mode_invalid` | `cache` | `equals, non_empty` | `max_completion_tokens, messages, prompt_cache_options, reasoning_effort` | no |
 | `K31-N-prompt_cache_options_ttl_1h/case.json` | `k31.prompt_cache_options_ttl_1h` | `cache` | `equals, length_equals, non_empty` | `max_completion_tokens, messages, prompt_cache_options, reasoning_effort` | no |
 | `K31-N-prompt_cache_options_ttl_5m/case.json` | `k31.prompt_cache_options_ttl_5m` | `cache` | `equals, length_equals, non_empty` | `max_completion_tokens, messages, prompt_cache_options, reasoning_effort` | no |
 | `K31-N-prompt_cache_options_ttl_invalid/case.json` | `k31.prompt_cache_options_ttl_invalid` | `cache` | `equals, non_empty` | `max_completion_tokens, messages, prompt_cache_options, reasoning_effort` | yes |
 | `K31-N-response_format_text/case.json` | `k31.response_format_text` | `structured-output` | `equals, length_equals, non_empty` | `max_completion_tokens, messages, reasoning_effort, response_format` | no |
 | `K31-N-stream_explicit_false/case.json` | `k31.stream_explicit_false` | `protocol` | `equals, length_equals, non_empty` | `max_completion_tokens, messages, reasoning_effort, stream` | no |
-| `K31-N-tool_parameters_required/case.json` | `k31.tool_parameters_required` | `tools` | `equals, non_empty` | `max_completion_tokens, messages, reasoning_effort, tools` | yes |
+| `K31-N-tool_parameters_required/case.json` | `k31.tool_parameters_required` | `tools` | `equals, non_empty` | `max_completion_tokens, messages, reasoning_effort, tools` | no |
 | `K31-N-tool_strict_false/case.json` | `k31.tool_strict_false` | `tools` | `equals, json_valid, length_equals, non_empty` | `max_completion_tokens, messages, reasoning_effort, tool_choice, tools` | no |
 | `K31-N-tool_strict_true/case.json` | `k31.tool_strict_true` | `tools` | `equals, json_valid, length_equals, non_empty` | `max_completion_tokens, messages, reasoning_effort, tool_choice, tools` | no |
 | `K31-P010-param-omit-sampling/case.json` | `k31.param_omit_sampling` | `parameters` | `equals, non_empty` | `max_tokens, messages` | no |

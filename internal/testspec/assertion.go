@@ -161,6 +161,17 @@ func evaluateScoped(assertion Assertion, observation Observation, item any) Asse
 		result.Reason = "source_unavailable"
 		return result
 	}
+	transform := assertion.Transform
+	// The text source is a plain string, so a pointer can only address the value its transform decodes.
+	if assertion.Source == "text" && assertion.Pointer != "" && transform != "" {
+		decoded, err := transformValue(root, transform)
+		if err != nil {
+			result.Status = VerdictFailed
+			result.Reason = "transform_failed"
+			return result
+		}
+		root, transform = decoded, ""
+	}
 	actual, exists := jsonpointer.Lookup(root, assertion.Pointer)
 	if exists {
 		result.Actual, _ = json.Marshal(actual)
@@ -181,7 +192,7 @@ func evaluateScoped(assertion Assertion, observation Observation, item any) Asse
 	if len(assertion.Each) > 0 {
 		return evaluateEach(assertion, observation, result, actual)
 	}
-	transformed, err := transformValue(actual, assertion.Transform)
+	transformed, err := transformValue(actual, transform)
 	if err != nil {
 		result.Status = VerdictFailed
 		result.Reason = "transform_failed"

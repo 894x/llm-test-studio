@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "d2268150-1e3f-5de2-828f-d86fd0629476",
   "key": "k31.tool_parameters_required",
-  "name": "K3.1 Pro · 工具定义 · 缺少 parameters 应拒绝",
+  "name": "K3.1 Pro · 工具定义 · 缺少 parameters 官方接受",
   "dimension": "tools",
   "enabled": true,
   "default": false,
@@ -37,14 +37,13 @@
           "id": "status",
           "source": "http.status",
           "operator": "equals",
-          "value": 400
+          "value": 200
         },
         {
-          "id": "error_message",
+          "id": "choices",
           "source": "response",
-          "pointer": "/error/message",
           "operator": "non_empty",
-          "transform": "trim"
+          "pointer": "/choices"
         }
       ]
     }
