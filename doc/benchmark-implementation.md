@@ -57,5 +57,17 @@ changes are staged; unrelated work already present in the checkout is preserved.
 
 ## Validation record
 
-Implementation and acceptance are pending. Do not interpret this plan as evidence
-that execution, storage, or UI functionality has been implemented.
+- Design committed as `2fde95b6`; pinned Inspect worker committed as `ffd862c7`.
+- Worker tests exercise real Inspect against a local deterministic API, including
+  repeated epochs, sample progress, native metrics, redaction, and all six factory
+  imports. Model inference in these tests is local and incurs no provider charges.
+- Application tests cover per-dataset report identities, persistence/reopen,
+  cancellation of queued/active work, retained partial samples, pagination,
+  secret-free exports, interruption reads, malformed worker events, and rejection
+  of unknown/newer or incomplete documents without modifying them.
+- Desktop bridge tests and Go vet pass for the new application/runtime/bridge
+  packages. Full bootstrap tests in the original checkout currently include
+  unrelated authored Kimi files: two pre-existing fixed-cardinality assertions
+  expect 1085 Cases / 78 Suites but observe 1089 / 81. Verify the committed tree
+  separately before final acceptance; do not rewrite user-owned definitions.
+- Product UI and full rendered/end-to-end acceptance remain pending.

@@ -58,6 +58,12 @@ import {
 } from "@/features/reports/generation-progress"
 
 export type DesktopErrorCode =
+	| "benchmark_invalid"
+	| "benchmark_unavailable"
+	| "benchmark_runtime_unavailable"
+	| "benchmark_busy"
+	| "benchmark_not_found"
+	| "benchmark_format_unsupported"
   | "history_recycle_invalid"
   | "history_recycle_not_found"
   | "history_recycle_active"

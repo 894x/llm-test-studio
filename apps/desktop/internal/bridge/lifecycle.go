@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/benchmarks"
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 )
 
 type desktopRequirements struct {
+	benchmarks        bool
 	historyRecycle    bool
 	overview          bool
 	comparisonHistory bool
@@ -31,6 +33,7 @@ type desktopRequirements struct {
 }
 
 type desktopLease struct {
+	benchmarks        *benchmarks.Service
 	historyRecycle    HistoryRecycleService
 	overview          OverviewQuery
 	ctx               context.Context
@@ -117,6 +120,7 @@ func (app *DesktopApp) startLocked(ctx context.Context, initialize Initializer) 
 	app.startupProgress.Stage = "ready"
 	app.startupProgress.ElapsedMS = time.Since(app.startupStarted).Milliseconds()
 	app.overview = dependencies.Overview
+	app.benchmarks = dependencies.Benchmarks
 	app.historyRecycle = dependencies.HistoryRecycle
 	app.comparisonHistory = dependencies.ComparisonHistory
 	app.runHistory = dependencies.RunHistory
@@ -192,6 +196,9 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 	if require.overview && isNilInterface(app.overview) {
 		return desktopLease{}, ErrWorkspaceUnavailable
 	}
+	if require.benchmarks && app.benchmarks == nil {
+		return desktopLease{}, benchmarks.ErrUnavailable
+	}
 	if require.historyRecycle && isNilInterface(app.historyRecycle) {
 		return desktopLease{}, ErrHistoryRecycleUnavailable
 	}
@@ -252,6 +259,7 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 		}
 	}
 	return desktopLease{
+		benchmarks:        app.benchmarks,
 		historyRecycle:    app.historyRecycle,
 		overview:          app.overview,
 		comparisonHistory: app.comparisonHistory,
@@ -293,6 +301,7 @@ func (app *DesktopApp) shutdown() error {
 	selections := app.fileSelections
 	app.fileSelections = nil
 	app.query = nil
+	app.benchmarks = nil
 	app.historyRecycle = nil
 	app.catalog = nil
 	app.catalogCommands = nil

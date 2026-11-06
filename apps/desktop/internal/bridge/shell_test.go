@@ -159,6 +159,8 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		gotCodes[match[1]] = struct{}{}
 	}
 	wantCodes := map[string]struct{}{
+		desktopCodeBenchmarkInvalid: {}, desktopCodeBenchmarkUnavailable: {}, desktopCodeBenchmarkRuntime: {},
+		desktopCodeBenchmarkBusy: {}, desktopCodeBenchmarkNotFound: {}, desktopCodeBenchmarkFormat: {},
 		desktopCodeJobInvalid: {}, desktopCodeJobNotFound: {}, desktopCodeJobConflict: {},
 		desktopCodeJobUnavailable: {}, desktopCodeJobPending: {}, desktopCodeJobCommitUnconfirmed: {},
 		desktopCodeJobQueryUnavailable: {}, desktopCodeJobCommandsUnavailable: {},

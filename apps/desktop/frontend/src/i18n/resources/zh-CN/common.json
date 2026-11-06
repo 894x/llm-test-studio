@@ -18,6 +18,12 @@
     "details": "{{title}}详情"
   },
   "error": {
+    "benchmark_invalid": "数据测试配置无效，请检查数据集、连接和参数",
+    "benchmark_unavailable": "数据测试暂不可用，请刷新后重试",
+    "benchmark_runtime_unavailable": "请先准备 Inspect 评测环境",
+    "benchmark_busy": "数据测试正在处理其他操作，请稍后重试",
+    "benchmark_not_found": "数据测试记录或报告不存在",
+    "benchmark_format_unsupported": "数据测试文件格式不受支持或已损坏，原文件未修改",
     "history_recycle_active": "任务仍在执行或等待确认，请结束并同步后再移入回收站",
     "history_recycle_invalid": "所选测试记录无效，请刷新后重试",
     "history_recycle_not_found": "测试记录不存在或已不在当前列表，请刷新",

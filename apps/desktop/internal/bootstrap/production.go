@@ -134,6 +134,15 @@ func newInitializer(options Options, acquiredOwnership *fileconfig.ExclusiveLock
 		if err != nil {
 			return bridge.Dependencies{}, fmt.Errorf("create quick task credential store: %w", err)
 		}
+		benchmarkService, err := newBenchmarkService(ctx, directory, catalogRepository, credentialStore)
+		if err != nil {
+			return bridge.Dependencies{}, fmt.Errorf("create benchmark service: %w", err)
+		}
+		defer func() {
+			if initializeError != nil {
+				_ = benchmarkService.Close()
+			}
+		}()
 		cleanupQueuePath, err := credentialCleanupRegistryPath(directory, executableDirectory)
 		if err != nil {
 			return bridge.Dependencies{}, fmt.Errorf("locate credential cleanup queue: %w", err)
@@ -305,6 +314,7 @@ func newInitializer(options Options, acquiredOwnership *fileconfig.ExclusiveLock
 			return bridge.Dependencies{}, fmt.Errorf("create job launcher: %w", err)
 		}
 		return bridge.Dependencies{
+			Benchmarks:             benchmarkService,
 			HistoryRecycle:         historyrecycle.New(repository),
 			Overview:               overview.New(readView, catalogQuery),
 			ComparisonHistory:      comparisons.NewHistory(readView, comparisonService.Refresher),
@@ -329,6 +339,7 @@ func newInitializer(options Options, acquiredOwnership *fileconfig.ExclusiveLock
 			ControlRecords:         repository,
 			Close: func() error {
 				return errors.Join(
+					benchmarkService.Close(),
 					jobServices.close(),
 					closeRemoteSync(),
 					closeRemoteNodes(),

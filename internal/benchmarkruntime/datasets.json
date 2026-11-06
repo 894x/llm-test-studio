@@ -1,11 +1,65 @@
 {
   "schema_version": 1,
   "datasets": [
-    {"id":"arc_easy","name":"ARC Easy","description":"Grade-school science multiple-choice questions.","category":"knowledge","module":"inspect_evals.arc","factory":"arc_easy","source_url":"https://ukgovernmentbeis.github.io/inspect_evals/evals/knowledge/arc/","default_max_tokens":2048},
-    {"id":"arc_challenge","name":"ARC Challenge","description":"Challenging science multiple-choice questions.","category":"reasoning","module":"inspect_evals.arc","factory":"arc_challenge","source_url":"https://ukgovernmentbeis.github.io/inspect_evals/evals/knowledge/arc/","default_max_tokens":4096},
-    {"id":"gsm8k","name":"GSM8K","description":"Grade-school mathematical word problems.","category":"math","module":"inspect_evals.gsm8k","factory":"gsm8k","source_url":"https://ukgovernmentbeis.github.io/inspect_evals/evals/mathematics/gsm8k/","default_max_tokens":8192},
-    {"id":"aime2025","name":"AIME 2025","description":"Competition mathematics with repeated sampling support.","category":"math","module":"inspect_evals.aime2025","factory":"aime2025","source_url":"https://ukgovernmentbeis.github.io/inspect_evals/evals/mathematics/aime2025/","default_max_tokens":32768},
-    {"id":"mmlu_pro","name":"MMLU-Pro","description":"Multi-subject knowledge and reasoning, with ten answer options.","category":"knowledge","module":"inspect_evals.mmlu_pro","factory":"mmlu_pro","source_url":"https://ukgovernmentbeis.github.io/inspect_evals/evals/knowledge/mmlu_pro/","default_max_tokens":8192},
-    {"id":"mmmu_multiple_choice","name":"MMMU · Multiple Choice","description":"Image-and-text multidisciplinary questions; this is MMMU, not MMMU-Pro.","category":"vision","module":"inspect_evals.mmmu","factory":"mmmu_multiple_choice","source_url":"https://ukgovernmentbeis.github.io/inspect_evals/evals/multimodal/mmmu/","default_max_tokens":8192}
+    {
+      "id": "arc_easy",
+      "name": "ARC Easy",
+      "description": "Grade-school science multiple-choice questions.",
+      "category": "knowledge",
+      "module": "inspect_evals.arc",
+      "factory": "arc_easy",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/arc",
+      "default_max_tokens": 2048
+    },
+    {
+      "id": "arc_challenge",
+      "name": "ARC Challenge",
+      "description": "Challenging science multiple-choice questions.",
+      "category": "reasoning",
+      "module": "inspect_evals.arc",
+      "factory": "arc_challenge",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/arc",
+      "default_max_tokens": 4096
+    },
+    {
+      "id": "gsm8k",
+      "name": "GSM8K",
+      "description": "Grade-school mathematical word problems.",
+      "category": "math",
+      "module": "inspect_evals.gsm8k",
+      "factory": "gsm8k",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/gsm8k",
+      "default_max_tokens": 8192
+    },
+    {
+      "id": "aime2025",
+      "name": "AIME 2025",
+      "description": "Competition mathematics with repeated sampling support.",
+      "category": "math",
+      "module": "inspect_evals.aime2025",
+      "factory": "aime2025",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/aime2025",
+      "default_max_tokens": 32768
+    },
+    {
+      "id": "mmlu_pro",
+      "name": "MMLU-Pro",
+      "description": "Multi-subject knowledge and reasoning, with ten answer options.",
+      "category": "knowledge",
+      "module": "inspect_evals.mmlu_pro",
+      "factory": "mmlu_pro",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/mmlu_pro",
+      "default_max_tokens": 8192
+    },
+    {
+      "id": "mmmu_multiple_choice",
+      "name": "MMMU · Multiple Choice",
+      "description": "Image-and-text multidisciplinary questions; this is MMMU, not MMMU-Pro.",
+      "category": "vision",
+      "module": "inspect_evals.mmmu",
+      "factory": "mmmu_multiple_choice",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/mmmu",
+      "default_max_tokens": 8192
+    }
   ]
 }

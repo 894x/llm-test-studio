@@ -5,6 +5,7 @@ import contextlib
 import hashlib
 import importlib
 import importlib.metadata
+from itertools import islice
 import json
 import math
 from pathlib import Path
@@ -30,7 +31,7 @@ class Reporter:
         self.secret = request.get("api_key", "")
 
     def text(self, value, limit=MAX_TEXT):
-        value = str(value or "")
+        value = "" if value is None else str(value)
         if self.secret:
             value = value.replace(self.secret, "[redacted]")
         return "".join(c for c in value if c in "\n\t" or ord(c) >= 32)[:limit]
@@ -108,10 +109,8 @@ async def execute(request, task_factory=None, reporter=None):
     reporter.emit("loading")
     task = (task_factory or load_task)(request["dataset_id"])
     options = request["options"]
-    selected = list(task.dataset)
     limit = options["sample_limit"]
-    if limit:
-        selected = selected[:limit]
+    selected = list(islice(task.dataset, limit)) if limit else task.dataset
     digest = hashlib.sha256()
     for sample in selected:
         digest.update(sample.model_dump_json(exclude_none=True).encode("utf-8"))

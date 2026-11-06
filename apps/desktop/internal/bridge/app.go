@@ -8,6 +8,7 @@ import (
 
 	native "github.com/894x/llm-test-studio/apps/desktop/internal/native"
 	clipboard "github.com/894x/llm-test-studio/apps/desktop/internal/native/clipboard"
+	"github.com/894x/llm-test-studio/internal/application/benchmarks"
 	"github.com/894x/llm-test-studio/internal/application/jobfiles"
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
@@ -17,6 +18,7 @@ import (
 // DesktopApp is the Wails binding. It owns only desktop lifecycle and
 // delegation; business decisions remain in Application services.
 type DesktopApp struct {
+	benchmarks               *benchmarks.Service
 	lifecycleMu              sync.Mutex
 	executionLocationMu      sync.RWMutex
 	mu                       sync.Mutex

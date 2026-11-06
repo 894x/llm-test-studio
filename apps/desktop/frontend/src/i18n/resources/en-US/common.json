@@ -18,6 +18,12 @@
     "details": "{{title}} details"
   },
   "error": {
+    "benchmark_invalid": "Check the datasets, connection, and benchmark parameters.",
+    "benchmark_unavailable": "Benchmark testing is unavailable. Refresh and try again.",
+    "benchmark_runtime_unavailable": "Prepare the Inspect evaluation environment first.",
+    "benchmark_busy": "A benchmark operation is in progress. Try again shortly.",
+    "benchmark_not_found": "The benchmark execution or report was not found.",
+    "benchmark_format_unsupported": "The benchmark format is unsupported or corrupt. The original file was not changed.",
     "history_recycle_active": "The task is running or awaiting confirmation. End it and sync its state before moving it to the recycle bin.",
     "history_recycle_invalid": "The selected test record is invalid. Refresh and try again.",
     "history_recycle_not_found": "The test record is unavailable or no longer in this view. Refresh the list.",
