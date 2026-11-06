@@ -305,6 +305,11 @@ func TestHistoryPaginationDoesNotDropOlderExecutions(t *testing.T) {
 	if len(second.Runs) != 2 || second.NextCursor != "" {
 		t.Fatalf("bad second page: %+v", second)
 	}
+	oldest := second.Runs[len(second.Runs)-1]
+	owner, err := s.FindReport(t.Context(), oldest.Datasets[0].ReportID)
+	if err != nil || owner.ID != oldest.ID {
+		t.Fatalf("report owner beyond the first page: %s, %v", owner.ID, err)
+	}
 	seen := map[string]bool{}
 	for _, run := range append(first.Runs, second.Runs...) {
 		if seen[run.ID] {

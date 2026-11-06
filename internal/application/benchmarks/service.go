@@ -241,7 +241,9 @@ func (s *Service) execute(ctx context.Context, id string, secret []byte) {
 		request := WorkerRequest{SchemaVersion: 1, RunID: id, ReportID: reportID,
 			DatasetID: run.Datasets[index].Dataset.ID, Protocol: run.Target.Protocol,
 			Model: run.Target.Model, BaseURL: run.Target.BaseURL, APIKey: string(secret), Options: run.Options,
-			LogDir: filepath.Join(s.store.directory, "runs", id, reportID, "inspect")}
+			// Keep native log paths short: Inspect appends a timestamped filename,
+			// and Windows filesystem adapters may still enforce MAX_PATH.
+			LogDir: filepath.Join(s.store.directory, "inspect", reportID)}
 		lastSequence := 0
 		resultReceived := false
 		err := s.runtime.Execute(ctx, request, func(event Event) error {

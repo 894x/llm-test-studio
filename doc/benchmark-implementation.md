@@ -73,7 +73,23 @@ changes are staged; unrelated work already present in the checkout is preserved.
 - Product UI provides the fourth quick-test mode, dataset selection, retained
   options, paginated history, Run progress/cancellation, and per-dataset reports
   with sample evidence and JSON export in both interface languages.
-- Frontend type checking, lint, build, and all 1144 tests across 78 files pass
+- Frontend type checking, lint, build, and all 1145 tests across 78 files pass
   (`pnpm test -- --run --maxWorkers=2`). Browser checks at 1440x900, 1024x768,
   and 960x640 show no page overflow or duplicate field IDs; searching datasets
-  and switching modes preserve selection. Native end-to-end acceptance is pending.
+  and switching modes preserve selection. Explicit light/dark selections and
+  system-theme resolution are checked without relevant console errors.
+- Real Inspect worker tests cover OpenAI Chat, OpenAI Responses, and Anthropic
+  Messages against local deterministic APIs, including explicit credentials in
+  the presence of an ambient Anthropic token and the streaming-off setting.
+- The opt-in registered-dataset integration passes through both the process
+  adapter and application service. Native logs use a shorter report-ID path to
+  avoid the reproduced Windows filename-length failure.
+- A production Wails build with an isolated application-data root runs ARC Easy
+  and ARC Challenge with two real dataset samples each against a local mock
+  channel. Run displays loading/in-flight/completed progress, both dataset
+  reports retain their identities, and the native JSON save dialog produces a
+  report with two samples, native accuracy/stderr, and no temporary API key.
+- Reopening the same isolated native workspace preserves the completed 2/2
+  outcomes for both datasets alongside the earlier failed run. The user guide
+  in `doc/benchmark-testing.md` records preparation, scoring, local execution,
+  bounded evidence, versioning, and downgrade behavior.

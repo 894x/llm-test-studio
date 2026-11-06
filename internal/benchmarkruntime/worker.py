@@ -8,6 +8,7 @@ import importlib.metadata
 from itertools import islice
 import json
 import math
+import os
 from pathlib import Path
 import sys
 
@@ -143,8 +144,11 @@ async def execute(request, task_factory=None, reporter=None):
                           failed=failed, in_flight=len(active))
 
     protocol = request["protocol"]
+    # Inspect prioritises ambient Anthropic OAuth over an explicit API key.
+    # This dedicated worker must use only the selected channel credential.
+    os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
     provider = "anthropic" if protocol == "anthropic-messages" else "openai-api/benchmark"
-    model_args = {} if provider == "anthropic" else {
+    model_args = {"streaming": options["stream"]} if provider == "anthropic" else {
         "responses_api": protocol == "openai-responses", "stream": options["stream"]}
     config = GenerateConfig(max_tokens=options["max_tokens"],
                             temperature=options["temperature"],

@@ -77,6 +77,13 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
   const [localHistoryChanges, setLocalHistoryChanges] = useState<HistoryVisibilityChange[]>([])
   const history = useExecutionJobs(client, preferredJob)
   const benchmarks = useBenchmarks(client)
+  const receiveBenchmarks = benchmarks.receive
+  useEffect(() => {
+    if (preferredRunID?.length !== 57 || !client.getBenchmark) return
+    let active = true
+    void client.getBenchmark(preferredRunID).then(run => { if (active) receiveBenchmarks([run]) }).catch(() => {})
+    return () => { active = false }
+  }, [client, preferredRunID, receiveBenchmarks])
   const runHistory = useRunHistory(client, history.jobs, preferredRunID?.length === 57 ? undefined : preferredRunID)
   const appliedHistoryChanges = useRef(0)
   const applyJobHistory = history.applyHistoryChange

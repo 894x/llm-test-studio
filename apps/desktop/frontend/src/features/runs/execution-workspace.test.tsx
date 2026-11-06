@@ -8,6 +8,7 @@ import type { QuickPerformanceReport } from "@/features/quick-test/data"
 import { RunWorkspace } from "./execution-workspace"
 import { FIXTURE_WORKSPACE, FIXTURE_REPORTS } from "@/test/workspace-fixtures"
 import type { WorkspaceSnapshot } from "./data"
+import { benchmarkRun } from "@/test/benchmark-fixtures"
 
 const empty: WorkspaceSnapshot = { schema_version: 1, plans: [], runs: [] }
 beforeEach(() => {
@@ -15,6 +16,18 @@ beforeEach(() => {
   vi.spyOn(window, "matchMedia").mockImplementation(query => ({ ...media, matches: query === "(min-width: 1180px)" }))
 })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+
+it("opens a benchmark beyond the first history page using its run identity", async () => {
+  const run = benchmarkRun()
+  const client = { ...executionClient(),
+    getBenchmarks: vi.fn().mockResolvedValue({ schema_version: 1, runs: [], next_cursor: "" }),
+    getBenchmark: vi.fn().mockResolvedValue(run) }
+  render(<RunWorkspace client={client} snapshot={empty} reports={EMPTY_REPORTS} preferredJob={null}
+    preferredRunID={run.id} commandError="" onOpenReport={vi.fn()} />)
+  expect(await screen.findByRole("button", { name: "查看 ARC Easy" })).toBeVisible()
+  expect(client.getBenchmark).toHaveBeenCalledWith(run.id)
+  expect(screen.getByRole("complementary", { name: "运行详情" })).toHaveTextContent("local-test")
+})
 
 it.each(["run", "performance"] as const)("keeps %s controls in the fixed footer across every details tab", async kind => {
   const user = userEvent.setup()

@@ -59,6 +59,7 @@ describe("benchmark workflow", () => {
   it("shows benchmark progress and cancellation in the existing Run workspace", async () => {
     const client = clientFixture(), run = benchmarkRun({ status: "running", finished_at: "" })
     run.datasets[0] = { ...run.datasets[0], status: "running", stage: "running", completed: 0, in_flight: 1, finished_at: "" }
+    client.getBenchmark.mockResolvedValue(run)
     client.getBenchmarks.mockResolvedValue({ schema_version: 1, runs: [run], next_cursor: "" })
     render(<RunWorkspace client={{ ...executionClient(), ...client }} snapshot={EMPTY_WORKSPACE} reports={EMPTY_REPORTS} preferredJob={null} preferredRunID={run.id} commandError="" onOpenReport={vi.fn()} />)
     await screen.findByRole("button", { name: "查看 ARC Easy" })

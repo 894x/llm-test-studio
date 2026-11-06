@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -54,5 +55,33 @@ func TestInspectProcessRunsRegisteredDataset(t *testing.T) {
 	result := events[len(events)-1]
 	if result.Kind != "result" || result.Status != "completed" || result.Completed != 1 || len(result.Metrics) == 0 || result.Provenance == nil {
 		t.Fatalf("missing dataset report: %+v", result)
+	}
+	service, err := benchmarks.New(ctx, benchmarks.Dependencies{
+		Directory: filepath.Join(t.TempDir(), "workspace"), CatalogJSON: CatalogJSON(),
+		Runtime: adapter, Resolve: benchmarks.DirectConnection,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	run, err := service.Start(ctx, benchmarks.StartCommand{
+		DatasetIDs: []string{"arc_easy"},
+		Connection: benchmarks.Connection{Protocol: domain.ProtocolOpenAIChat,
+			Model: "local-test", BaseURL: server.URL, APIKey: "local-test-key"},
+		Options: benchmarks.Options{SampleLimit: 1, Epochs: 1, Concurrency: 1,
+			MaxTokens: 32, TimeoutSeconds: 10, Seed: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for benchmarks.Active(run.Status) && ctx.Err() == nil {
+		time.Sleep(50 * time.Millisecond)
+		run, err = service.Get(run.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if run.Status != "completed" || run.Datasets[0].Completed != 1 {
+		t.Fatalf("application-to-Inspect result: %+v", run)
 	}
 }
