@@ -30,7 +30,7 @@ func TestDesktopBindingMethodSetSurvivesPackageMove(t *testing.T) {
 		"ExportBenchmarkReport", "ExportReport",
 		"ForgetQuickTaskCredential",
 		"GetAvailableReports",
-		"GetBenchmark", "GetBenchmarkCatalog", "GetBenchmarkReport", "GetBenchmarks",
+		"GetBenchmark", "GetBenchmarkCatalog", "GetBenchmarkReport", "GetBenchmarkReportOwner", "GetBenchmarks",
 		"GetCatalog",
 		"GetComparisonHistory",
 		"GetComparisons",

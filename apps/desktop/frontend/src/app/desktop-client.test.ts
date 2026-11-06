@@ -1,4 +1,5 @@
 import { protocolReportFixture } from "@/test/protocol-report-fixture"
+import { benchmarkPreviewClient } from "@/features/benchmarks/preview-client"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
@@ -1226,7 +1227,12 @@ function installBinding(
   catalog: unknown = FIXTURE_CATALOG,
   reports: unknown = FIXTURE_REPORTS,
 ) {
+  const benchmark = benchmarkPreviewClient()
   const binding = {
+    GetBenchmarkCatalog: vi.fn(benchmark.getBenchmarkCatalog), PrepareBenchmarkRuntime: vi.fn(benchmark.prepareBenchmarkRuntime),
+    GetBenchmarkReportOwner: vi.fn(benchmark.getBenchmarkReportOwner),
+    StartBenchmark: vi.fn(benchmark.startBenchmark), GetBenchmarks: vi.fn(benchmark.getBenchmarks), GetBenchmark: vi.fn(benchmark.getBenchmark),
+    CancelBenchmark: vi.fn(benchmark.cancelBenchmark), GetBenchmarkReport: vi.fn(benchmark.getBenchmarkReport), ExportBenchmarkReport: vi.fn(benchmark.exportBenchmarkReport),
     PreviewHistoryRecycle: vi.fn<(target: unknown) => Promise<unknown>>(),
     GetRecycledHistory: vi.fn(async (_after?: string): Promise<unknown> => ({ schema_version: 1, entries: [], next_cursor: "", has_more: false })),
     RecycleHistory: vi.fn<(target: unknown) => Promise<unknown>>(),

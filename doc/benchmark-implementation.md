@@ -66,8 +66,14 @@ changes are staged; unrelated work already present in the checkout is preserved.
   secret-free exports, interruption reads, malformed worker events, and rejection
   of unknown/newer or incomplete documents without modifying them.
 - Desktop bridge tests and Go vet pass for the new application/runtime/bridge
-  packages. Full bootstrap tests in the original checkout currently include
-  unrelated authored Kimi files: two pre-existing fixed-cardinality assertions
-  expect 1085 Cases / 78 Suites but observe 1089 / 81. Verify the committed tree
-  separately before final acceptance; do not rewrite user-owned definitions.
-- Product UI and full rendered/end-to-end acceptance remain pending.
+  packages. Full bootstrap tests also fail in a detached clean checkout at
+  `9df5d432`: two fixed-cardinality assertions expect 1085 Cases / 78 Suites but
+  observe 1089 / 81 after the baseline Kimi additions in `9edea2a2`. This is
+  independent of the unrelated dirty authored files in the original checkout.
+- Product UI provides the fourth quick-test mode, dataset selection, retained
+  options, paginated history, Run progress/cancellation, and per-dataset reports
+  with sample evidence and JSON export in both interface languages.
+- Frontend type checking, lint, build, and all 1144 tests across 78 files pass
+  (`pnpm test -- --run --maxWorkers=2`). Browser checks at 1440x900, 1024x768,
+  and 960x640 show no page overflow or duplicate field IDs; searching datasets
+  and switching modes preserve selection. Native end-to-end acceptance is pending.

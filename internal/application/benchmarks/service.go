@@ -467,6 +467,35 @@ func (s *Service) Report(runID, reportID, after string) (Report, error) {
 	return Report{}, ErrNotFound
 }
 
+func (s *Service) FindReport(ctx context.Context, reportID string) (Run, error) {
+	if _, err := uuid.Parse(reportID); err != nil {
+		return Run{}, ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	after := ""
+	for {
+		if err := ctx.Err(); err != nil {
+			return Run{}, err
+		}
+		page, err := s.store.list(after)
+		if err != nil {
+			return Run{}, err
+		}
+		for _, run := range page.Runs {
+			for _, dataset := range run.Datasets {
+				if dataset.ReportID == reportID {
+					return s.readRun(run.ID)
+				}
+			}
+		}
+		if page.NextCursor == "" {
+			return Run{}, ErrNotFound
+		}
+		after = page.NextCursor
+	}
+}
+
 func (s *Service) Cancel(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

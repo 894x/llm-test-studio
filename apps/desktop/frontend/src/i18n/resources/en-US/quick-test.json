@@ -257,6 +257,8 @@
   "modes": {
     "functional": "Functional",
     "performance": "Performance",
-    "plan": "Plan"
-  }
+    "plan": "Plan",
+    "benchmark": "Data"
+  },
+  "benchmarkTitle": "Data testing"
 }

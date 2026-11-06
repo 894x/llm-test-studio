@@ -15,11 +15,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/benchmarks"
+	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/fileconfig"
+	"github.com/894x/llm-test-studio/internal/protocol"
 )
 
 //go:embed pyproject.toml uv.lock worker.py datasets.json
@@ -112,6 +115,11 @@ func (a *Adapter) Execute(ctx context.Context, request benchmarks.WorkerRequest,
 	if err := fileconfig.EnsurePrivateDirectory(ctx, request.LogDir); err != nil {
 		return err
 	}
+	base, err := inspectBaseURL(request.BaseURL, request.Protocol)
+	if err != nil {
+		return err
+	}
+	request.BaseURL = base
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return benchmarks.ErrInvalid
@@ -159,4 +167,19 @@ func (a *Adapter) Execute(ctx context.Context, request benchmarks.WorkerRequest,
 	}
 	err = command.Wait()
 	return errors.Join(protocolError, err)
+}
+
+func inspectBaseURL(address string, selected domain.Protocol) (string, error) {
+	path, suffix := "/v1/chat/completions", "/chat/completions"
+	if selected == domain.ProtocolOpenAIResponses {
+		path, suffix = "/v1/responses", "/responses"
+	}
+	if selected == domain.ProtocolAnthropicMessages {
+		path, suffix = "/v1/messages", "/v1/messages"
+	}
+	resolved, err := protocol.ResolveAddress(address, path, []protocol.RequestPath{{Path: "/v1/chat/completions"}, {Path: "/v1/responses"}, {Path: "/v1/messages"}})
+	if err != nil {
+		return "", benchmarks.ErrInvalid
+	}
+	return strings.TrimSuffix(resolved.Endpoint, suffix), nil
 }

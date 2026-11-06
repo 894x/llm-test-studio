@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
 import App from "./App"
+import { benchmarkPreviewClient } from "@/features/benchmarks/preview-client"
 import {
   DesktopClientError, createOverviewSnapshot,
   type DesktopClient,
@@ -44,6 +45,7 @@ function desktopClient(): DesktopClient & {
 } {
   let observedJob = jobFixture()
   const client = {
+    ...benchmarkPreviewClient(),
     workspace: structuredClone(FIXTURE_WORKSPACE),
     getQuickTestHistory: vi.fn(async () => ({ schema_version: 1 as const, runs: structuredClone(client.workspace.runs.filter(run => run.source === "quick_task")), reports: structuredClone(FIXTURE_REPORTS.reports.filter(report => report.source === "quick_performance")), next_cursor: "" })),
     getAvailableReports: vi.fn(async (ids: string[]) => FIXTURE_REPORTS.reports.filter(report => ids.includes(report.id)).map(report => report.id)),
@@ -1630,6 +1632,7 @@ describe("desktop run workspace", () => {
 
   it("surfaces a missing production bridge instead of substituting fixtures", async () => {
     const client: DesktopClient = {
+      ...benchmarkPreviewClient(),
       getAvailableReports: desktopClient().getAvailableReports,
       getOverview: desktopClient().getOverview,
       getRunHistory: vi.fn(async () => { throw new DesktopClientError("workspace_unavailable") }), getRunSummaries: desktopClient().getRunSummaries,

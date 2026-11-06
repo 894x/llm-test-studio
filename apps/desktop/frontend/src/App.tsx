@@ -686,6 +686,7 @@ function AppWorkspace({
         />
       ) : page === "reports" ? (
         <ReportWorkspace
+          benchmarkClient={client}
           snapshot={reports!}
           comparisonControl={comparisonState.error ? <Button size="sm" variant="ghost" onClick={() => {
             void resources.comparisons.refresh().catch(() => {})

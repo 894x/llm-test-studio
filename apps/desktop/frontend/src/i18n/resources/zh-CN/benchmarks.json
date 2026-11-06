@@ -1,0 +1,14 @@
+{
+  "title": "数据测试", "kind": "Benchmark", "datasets": "数据集", "chooseDatasets": "选择数据集", "previous": "上一页",
+  "datasetHint": "每个数据集分别评分并生成报告；同次提交依次运行所选数据集。",
+  "searchDatasets": "搜索数据集", "noDatasets": "没有匹配的数据集", "selected": "已选 {{count}} 个数据集",
+  "runtime": { "title": "评测环境", "missing": "首次测试前需要准备 Inspect 环境。", "preparing": "正在准备 Python 与 Inspect 依赖…", "ready": "Inspect 环境已就绪", "failed": "环境准备失败，请检查网络与 uv 后重试。", "prepare": "准备环境", "retry": "重新准备", "hint": "本地需要可用的 uv；此操作下载 Python 3.12 和固定版本依赖，不调用模型。" },
+  "local": "本地执行", "localHint": "数据测试在当前电脑执行，不使用默认远程 Runner。首次运行可能下载数据集。",
+  "sampleLimit": "每个数据集的题数", "sampleHint": "0 表示全量；初次测试建议小样本。", "epochs": "每题重复轮次", "concurrency": "样本并发数", "maxTokens": "最大输出 Token", "timeout": "请求超时（秒）", "temperature": "温度（留空使用默认）", "seed": "随机种子", "stream": "流式请求", "reasoning": "推理强度", "default": "由模型默认",
+  "start": "开始数据测试", "submitting": "正在提交…", "invalid": "请检查连接、至少选择一个数据集，并填写范围内的参数。", "nativeOnly": "请在桌面应用中准备环境和运行数据测试。", "loadError": "数据测试读取失败，已有内容已保留。", "retry": "重试", "refresh": "刷新", "history": "测试记录", "empty": "暂无数据测试记录", "emptyHint": "选择数据集与渠道后开始测试。", "more": "加载更多", "details": "执行详情", "report": "查看报告", "cancel": "取消测试", "cancelPending": "正在取消…",
+  "progress": "{{completed}} / {{total}} 个样本", "loadingDataset": "正在加载数据集", "inFlight": "请求中 {{count}}", "failedSamples": "请求或评分失败 {{count}}", "evaluationFailed": "评测未完整完成；已完成样本仍可查看。请检查渠道连接、模型能力和数据集访问。",
+  "statuses": { "queued": "排队中", "running": "运行中", "cancelling": "正在取消", "completed": "已完成", "failed": "失败", "cancelled": "已取消", "interrupted": "已中断", "error": "样本异常" },
+  "reportTitle": "{{dataset}} · 数据集报告", "metrics": "评测指标", "noMetrics": "尚无可用的评分指标", "metricHint": "分数使用 Inspect 原生评分口径；执行完成不代表能力通过。", "samples": "样本明细", "sampleID": "样本 ID", "epoch": "轮次", "score": "评分", "input": "题目", "target": "参考答案", "output": "模型输出", "answer": "提取的答案", "explanation": "评分说明", "sampleError": "此样本未成功完成请求或评分。", "tokens": "输入 / 输出 Token", "duration": "耗时（ms）",
+  "export": "导出 JSON", "exporting": "正在导出…", "provenance": "评测来源", "task": "评测任务 / 版本", "fingerprint": "本次任务输入指纹", "fingerprintHint": "指纹覆盖任务输入与参考答案；图片链接不等于图片文件内容校验。", "configuration": "本次评测配置", "created": "提交时间", "finished": "报告生成时间", "back": "返回报告目录",
+  "datasetDescriptions": { "arc_easy": "小学科学选择题。", "arc_challenge": "更具挑战性的科学推理选择题。", "gsm8k": "小学数学应用题。", "aime2025": "AIME 2025 竞赛数学，支持重复采样。", "mmlu_pro": "多学科知识与推理，十选项版本。", "mmmu_multiple_choice": "图文多学科选择题；这是 MMMU，不是 MMMU-Pro。" }
+}

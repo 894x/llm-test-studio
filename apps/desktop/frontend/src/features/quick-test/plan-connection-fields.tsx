@@ -15,7 +15,7 @@ import { ModelIcon, ProtocolIcon } from "./model-icon"
 import { SaveChannelSheet } from "./save-channel-sheet"
 import { QuickTestField } from "./quick-test-field"
 
-export function PlanConnectionFields({ connection, onChange, catalog, disabled, ready, errors, status, onSaveChannel }: {
+export function PlanConnectionFields({ connection, onChange, catalog, disabled, ready, errors, status, onSaveChannel, idPrefix = "plan-test", supportedProtocols }: {
   connection: PlanRunConnection
   onChange: (patch: Partial<PlanRunConnection>) => void
   catalog: CatalogSnapshot
@@ -23,6 +23,8 @@ export function PlanConnectionFields({ connection, onChange, catalog, disabled, 
   ready: boolean
   errors: Record<string, string>
   status?: React.ReactNode
+  idPrefix?: string
+  supportedProtocols?: readonly string[]
   onSaveChannel?: (command: SaveQuickTestTargetCommand) => Promise<SavedQuickTestTarget>
 }) {
   const { t } = useTranslation("quickTest")
@@ -36,7 +38,7 @@ export function PlanConnectionFields({ connection, onChange, catalog, disabled, 
   const descriptor = PROTOCOLS.find(item => item.id === connection.protocol)!
   const address = channel?.base_url ?? connection.base_url ?? ""
   const suffix = resolveConnectionURL(address, descriptor.request_paths[0].path, descriptor.request_paths)?.suffix ?? ""
-  const id = (key: string) => `plan-test-${key}`
+  const id = (key: string) => `${idPrefix}-${key}`
   return <>
     <div className="grid min-w-0 grid-cols-4 items-start gap-x-4 gap-y-2">
       <QuickTestField id={id("channel_id")} label={t("fillChannel")} error={errors.channel_id} className="row-span-2 grid grid-rows-subgrid">
@@ -66,7 +68,7 @@ export function PlanConnectionFields({ connection, onChange, catalog, disabled, 
       </QuickTestField>
       <QuickTestField id={id("protocol")} label={t("protocol")}>
         <SearchableSelect id={id("protocol")} value={connection.protocol} disabled={disabled} className="w-full"
-          options={protocolOptions.map(([value, label]) => ({ value, label, icon: <ProtocolIcon protocol={value} /> }))}
+          options={protocolOptions.filter(([value]) => !supportedProtocols || supportedProtocols.includes(value)).map(([value, label]) => ({ value, label, icon: <ProtocolIcon protocol={value} /> }))}
           onValueChange={value => onChange({ protocol: value as PlanRunConnection["protocol"], credential_run_id: undefined })} />
       </QuickTestField>
       <QuickTestField id={id("api_key")} label="API Key" error={errors.api_key} className="col-span-2">

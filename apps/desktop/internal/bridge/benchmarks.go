@@ -55,6 +55,16 @@ func (app *DesktopApp) GetBenchmark(id string) (benchmarks.Run, error) {
 	return run, app.safeBindingError(err)
 }
 
+func (app *DesktopApp) GetBenchmarkReportOwner(reportID string) (benchmarks.Run, error) {
+	lease, err := app.acquire(desktopRequirements{benchmarks: true})
+	if err != nil {
+		return benchmarks.Run{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	run, err := lease.benchmarks.FindReport(lease.ctx, reportID)
+	return run, app.safeBindingError(err)
+}
+
 func (app *DesktopApp) CancelBenchmark(id string) error {
 	lease, err := app.acquire(desktopRequirements{benchmarks: true})
 	if err != nil {
