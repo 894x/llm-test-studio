@@ -19,6 +19,7 @@ import { QuickTestField } from "@/features/quick-test/quick-test-field"
 import { connectionURLHint } from "@/features/quick-test/connection-url"
 import { DEFAULT_BENCHMARK_OPTIONS, isBenchmarkActive, type BenchmarkCatalog, type BenchmarkClient, type BenchmarkCommand, type BenchmarkDatasetRun, type BenchmarkOptions, type BenchmarkProtocol, type BenchmarkRun } from "./data"
 import { useBenchmarks } from "./use-benchmarks"
+import { useDatasetInventory } from "./use-dataset-inventory"
 
 const PROTOCOLS = ["openai-chat", "openai-responses", "anthropic-messages"] as const
 
@@ -37,7 +38,9 @@ export function BenchmarkStatus({ status }: { status: BenchmarkRun["status"] }) 
   return <span className={`text-xs ${status === "failed" ? "text-destructive" : isBenchmarkActive(status) ? "text-info-strong" : "text-muted-foreground"}`}>{t(`statuses.${status}`)}</span>
 }
 
-export function BenchmarkWorkspace({ client, modeControl, catalog, connectionsReady, connection, onConnectionChange, onOpenExecution, onOpenReport, onSaveChannel }: {
+export function BenchmarkWorkspace({ client, modeControl, catalog, connectionsReady, connection, onConnectionChange, onOpenExecution, onOpenReport, onSaveChannel, selectionIntent, onManageDatasets }: {
+  selectionIntent?: { sequence: number; datasetID: string }
+  onManageDatasets?: () => void
   client: Partial<BenchmarkClient>
   modeControl: ReactNode
   catalog: CatalogSnapshot
@@ -50,9 +53,15 @@ export function BenchmarkWorkspace({ client, modeControl, catalog, connectionsRe
 }) {
   const { t, i18n } = useTranslation("benchmarks")
   const history = useBenchmarks(client)
+  const datasetInventory = useDatasetInventory(client)
   const [definition, setDefinition] = useState<BenchmarkCatalog | null>(null)
   const [catalogError, setCatalogError] = useState(false)
-  const [datasetIDs, setDatasetIDs] = useState<string[]>([])
+  const [datasetIDs, setDatasetIDs] = useState<string[]>(selectionIntent?.datasetID ? [selectionIntent.datasetID] : [])
+  const [seenSelection, setSeenSelection] = useState(selectionIntent?.sequence ?? 0)
+  if ((selectionIntent?.sequence ?? 0) !== seenSelection) {
+    setSeenSelection(selectionIntent?.sequence ?? 0)
+    setDatasetIDs(selectionIntent?.datasetID ? [selectionIntent.datasetID] : [])
+  }
   const [options, setOptions] = useState<BenchmarkOptions>({ ...DEFAULT_BENCHMARK_OPTIONS })
   const [query, setQuery] = useState("")
   const [pending, setPending] = useState(false)
@@ -89,6 +98,7 @@ export function BenchmarkWorkspace({ client, modeControl, catalog, connectionsRe
     ranges.forEach(([key, min, max]) => { const value = options[key]; if (typeof value !== "number" || !Number.isSafeInteger(value) || value < min || value > max) nextErrors[key] = t("invalid") })
     if (options.temperature !== null && (!Number.isFinite(options.temperature) || options.temperature < 0 || options.temperature > 2)) nextErrors.temperature = t("invalid")
     if (!datasetIDs.length || !datasetIDs.every(id => definition?.datasets.some(item => item.id === id))) nextErrors.datasets = t("invalid")
+    if (datasetIDs.length > 16) nextErrors.datasets = t("datasetLimit")
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length) { setError(t("invalid")); return }
     inFlight.current = true; setPending(true); setError("")
@@ -126,7 +136,7 @@ export function BenchmarkWorkspace({ client, modeControl, catalog, connectionsRe
     </aside>
     <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1">
       <section className="mx-auto flex w-full min-w-0 max-w-[800px] flex-col gap-4 py-2">
-        <h2 className="flex h-7 items-center text-sm font-semibold">{t("title")}</h2>
+        <div className="flex items-center justify-between gap-2"><h2 className="flex h-7 items-center text-sm font-semibold">{t("title")}</h2>{onManageDatasets ? <Button size="sm" variant="secondary" onClick={onManageDatasets}>{t("datasetManager.manage")}</Button> : null}</div>
         <p className="text-[11px] text-muted-foreground">{t("localHint")}</p>
         {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
         <div className="space-y-2"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs">{t(`runtime.${runtimeState}`)}</span>
@@ -143,7 +153,7 @@ export function BenchmarkWorkspace({ client, modeControl, catalog, connectionsRe
               {catalogError ? <div role="alert" className="text-xs text-destructive">{t("loadError")}<Button type="button" variant="ghost" size="sm" onClick={() => void readCatalog()}>{t("retry")}</Button></div> : !definition ? <Spinner /> : null}
               <div className="grid min-w-0 grid-cols-1 gap-1 min-[1200px]:grid-cols-2">{datasets.map(dataset => <label key={dataset.id} className={`flex min-w-0 cursor-pointer items-start gap-2 rounded-md p-2 ${datasetIDs.includes(dataset.id) ? "bg-surface-active" : "hover:bg-surface-hover"}`}>
                 <Checkbox checked={datasetIDs.includes(dataset.id)} onCheckedChange={checked => setDatasetIDs(current => checked ? [...current, dataset.id] : current.filter(id => id !== dataset.id))} aria-label={dataset.name} aria-invalid={!!errors.datasets} aria-describedby={errors.datasets ? "benchmark-datasets-error" : undefined} className="mt-0.5" />
-                <span className="min-w-0 [overflow-wrap:anywhere]"><span className="text-xs font-medium">{dataset.name}</span><span className="mt-1 block text-[11px] text-muted-foreground">{t(`datasetDescriptions.${dataset.id}`, { defaultValue: dataset.description })}</span></span>
+                <span className="min-w-0 [overflow-wrap:anywhere]"><span className="text-xs font-medium">{dataset.name}</span><span className="mt-1 block text-[11px] text-muted-foreground">{t(`datasetDescriptions.${dataset.id}`, { defaultValue: dataset.description })}</span><span className="mt-1 block text-[10px] text-muted-foreground">{datasetInventory.inventory ? t(`datasetManager.states.${datasetInventory.inventory.datasets.find(item => item.dataset.id === dataset.id)?.download.state ?? "missing"}`) : t("datasetManager.loading")}</span></span>
               </label>)}</div>
               {definition && !datasets.length ? <p className="text-xs text-muted-foreground">{t("noDatasets")}</p> : null}
               <p className="text-[11px] text-muted-foreground" aria-live="polite">{t("selected", { count: datasetIDs.length })}</p>

@@ -17,6 +17,8 @@ export type BenchmarkSample = { id: string; epoch: number; status: "completed" |
 export type BenchmarkReport = { schema_version: 1; run_id: string; target: BenchmarkTarget; options: BenchmarkOptions; result: BenchmarkDatasetRun; samples: BenchmarkSample[]; next_cursor: string }
 export type BenchmarkExport = { filename: string; media_type: string; data_base64: string }
 export interface BenchmarkClient {
+  getBenchmarkDatasets(): Promise<BenchmarkDatasetInventory>
+  manageBenchmarkDataset(id: string, action: "download" | "cancel" | "verify" | "remove"): Promise<BenchmarkDatasetDownload>
   getBenchmarkCatalog(): Promise<BenchmarkCatalog>
   prepareBenchmarkRuntime(): Promise<void>
   startBenchmark(command: BenchmarkCommand): Promise<BenchmarkRun>
@@ -27,6 +29,11 @@ export interface BenchmarkClient {
   getBenchmarkReport(runID: string, reportID: string, after: string): Promise<BenchmarkReport>
   exportBenchmarkReport(runID: string, reportID: string): Promise<BenchmarkExport>
 }
+
+export type BenchmarkDatasetDownload = { state: "missing" | "downloading" | "verifying" | "removing" | "ready" | "failed" | "cancelled" | "invalid" | "interrupted" | "outdated"; bytes: number; files: number; samples: number; input_sha256: string; cache_sha256: string; task_version: string; updated_at: string; verified_at: string; error_code: string }
+export type BenchmarkDatasetInventory = { schema_version: 1; datasets: { dataset: BenchmarkDataset; download: BenchmarkDatasetDownload }[]; runtime: BenchmarkCatalog["runtime"] }
+export const EMPTY_DATASET_DOWNLOAD: BenchmarkDatasetDownload = { state: "missing", bytes: 0, files: 0, samples: 0, input_sha256: "", cache_sha256: "", task_version: "", updated_at: "", verified_at: "", error_code: "" }
+export const isDatasetBusy = (state: BenchmarkDatasetDownload["state"]) => ["downloading", "verifying", "removing"].includes(state)
 
 export const DEFAULT_BENCHMARK_OPTIONS: BenchmarkOptions = { sample_limit: 20, epochs: 1, max_tokens: 4096, concurrency: 4, timeout_seconds: 300, temperature: null, seed: 1, stream: false, reasoning_effort: "" }
 export const EMPTY_BENCHMARK_PAGE: BenchmarkPage = { schema_version: 1, runs: [], next_cursor: "" }
@@ -110,6 +117,17 @@ function score(value: unknown): BenchmarkScore {
 function sample(value: unknown): BenchmarkSample {
   const o = record(value, ["id", "epoch", "status", "scores", "input", "target", "output", "input_tokens", "output_tokens", "duration_ms", "error_code"])
   return { id: text(o.id, 512), epoch: integer(o.epoch, 1, 32), status: choice(o.status, ["completed", "error"]), scores: list(o.scores, score, 32), input: text(o.input, 24000, true), target: text(o.target, 24000, true), output: text(o.output, 24000, true), input_tokens: integer(o.input_tokens, 0, Number.MAX_SAFE_INTEGER), output_tokens: integer(o.output_tokens, 0, Number.MAX_SAFE_INTEGER), duration_ms: integer(o.duration_ms, 0, Number.MAX_SAFE_INTEGER), error_code: choice(o.error_code, ["", "sample_failed"]) }
+}
+export function parseBenchmarkDatasetDownload(value: unknown): BenchmarkDatasetDownload {
+  const o = record(value, ["state", "bytes", "files", "samples", "input_sha256", "cache_sha256", "task_version", "updated_at", "verified_at", "error_code"])
+  return { state: choice(o.state, ["missing", "downloading", "verifying", "removing", "ready", "failed", "cancelled", "invalid", "interrupted", "outdated"]), bytes: integer(o.bytes, 0, 8 * 1024 ** 3), files: integer(o.files, 0, 100000), samples: integer(o.samples, 0, 100000), input_sha256: cursor(o.input_sha256), cache_sha256: cursor(o.cache_sha256), task_version: text(o.task_version, 256, true), updated_at: timestamp(o.updated_at, true), verified_at: timestamp(o.verified_at, true), error_code: choice(o.error_code, ["", "dataset_download_failed", "dataset_cache_invalid"]) }
+}
+export function parseBenchmarkDatasetInventory(value: unknown): BenchmarkDatasetInventory {
+  const o = record(value, ["schema_version", "datasets", "runtime"])
+  const runtime = record(o.runtime, ["state", "error_code"])
+  const datasets = list(o.datasets, value => { const item = record(value, ["dataset", "download"]); return { dataset: parseBenchmarkDataset(item.dataset), download: parseBenchmarkDatasetDownload(item.download) } }, 100)
+  if (new Set(datasets.map(item => item.dataset.id)).size !== datasets.length) return invalid()
+  return { schema_version: version(o.schema_version), datasets, runtime: { state: choice(runtime.state, ["missing", "preparing", "ready", "failed"]), error_code: choice(runtime.error_code, ["", "runtime_prepare_failed"]) } }
 }
 export function parseBenchmarkReport(value: unknown): BenchmarkReport {
   const o = record(value, ["schema_version", "run_id", "target", "options", "result", "samples", "next_cursor"])

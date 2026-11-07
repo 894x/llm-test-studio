@@ -61,6 +61,7 @@ import {
 const OverviewWorkspace = lazy(() => import("@/features/overview/overview-workspace").then(module => ({ default: module.OverviewWorkspace })))
 const QuickTaskPage = lazy(() => import("@/features/quick-test/quick-task-page").then(module => ({ default: module.QuickTaskPage })))
 const ReportWorkspace = lazy(() => import("@/features/reports/report-workspace").then(module => ({ default: module.ReportWorkspace })))
+const DatasetWorkspace = lazy(() => import("@/features/benchmarks/dataset-workspace").then(module => ({ default: module.DatasetWorkspace })))
 const ModelChannelWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces").then(module => ({ default: module.ModelChannelWorkspace })))
 const CasesWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces").then(module => ({ default: module.CasesWorkspace })))
 const PlansWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces").then(module => ({ default: module.PlansWorkspace })))
@@ -70,7 +71,7 @@ const PAGE_READS = {
   overview: ["overview"],
   "quick-test": ["connections", "definitions"],
   catalog: ["connections"], cases: ["definitions"], plans: ["catalog"],
-  runs: [], reports: ["reports"], "recycle-bin": [],
+  runs: [], reports: ["reports"], datasets: [], "recycle-bin": [],
 } as const
 type ResourceKey = "overview" | "workspace" | "catalog" | "reports" | "comparisons" | "connections" | "definitions" | "quickCatalog"
 
@@ -96,6 +97,7 @@ function AppWorkspace({
     desktopPageFromHash(window.location.hash),
   )
   const pageRef = useRef(page)
+  const [datasetTestIntent, setDatasetTestIntent] = useState({ sequence: 0, datasetID: "" })
   const [historyChanges, setHistoryChanges] = useState<HistoryVisibilityChange[]>([])
   const historyChangesRef = useRef<HistoryVisibilityChange[]>([])
   const hiddenHistory = useMemo(() => historyVisibility(historyChanges), [historyChanges])
@@ -637,6 +639,8 @@ function AppWorkspace({
           onNavigate={openOverviewDestination} onOpenRun={id => { setPreferredJob(null); setPreferredRunID(id); setOverviewDestination("runs"); navigate("runs") }} />
       ) : page === "quick-test" ? (
         <QuickTaskPage
+          datasetTestIntent={datasetTestIntent}
+          onManageDatasets={() => navigate("datasets")}
           catalog={quickCatalog}
           catalogResources={{
             connections: { ready: connectionState.data !== null, failed: connectionState.error !== null, retry: resources.connections.refresh },
@@ -666,6 +670,8 @@ function AppWorkspace({
           historyChanges={historyChanges}
           onHistoryChanged={receiveHistoryChange}
         />
+      ) : page === "datasets" ? (
+        <DatasetWorkspace client={client} onTest={datasetID => { setDatasetTestIntent(current => ({ sequence: current.sequence + 1, datasetID })); navigate("quick-test") }} />
       ) : page === "catalog" ? (
         <ModelChannelWorkspace catalog={catalog!} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} navigationIntent={catalogNavigation} />
       ) : page === "cases" ? (

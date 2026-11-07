@@ -37,7 +37,8 @@ formats fail without mutation. No migration of existing user data is required.
 Benchmark execution is local, explicitly identified in the interface. It does not
 silently submit unsupported work to the default remote runner. Runtime preparation
 is explicit and observable; installing Python dependencies does not send model
-requests. Dataset downloads occur only after an explicit benchmark submission.
+requests. Dataset downloads occur after an explicit benchmark submission or a
+download action in the Dataset workspace.
 
 ## Staged delivery
 
@@ -93,3 +94,42 @@ changes are staged; unrelated work already present in the checkout is preserved.
   outcomes for both datasets alongside the earlier failed run. The user guide
   in `doc/benchmark-testing.md` records preparation, scoring, local execution,
   bounded evidence, versioning, and downgrade behavior.
+
+## Dataset management follow-up
+
+- Add a dedicated Dataset navigation entry with a searchable catalog of 24 tasks,
+  actual download states, cache size, question/file counts, provenance, and a
+  selected-dataset handoff into Quick Test. Variants and years are separate tasks,
+  not 24 unrelated benchmark families. The curated tasks use native scoring
+  without a separate model judge; MATH tasks requiring extra judge/platform
+  dependencies are not included.
+- An explicit download prepares all task data without receiving a model key.
+  The first evaluation automatically joins or starts the same preparation, then
+  loads its cached Hugging Face data offline. Downloads support cancellation,
+  retry, checksum verification, and confirmed cache-only cleanup. Active or
+  queued evaluations prevent cache verification/removal.
+- Version-1 metadata lives beside Benchmark records; regenerable datasets use
+  short, isolated workspace/dataset directories in the OS user cache. Existing
+  global Hugging Face caches, reports, SQLite data, and public runner/CLI formats
+  are unchanged. Unknown metadata is rejected without modification; interrupted
+  operations remain observable and retryable after reopening.
+- Go tests and vet pass for the application, runtime, bridge, and desktop entry
+  point. Tests cover automatic preparation/reuse, cancellation, same-size cache
+  corruption, cache removal preserving reports, interrupted reads, and rejected
+  newer metadata. Six Python tests pass, including imports and no-argument binding
+  of all 24 factories and download without model calls.
+- The registered ARC integration passes after a real download, offline execution
+  against a deterministic local API, and subsequent cache verification. Inspect's
+  trace/viewer files are excluded from dataset checksums; a regression fixture
+  covers viewer state written by evaluation. Relative HF dataset paths avoid the
+  reproduced Windows lock-filename length failure.
+- All 1,148 frontend tests across 79 files pass with two workers and a 20-second
+  per-test allowance for the existing large-history interaction. Type checking,
+  lint, and production build pass. A subsequent focused test also verifies the
+  16/17-dataset submission boundary. Presentation checks cover 1440x900, 1024x768,
+  and 960x640 without page-level horizontal overflow; dark/system changes, the
+  compact inspector's Escape/focus restoration, search, and test handoff pass.
+- An isolated production Wails workspace downloads ARC Easy through the actual
+  Dataset UI: 2,376 questions, 2,875,515 bytes, and 15 cached files. Native cache
+  verification completes successfully. No paid model endpoint is used. Other
+  registered tasks have factory validation, not a claim of 24 completed downloads.

@@ -3,6 +3,7 @@ export const DESKTOP_PAGES = [
   { id: "quick-test", labelKey: "navigation.quickTest" },
   { id: "catalog", labelKey: "navigation.catalog" },
   { id: "cases", labelKey: "navigation.cases" },
+  { id: "datasets", labelKey: "navigation.datasets" },
   { id: "plans", labelKey: "navigation.plans" },
   { id: "runs", labelKey: "navigation.runs" },
   { id: "reports", labelKey: "navigation.reports" },

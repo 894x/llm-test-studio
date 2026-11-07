@@ -180,6 +180,17 @@ describe("desktop run workspace", () => {
     delete (window as Window & { runtime?: unknown }).runtime
   })
 
+  it("opens a catalog dataset in data testing without starting an evaluation", async () => {
+    window.history.replaceState(null, "", "#datasets")
+    const user = userEvent.setup(), client = desktopClient()
+    render(<App client={client} />)
+    await user.click(await screen.findByRole("button", { name: "HellaSwag" }))
+    await user.click(screen.getByRole("button", { name: "用于数据测试" }))
+    expect(await screen.findByRole("radio", { name: "数据测试" })).toBeChecked()
+    expect(await screen.findByRole("checkbox", { name: "HellaSwag" })).toBeChecked()
+    expect(client.launchJob).not.toHaveBeenCalled()
+  })
+
   it("retains run filters, loaded pages, selection and content during a slow background return read", async () => {
     const user = userEvent.setup()
     const client = desktopClient()

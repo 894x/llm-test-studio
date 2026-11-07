@@ -1,6 +1,6 @@
 import { parseHistoryRecyclePreview, parseHistoryRecycleTarget, parseRecycledHistoryEntry, parseRecycledHistoryPage, type HistoryRecycleTarget, type HistoryRecyclePreview, type RecycledHistoryEntry, type RecycledHistoryPage } from "@/features/history-recycle/data"
 import type { QuickHistoryPage } from "@/features/quick-test/history-data"
-import { parseBenchmarkCatalog, parseBenchmarkRun, parseBenchmarkPage, parseBenchmarkReport, type BenchmarkClient, type BenchmarkCommand } from "@/features/benchmarks/data"
+import { parseBenchmarkCatalog, parseBenchmarkRun, parseBenchmarkPage, parseBenchmarkReport, parseBenchmarkDatasetInventory, parseBenchmarkDatasetDownload, type BenchmarkClient, type BenchmarkCommand } from "@/features/benchmarks/data"
 import { benchmarkPreviewClient } from "@/features/benchmarks/preview-client"
 import { parseStartupProgress, READY_STARTUP, type StartupProgress } from "./startup-progress"
 import { parseDatabaseRecoveryResult, type DatabaseRecoveryResult } from "./database-recovery-data"
@@ -263,6 +263,8 @@ export type DesktopDiagnosticsSnapshot = {
 }
 
 type WailsDesktopBinding = {
+  GetBenchmarkDatasets(): Promise<unknown>
+  ManageBenchmarkDataset(id: string, action: string): Promise<unknown>
   GetBenchmarkCatalog(): Promise<unknown>
   PrepareBenchmarkRuntime(): Promise<unknown>
   StartBenchmark(command: BenchmarkCommand): Promise<unknown>
@@ -351,6 +353,7 @@ type FrontendDiagnostic = {
 }
 
 const REQUIRED_WAILS_BINDING_METHODS = [
+  "GetBenchmarkDatasets", "ManageBenchmarkDataset",
   "GetBenchmarkCatalog", "PrepareBenchmarkRuntime", "StartBenchmark", "GetBenchmarks", "GetBenchmark", "GetBenchmarkReportOwner", "CancelBenchmark", "GetBenchmarkReport", "ExportBenchmarkReport",
   "PreviewHistoryRecycle", "GetRecycledHistory", "RecycleHistory", "RestoreHistory",
   "CreateLocalFileSelection", "ReleaseLocalFileSelection",
@@ -636,6 +639,8 @@ function createLazyFixtureClient(): DesktopClient {
     ({ BUILTIN_CATALOG }) => createFixtureClient(EMPTY_WORKSPACE, BUILTIN_CATALOG, EMPTY_REPORTS),
   )
   return {
+    getBenchmarkDatasets: async () => (await client).getBenchmarkDatasets(),
+    manageBenchmarkDataset: async (id, action) => (await client).manageBenchmarkDataset(id, action),
     getBenchmarkCatalog: async () => (await client).getBenchmarkCatalog(),
     prepareBenchmarkRuntime: async () => (await client).prepareBenchmarkRuntime(),
     startBenchmark: async command => (await client).startBenchmark(command),
@@ -774,6 +779,8 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
     definitions: catalogRead("definitions"), quick_test: catalogRead("quick_test"),
   }
   return {
+    getBenchmarkDatasets: () => callBinding(() => binding.GetBenchmarkDatasets(), parseBenchmarkDatasetInventory),
+    manageBenchmarkDataset: (id, action) => callBinding(() => binding.ManageBenchmarkDataset(id, action), parseBenchmarkDatasetDownload),
     getBenchmarkCatalog: () => callBinding(() => binding.GetBenchmarkCatalog(), parseBenchmarkCatalog),
     prepareBenchmarkRuntime: () => callBinding(() => binding.PrepareBenchmarkRuntime(), parseVoid),
     startBenchmark: command => callBinding(() => binding.StartBenchmark(command), parseBenchmarkRun),

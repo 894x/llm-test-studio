@@ -28,6 +28,22 @@ function clientFixture() {
 }
 
 describe("benchmark workflow", () => {
+  it("rejects 17 selected datasets and accepts the 16-dataset submission boundary", async () => {
+    const client = clientFixture(), definition = await benchmarkPreviewClient().getBenchmarkCatalog()
+    render(<BenchmarkWorkspace client={client} modeControl={null} catalog={EMPTY_CATALOG} connectionsReady
+      connection={{ protocol: "openai-chat", model: "test", base_url: "https://api.example.test/v1", api_key: "test-key" }}
+      onConnectionChange={vi.fn()} onOpenExecution={vi.fn()} onOpenReport={vi.fn()} />)
+    await screen.findByRole("checkbox", { name: "ARC Easy" })
+    for (const dataset of definition.datasets.slice(0, 17)) fireEvent.click(screen.getByRole("checkbox", { name: dataset.name }))
+    fireEvent.click(screen.getByRole("button", { name: "开始数据测试" }))
+    expect(screen.getByText("每次最多选择 16 个数据集。")).toBeVisible()
+    expect(client.startBenchmark).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("checkbox", { name: definition.datasets[16].name }))
+    fireEvent.click(screen.getByRole("button", { name: "开始数据测试" }))
+    await waitFor(() => expect(client.startBenchmark).toHaveBeenCalledTimes(1))
+    expect(client.startBenchmark.mock.calls[0][0].dataset_ids).toHaveLength(16)
+  })
+
   it("submits selected datasets with the shared manual connection and retains independent records", async () => {
     const user = userEvent.setup(), client = clientFixture()
     let count = 0

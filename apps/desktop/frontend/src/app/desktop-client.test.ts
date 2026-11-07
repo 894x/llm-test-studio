@@ -1230,6 +1230,7 @@ function installBinding(
   const benchmark = benchmarkPreviewClient()
   const binding = {
     GetBenchmarkCatalog: vi.fn(benchmark.getBenchmarkCatalog), PrepareBenchmarkRuntime: vi.fn(benchmark.prepareBenchmarkRuntime),
+    GetBenchmarkDatasets: vi.fn(benchmark.getBenchmarkDatasets), ManageBenchmarkDataset: vi.fn(benchmark.manageBenchmarkDataset),
     GetBenchmarkReportOwner: vi.fn(benchmark.getBenchmarkReportOwner),
     StartBenchmark: vi.fn(benchmark.startBenchmark), GetBenchmarks: vi.fn(benchmark.getBenchmarks), GetBenchmark: vi.fn(benchmark.getBenchmark),
     CancelBenchmark: vi.fn(benchmark.cancelBenchmark), GetBenchmarkReport: vi.fn(benchmark.getBenchmarkReport), ExportBenchmarkReport: vi.fn(benchmark.exportBenchmarkReport),
