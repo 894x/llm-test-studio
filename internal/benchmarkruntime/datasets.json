@@ -60,6 +60,186 @@
       "factory": "mmmu_multiple_choice",
       "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/mmmu",
       "default_max_tokens": 8192
+    },
+    {
+      "id": "aime2024",
+      "name": "AIME 2024",
+      "description": "Competition mathematics from AIME 2024.",
+      "category": "math",
+      "module": "inspect_evals.aime2024",
+      "factory": "aime2024",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/aime2024",
+      "default_max_tokens": 32768
+    },
+    {
+      "id": "aime2026",
+      "name": "AIME 2026",
+      "description": "Competition mathematics from AIME 2026.",
+      "category": "math",
+      "module": "inspect_evals.aime2026",
+      "factory": "aime2026",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/aime2026",
+      "default_max_tokens": 32768
+    },
+    {
+      "id": "boolq",
+      "name": "BoolQ",
+      "description": "Yes/no reading comprehension with supporting passages.",
+      "category": "reading",
+      "module": "inspect_evals.boolq",
+      "factory": "boolq",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/boolq",
+      "default_max_tokens": 2048
+    },
+    {
+      "id": "hellaswag",
+      "name": "HellaSwag",
+      "description": "Commonsense completion of everyday situations.",
+      "category": "reasoning",
+      "module": "inspect_evals.hellaswag",
+      "factory": "hellaswag",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/hellaswag",
+      "default_max_tokens": 2048
+    },
+    {
+      "id": "winogrande",
+      "name": "WinoGrande",
+      "description": "Commonsense pronoun resolution.",
+      "category": "reasoning",
+      "module": "inspect_evals.winogrande",
+      "factory": "winogrande",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/winogrande",
+      "default_max_tokens": 2048
+    },
+    {
+      "id": "piqa",
+      "name": "PIQA",
+      "description": "Physical commonsense reasoning.",
+      "category": "reasoning",
+      "module": "inspect_evals.piqa",
+      "factory": "piqa",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/piqa",
+      "default_max_tokens": 2048
+    },
+    {
+      "id": "commonsense_qa",
+      "name": "CommonsenseQA",
+      "description": "Multiple-choice commonsense questions.",
+      "category": "reasoning",
+      "module": "inspect_evals.commonsense_qa",
+      "factory": "commonsense_qa",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/commonsense_qa",
+      "default_max_tokens": 4096
+    },
+    {
+      "id": "mmlu_0_shot",
+      "name": "MMLU · Zero Shot",
+      "description": "Multi-subject knowledge without few-shot examples.",
+      "category": "knowledge",
+      "module": "inspect_evals.mmlu",
+      "factory": "mmlu_0_shot",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/mmlu",
+      "default_max_tokens": 4096
+    },
+    {
+      "id": "mmlu_5_shot",
+      "name": "MMLU · Five Shot",
+      "description": "Multi-subject knowledge with five-shot examples.",
+      "category": "knowledge",
+      "module": "inspect_evals.mmlu",
+      "factory": "mmlu_5_shot",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/mmlu",
+      "default_max_tokens": 4096
+    },
+    {
+      "id": "truthfulqa",
+      "name": "TruthfulQA",
+      "description": "Truthfulness and resistance to common misconceptions.",
+      "category": "knowledge",
+      "module": "inspect_evals.truthfulqa",
+      "factory": "truthfulqa",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/truthfulqa",
+      "default_max_tokens": 4096
+    },
+    {
+      "id": "bbh",
+      "name": "BIG-Bench Hard",
+      "description": "Challenging language and reasoning tasks.",
+      "category": "reasoning",
+      "module": "inspect_evals.bbh",
+      "factory": "bbh",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/bbh",
+      "default_max_tokens": 8192
+    },
+    {
+      "id": "drop",
+      "name": "DROP",
+      "description": "Discrete reasoning over reading passages.",
+      "category": "reading",
+      "module": "inspect_evals.drop",
+      "factory": "drop",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/drop",
+      "default_max_tokens": 8192
+    },
+    {
+      "id": "squad",
+      "name": "SQuAD 2.0",
+      "description": "Extractive reading comprehension with unanswerable questions.",
+      "category": "reading",
+      "module": "inspect_evals.squad",
+      "factory": "squad",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/squad",
+      "default_max_tokens": 4096
+    },
+    {
+      "id": "agie_aqua_rat",
+      "name": "AGIEval · AQUA-RAT",
+      "description": "Algebraic reasoning with multiple-choice answers.",
+      "category": "math",
+      "module": "inspect_evals.agieval",
+      "factory": "agie_aqua_rat",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/agieval",
+      "default_max_tokens": 8192
+    },
+    {
+      "id": "agie_logiqa_en",
+      "name": "AGIEval · LogiQA",
+      "description": "English logical reading comprehension.",
+      "category": "reasoning",
+      "module": "inspect_evals.agieval",
+      "factory": "agie_logiqa_en",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/agieval",
+      "default_max_tokens": 8192
+    },
+    {
+      "id": "agie_sat_en",
+      "name": "AGIEval · SAT English",
+      "description": "SAT English reading comprehension.",
+      "category": "reading",
+      "module": "inspect_evals.agieval",
+      "factory": "agie_sat_en",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/agieval",
+      "default_max_tokens": 8192
+    },
+    {
+      "id": "agie_sat_math",
+      "name": "AGIEval · SAT Math",
+      "description": "SAT mathematics questions.",
+      "category": "math",
+      "module": "inspect_evals.agieval",
+      "factory": "agie_sat_math",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/agieval",
+      "default_max_tokens": 8192
+    },
+    {
+      "id": "race_h",
+      "name": "RACE-H",
+      "description": "High-school examination reading comprehension.",
+      "category": "reading",
+      "module": "inspect_evals.race_h",
+      "factory": "race_h",
+      "source_url": "https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/race_h",
+      "default_max_tokens": 4096
     }
   ]
 }

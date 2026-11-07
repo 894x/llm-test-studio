@@ -240,6 +240,7 @@ type WorkerRequest struct {
 	APIKey        string          `json:"api_key"`
 	Options       Options         `json:"options"`
 	LogDir        string          `json:"log_dir"`
+	CacheDir      string          `json:"cache_dir,omitempty"`
 }
 
 func (WorkerRequest) String() string   { return "WorkerRequest{redacted}" }

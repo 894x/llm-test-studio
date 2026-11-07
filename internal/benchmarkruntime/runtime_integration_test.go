@@ -26,6 +26,7 @@ func TestInspectProcessRunsRegisteredDataset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	serviceCacheDirectory := t.TempDir()
 	if err := adapter.Prepare(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +59,8 @@ func TestInspectProcessRunsRegisteredDataset(t *testing.T) {
 	}
 	service, err := benchmarks.New(ctx, benchmarks.Dependencies{
 		Directory: filepath.Join(t.TempDir(), "workspace"), CatalogJSON: CatalogJSON(),
-		Runtime: adapter, Resolve: benchmarks.DirectConnection,
+		CacheDirectory: serviceCacheDirectory,
+		Runtime:        adapter, Resolve: benchmarks.DirectConnection,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -83,5 +85,25 @@ func TestInspectProcessRunsRegisteredDataset(t *testing.T) {
 	}
 	if run.Status != "completed" || run.Datasets[0].Completed != 1 {
 		t.Fatalf("application-to-Inspect result: %+v", run)
+	}
+	inventory, err := service.DatasetInventory()
+	if err != nil || inventory.Datasets[0].Download.State != "ready" || inventory.Datasets[0].Download.Samples != 2376 {
+		t.Fatalf("downloaded dataset not reusable: %+v, %v", inventory.Datasets[0], err)
+	}
+	if _, err := service.ManageDataset("arc_easy", "verify"); err != nil {
+		t.Fatal(err)
+	}
+	for ctx.Err() == nil {
+		inventory, err = service.DatasetInventory()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if inventory.Datasets[0].Download.State != "verifying" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if inventory.Datasets[0].Download.State != "ready" {
+		t.Fatal("evaluation diagnostics invalidated the data cache")
 	}
 }

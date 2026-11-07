@@ -9,6 +9,7 @@ from itertools import islice
 import json
 import math
 import os
+import threading
 from pathlib import Path
 import sys
 
@@ -16,6 +17,69 @@ PROTOCOL = sys.stdout
 MAX_TEXT = 12000
 REQUEST_LIMIT = 65536
 EXPECTED_VERSIONS = {"inspect-ai": "0.3.287", "inspect-evals": "0.27.0"}
+
+
+def configure_dataset_cache(directory):
+    if not directory:
+        return
+    root = Path(directory).resolve()
+    if not root.is_absolute():
+        raise ValueError("cache_directory")
+    root.mkdir(parents=True, exist_ok=True)
+    os.chdir(root)
+    for key, value in {
+        "HF_HOME": root / "h", "HF_HUB_CACHE": root / "h" / "hub",
+        # datasets embeds its cache path into a lock filename. A relative path
+        # avoids exceeding Windows component/path limits under deep workspaces.
+        "HF_DATASETS_CACHE": Path("d"),
+        "INSPECT_EVALS_CACHE_DIR": root / "e",
+        "XDG_CACHE_HOME": root / "n",
+        "WIN_PD_OVERRIDE_LOCAL_APPDATA": root / "n",
+    }.items():
+        os.environ[key] = str(value)
+    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+
+
+def download_dataset(request, task_factory=None):
+    versions()
+    root = Path(request["cache_dir"])
+    stopped = threading.Event()
+    def emit(kind, samples=0, fingerprint="", task_version=""):
+        size, files = 0, 0
+        for path in root.rglob("*"):
+            try:
+                parts = path.relative_to(root).parts
+                if parts[0] == "n" and any(part in ("traces", "view") for part in parts[1:-1]):
+                    continue
+                if path.is_file() and not path.name.endswith((".lock", ".log")):
+                    size += path.stat().st_size
+                    files += 1
+            except OSError:
+                pass
+        event = dict(schema_version=1, dataset_id=request["dataset_id"], kind=kind,
+                     bytes=size, files=files, samples=samples,
+                     input_sha256=fingerprint, task_version=task_version)
+        PROTOCOL.write(json.dumps(event, ensure_ascii=True) + "\n")
+        PROTOCOL.flush()
+    def progress():
+        while not stopped.wait(1):
+            emit("progress")
+    emit("progress")
+    thread = threading.Thread(target=progress, daemon=True)
+    thread.start()
+    try:
+        task = (task_factory or load_task)(request["dataset_id"])
+        digest, samples = hashlib.sha256(), 0
+        for sample in task.dataset:
+            digest.update(sample.model_dump_json(exclude_none=True).encode("utf-8"))
+            digest.update(b"\n")
+            samples += 1
+        if not 0 < samples <= 100000:
+            raise ValueError("dataset_size")
+    finally:
+        stopped.set()
+        thread.join()
+    emit("ready", samples, digest.hexdigest(), str(task.version))
 
 
 def versions():
@@ -201,6 +265,18 @@ def main():
     request = json.loads(sys.stdin.readline(REQUEST_LIMIT + 1))
     if request.get("schema_version") != 1:
         raise ValueError("protocol_version")
+    configure_dataset_cache(request.get("cache_dir", ""))
+    if request.get("action") == "download":
+        with contextlib.redirect_stdout(sys.stderr):
+            try:
+                download_dataset(request)
+            except BaseException:
+                raise SystemExit(1) from None
+        return
+    if request.get("cache_dir"):
+        # Prepared datasets must be reusable without another Hub download.
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["HF_DATASETS_OFFLINE"] = "1"
     # Dependency loading can print diagnostics; they are never protocol events.
     with contextlib.redirect_stdout(sys.stderr):
         reporter = Reporter(request)

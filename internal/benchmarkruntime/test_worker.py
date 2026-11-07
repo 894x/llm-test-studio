@@ -122,12 +122,32 @@ class WorkerTests(unittest.TestCase):
 
     def test_all_registered_factories_import_without_optional_dependencies(self):
         import importlib
+        import inspect
         from pathlib import Path
         manifest = json.loads(Path("datasets.json").read_text("utf-8"))
         for item in manifest["datasets"]:
             with self.subTest(dataset=item["id"]):
                 factory = getattr(importlib.import_module(item["module"]), item["factory"])
                 self.assertTrue(callable(factory))
+                inspect.signature(factory).bind()
+
+    def test_dataset_download_prepares_samples_without_model_requests(self):
+        from inspect_ai import Task
+        from inspect_ai.dataset import Sample
+        import tempfile
+        from pathlib import Path
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory, patch.object(worker, "PROTOCOL", output):
+            Path(directory, "data.json").write_text("cached data", "utf-8")
+            task = Task(dataset=[Sample(id="one", input="Question", target="42")])
+            request = dict(cache_dir=directory, dataset_id="fixture")
+            with patch("inspect_ai.model.get_model", side_effect=AssertionError("unexpected model request")):
+                worker.download_dataset(request, task_factory=lambda _: task)
+        result = json.loads(output.getvalue().splitlines()[-1])
+        self.assertEqual(result["kind"], "ready")
+        self.assertEqual(result["samples"], 1)
+        self.assertEqual(result["bytes"], 11)
+        self.assertEqual(len(result["input_sha256"]), 64)
 
 
 if __name__ == "__main__":

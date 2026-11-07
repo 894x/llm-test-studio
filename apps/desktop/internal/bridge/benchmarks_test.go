@@ -31,8 +31,15 @@ func TestBenchmarkBindingsEnforceLifecycleAndSafeErrors(t *testing.T) {
 	}
 	app.onStartup(t.Context())
 	catalog, err := app.GetBenchmarkCatalog()
-	if err != nil || len(catalog.Datasets) != 6 || catalog.Runtime.State != "missing" {
+	if err != nil || len(catalog.Datasets) < 24 || catalog.Runtime.State != "missing" {
 		t.Fatalf("bad catalog: %+v, %v", catalog, err)
+	}
+	inventory, err := app.GetBenchmarkDatasets()
+	if err != nil || len(inventory.Datasets) != len(catalog.Datasets) || inventory.Datasets[0].Download.State != "missing" {
+		t.Fatalf("dataset inventory unavailable: %+v, %v", inventory, err)
+	}
+	if _, err := app.ManageBenchmarkDataset("arc_easy", "download"); err == nil {
+		t.Fatal("download admitted without a prepared runtime")
 	}
 	if _, err := app.StartBenchmark(benchmarks.StartCommand{}); err == nil {
 		t.Fatal("invalid benchmark accepted")

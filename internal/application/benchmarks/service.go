@@ -15,11 +15,12 @@ import (
 )
 
 type Dependencies struct {
-	Directory   string
-	CatalogJSON []byte
-	Runtime     Runtime
-	Resolve     Resolver
-	Changed     func()
+	Directory      string
+	CacheDirectory string
+	CatalogJSON    []byte
+	Runtime        Runtime
+	Resolve        Resolver
+	Changed        func()
 }
 
 type execution struct {
@@ -29,25 +30,34 @@ type execution struct {
 }
 
 type Service struct {
-	mu           sync.Mutex
-	ctx          context.Context
-	cancel       context.CancelFunc
-	workers      sync.WaitGroup
-	store        store
-	runtime      Runtime
-	resolve      Resolver
-	datasets     []Dataset
-	active       map[string]*execution
-	slot         chan struct{}
-	closed       bool
-	preparing    bool
-	runtimeError string
-	storageError error
-	changed      func()
+	mu             sync.Mutex
+	ctx            context.Context
+	cancel         context.CancelFunc
+	workers        sync.WaitGroup
+	store          store
+	cacheDirectory string
+	runtime        Runtime
+	resolve        Resolver
+	datasets       []Dataset
+	active         map[string]*execution
+	slot           chan struct{}
+	closed         bool
+	preparing      bool
+	runtimeError   string
+	storageError   error
+	changed        func()
+	downloads      map[string]*datasetOperation
 }
 
 func New(ctx context.Context, deps Dependencies) (*Service, error) {
 	if ctx == nil || !filepath.IsAbs(deps.Directory) || deps.Runtime == nil || deps.Resolve == nil {
+		return nil, ErrInvalid
+	}
+	cacheDirectory := deps.CacheDirectory
+	if cacheDirectory == "" {
+		cacheDirectory = filepath.Join(deps.Directory, "cache")
+	}
+	if !filepath.IsAbs(cacheDirectory) {
 		return nil, ErrInvalid
 	}
 	var manifest struct {
@@ -72,8 +82,10 @@ func New(ctx context.Context, deps Dependencies) (*Service, error) {
 	}
 	lifecycle, cancel := context.WithCancel(ctx)
 	return &Service{ctx: lifecycle, cancel: cancel, store: store{directory: deps.Directory},
-		runtime: deps.Runtime, resolve: deps.Resolve, datasets: datasets,
-		active: map[string]*execution{}, slot: make(chan struct{}, 1), changed: deps.Changed}, nil
+		cacheDirectory: cacheDirectory,
+		runtime:        deps.Runtime, resolve: deps.Resolve, datasets: datasets,
+		active: map[string]*execution{}, downloads: map[string]*datasetOperation{},
+		slot: make(chan struct{}, 1), changed: deps.Changed}, nil
 }
 
 func (s *Service) notify() {
@@ -107,7 +119,7 @@ func (s *Service) Prepare() error {
 	if s.preparing {
 		return nil
 	}
-	if len(s.active) > 0 {
+	if len(s.active) > 0 || len(s.downloads) > 0 {
 		return ErrBusy
 	}
 	s.preparing = true
@@ -244,6 +256,24 @@ func (s *Service) execute(ctx context.Context, id string, secret []byte) {
 			// Keep native log paths short: Inspect appends a timestamped filename,
 			// and Windows filesystem adapters may still enforce MAX_PATH.
 			LogDir: filepath.Join(s.store.directory, "inspect", reportID)}
+		cacheDir, cacheErr := s.ensureDataset(ctx, request.DatasetID)
+		if cacheErr != nil {
+			if ctx.Err() != nil {
+				s.finish(id, "cancelled")
+				return
+			}
+			s.mu.Lock()
+			dataset = &entry.run.Datasets[index]
+			dataset.Status, dataset.Stage, dataset.ErrorCode = "failed", "failed", "evaluation_failed"
+			dataset.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			s.mu.Unlock()
+			if err := s.persist(id); err != nil {
+				s.finish(id, "failed")
+				return
+			}
+			continue
+		}
+		request.CacheDir = cacheDir
 		lastSequence := 0
 		resultReceived := false
 		err := s.runtime.Execute(ctx, request, func(event Event) error {

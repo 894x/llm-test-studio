@@ -7,6 +7,26 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 )
 
+func (app *DesktopApp) GetBenchmarkDatasets() (benchmarks.DatasetInventory, error) {
+	lease, err := app.acquire(desktopRequirements{benchmarks: true})
+	if err != nil {
+		return benchmarks.DatasetInventory{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	inventory, err := lease.benchmarks.DatasetInventory()
+	return inventory, app.safeBindingError(err)
+}
+
+func (app *DesktopApp) ManageBenchmarkDataset(id, action string) (benchmarks.DatasetDownload, error) {
+	lease, err := app.acquire(desktopRequirements{benchmarks: true})
+	if err != nil {
+		return benchmarks.DatasetDownload{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	download, err := lease.benchmarks.ManageDataset(id, action)
+	return download, app.safeBindingError(err)
+}
+
 func (app *DesktopApp) GetBenchmarkCatalog() (benchmarks.Catalog, error) {
 	lease, err := app.acquire(desktopRequirements{benchmarks: true})
 	if err != nil {
