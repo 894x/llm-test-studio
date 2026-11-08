@@ -1,5 +1,56 @@
 # Kimi 缓存写入与用量对账
 
+## 2026-11-09 拆分范围与契约清单
+
+本次范围是现有 `kimi-k3` / `kimi-k3.1-pro` 缓存专项：Chat Completions、
+Responses、Messages，默认/5m/1h 冷写入及 5m/1h 重复读取，均覆盖 JSON 和 SSE。
+只验证上报用量与响应头，不覆盖 TTL 实际过期、续期、跨组织隔离或其他模型参数。
+依据为 2026-11-09 检索的[官方缓存文档](https://platform.kimi.com/docs/guide/context-caching)。
+Chat/Responses 嵌套 `cache_creation` 是兼容提供方的已观察扩展，区别于官方明确的总读写计数；
+MSH 响应头在官方文档以 Chat 为例说明，Responses/Messages 的必返要求仅属于可选兼容性验收。
+
+实现前的结构和行为清单如下；每项分别对应 usage 或 headers case，不能相互替代。
+
+| 边界 | 字段/形状及前提 | 必要场景和预期 | 所属 case | 验证范围 |
+| --- | --- | --- | --- | --- |
+| 请求 TTL | Chat/Responses 顶层 `prompt_cache_options`，Messages 顶层 `cache_control` | 省略默认5m、显式5m、显式1h；保持既有请求参数 | 既有 usage 及对应 headers | T0/本地 HTTP/SSE，T3 live 不执行 |
+| 原生读写计数 | Chat/Responses details 下 `cached_tokens/cache_write_tokens`；Messages 独立读写量 | 必须存在、非负整数、冷写入为正；重复请求读取为正且不重写；保留已有上界 | usage | 三协议、流式和非流式 |
+| 输出与总量 | 输出为非负整数；Chat/Responses `total_tokens` | 总量严格等于输入加输出；不能以 HTTP200 替代用量判断 | usage | 三协议输出，两个 OpenAI 协议总量 |
+| 原生 TTL | Messages `usage.cache_creation` 两个计数 | 必须存在且非负整数、和等于写入量；冷写入非选中档为零 | usage | 保留原断言 |
+| 扩展 TTL | Chat/Responses 顶层或各自 details 下 `cache_creation` | 可缺失；一旦返回必须为 object，所选档等于写入量，另档为零或省略；零写入允许省略零档；错误类型/负数/错档/错和均失败 | usage | 观测型兼容性断言，不伪造官方必返契约 |
+| 两个 MSH 头 | 非负十进制整数，两个字段均必须存在 | 缺失、负数、小数、重复及歧义值失败；两档和等于该请求原生写入总量；冷写入只在请求档位增加 | headers | 三协议可选专项，区别缺失和显式0 |
+| 分离结果 | usage 不依赖 MSH 头及其解析指标 | usage 正确而头缺失/格式错误/错和时，usage 通过、headers 失败；其他协议错误仍失败 | 两组本地 fixture | 不以另一组兜底通过 |
+| 流终态 | SSE 正常终止，Chat finish 后单独最终 usage | 缺最终 usage、提前中断、DONE 后数据及 finish 后内容失败 | 两组 case | 沿用既有流指标与 runner 能力门禁 |
+| 读序列 | 同次执行两次请求完全相同 | 不能因第二步缺头继承第一步指标；不能改前缀证明命中 | 两组 case | 显式本地故障场景 |
+
+兼容性：既有 10 个 usage Case 的 ID、key、schema 3 和三个 usage Suite 的 key/成员
+引用保持。当前内置定义把头断言迁到新 Case，并加强 body 对账；用户覆盖、已冻结的运行
+快照及历史结论不改写或重算。新增 10 个 headers Case 与三个独立 headers Suite，全部为
+T3、非默认，不加入日常套件。Case/Suite/runner/报告/数据库格式不变，无迁移或弃用计划。
+旧版本仍可读取同格式资产，但其内置目录保留旧预期；降级不转换用户数据。
+
+Responses/Messages 的 sequence 仍保留所有协议诊断；缓存响应头格式错误不再提前
+中止后续已声明步骤，正文解析失败仍中止。usage case 仅允许 `headers` 阶段的
+`invalid_cache_write_header` 诊断，其余问题仍失败；headers case 保持零问题要求。
+因此格式错误和缺失可以独立判定，也能保留重复读取第二次请求的证据；没有额外自动重试。
+
+当前共 20 个逻辑 Case、60 份协议定义；三个原 usage Suite 各含原 10 个 Case，
+三个新 headers Suite 各含对应的 10 个 Case。两组分开运行会分别产生请求费用，
+所有用例继续 `default=false`，本次仅做本地验证。
+
+2026-11-09 本地验证已通过：
+
+- `go test ./data/... ./internal/casecodec ./internal/testspec ./internal/protocols/... ./internal/jobcontract ./internal/application/casecatalog ./internal/application/suitecatalog ./cmd/llm-test-studio ./internal/application/workspace -count=1`
+- 补齐单头缺失及顶层/details 明细冲突 fixture 后，`go test ./data/cases -run '^TestKimiCache' -count=1`。
+  三协议均验证缺失、负数、小数、重复头与 usage 结论独立，读序列不被头诊断截断；
+  Chat/Responses 顶层和 details 的扩展明细分别验证，不能用另一处正确值覆盖矛盾值。
+- 三协议专项 manifest 的生成器 `--check`，以及用例设计技能的 7 项 Python 回归。
+- 原 10 个 Case 的 ID/key、请求/工作流及原三个 Suite 的成员引用一致性检查，`git diff --check`。
+
+以上 HTTP/SSE 验证均使用本地模拟服务，未运行付费 Provider 测试，不代表线上验收通过。
+
+此节作为当前拆分的范围清单；下文记录拆分前的 2026-11-03 基线。
+
 ## 契约与范围
 
 核验日期：2026-11-03。主要来源：[上下文缓存最佳实践](https://platform.kimi.com/docs/guide/context-caching)；Chat 最终用量块的 `choices=[]`、finish 后顺序及 `include_usage` 契约另见 [Chat Completions API](https://platform.kimi.com/docs/api/chat)。

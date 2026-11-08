@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -24,7 +25,7 @@ import (
 
 func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 	paths, err := fs.Glob(casebundle.Bundle, "kimi-cache-usage/*/case.json")
-	if err != nil || len(paths) != 10 {
+	if err != nil || len(paths) != 20 {
 		t.Fatalf("cache cases = %v, %v", paths, err)
 	}
 	for _, path := range paths {
@@ -46,17 +47,27 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 			}
 			read := strings.Contains(item.Key, ".read_")
 			stream := strings.HasSuffix(item.Key, "_stream")
+			headers := strings.Contains(item.Key, ".headers.")
 			faults := []string{"", "missing_write", "negative_write", "fractional_write"}
 			if read {
 				faults = append(faults, "no_hit", "rewrite")
 			} else {
 				faults = append(faults, "zero_write")
 			}
-			if proto == domain.ProtocolOpenAIChat {
-				faults = append(faults, "missing_header", "header_mismatch", "wrong_ttl")
+			headerFaults := []string{
+				"missing_header", "missing_header_5m", "missing_header_1h", "header_mismatch",
+				"negative_header", "fractional_header", "duplicate_header",
 			}
-			if proto == domain.ProtocolAnthropicMessages {
-				faults = append(faults, "wrong_ttl")
+			faults = append(faults, headerFaults...)
+			faults = append(faults,
+				"wrong_ttl", "body_wrong_ttl", "body_missing_selected", "body_wrong_type",
+				"body_negative", "body_fractional", "body_sum_mismatch", "no_body_ttl", "omit_zero_bucket",
+			)
+			if proto != domain.ProtocolAnthropicMessages {
+				faults = append(faults,
+					"wrong_total", "top_level_ttl", "both_ttl", "top_level_invalid",
+					"top_level_wrong_ttl", "nested_wrong_ttl",
+				)
 			}
 			if stream {
 				faults = append(faults, "missing_usage", "interrupted")
@@ -95,17 +106,47 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 						t.Fatal(err)
 					}
 					wantPassed := fault == ""
+					if fault == "top_level_ttl" || fault == "both_ttl" {
+						wantPassed = true
+					}
+					if !headers && slices.Contains(headerFaults, fault) {
+						wantPassed = true
+					}
+					if fault == "no_body_ttl" || fault == "omit_zero_bucket" {
+						wantPassed = headers || proto != domain.ProtocolAnthropicMessages
+					}
+					if headers && fault == "wrong_total" {
+						wantPassed = true
+					}
 					if (result.Verdict.Status == testspec.VerdictPassed) != wantPassed {
-						t.Fatalf("verdict = %+v; issues = %+v", result.Verdict, result.Observation.Issues)
+						failed := []string{}
+						for _, assertion := range result.Verdict.Assertions {
+							if assertion.Status != testspec.VerdictPassed {
+								failed = append(failed, assertion.ID+":"+assertion.Reason)
+							}
+						}
+						t.Fatalf("verdict = %s, want passed=%t; failed=%v; issues=%+v",
+							result.Verdict.Status, wantPassed, failed, result.Observation.Issues)
 					}
 					wantCalls := 1
 					if read {
 						wantCalls = 2
 					}
-					if fault == "" && fixture.calls != wantCalls {
+					completeSequence := wantPassed || slices.Contains(headerFaults, fault)
+					if completeSequence && fixture.calls != wantCalls {
 						t.Fatalf("HTTP calls = %d, want %d", fixture.calls, wantCalls)
 					}
-					if fault == "" {
+					if fault == "negative_header" || fault == "fractional_header" || fault == "duplicate_header" {
+						if len(result.Observation.Issues) != wantCalls {
+							t.Fatalf("header diagnostics = %+v, want one per request", result.Observation.Issues)
+						}
+						for _, issue := range result.Observation.Issues {
+							if issue.Stage != "headers" || issue.Code != "invalid_cache_write_header" {
+								t.Fatalf("unexpected header diagnostic: %+v", issue)
+							}
+						}
+					}
+					if wantPassed {
 						encoded, err := json.Marshal(result)
 						if err != nil || !json.Valid(encoded) {
 							t.Fatalf("evidence cannot be persisted: %v", err)
@@ -197,12 +238,55 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			short = 1
 		}
 	}
-	if fixture.fault != "missing_header" || fixture.calls == 1 && fixture.read {
+	missingHeader := fixture.fault == "missing_header"
+	primingRead := fixture.calls == 1 && fixture.read
+	if !missingHeader || primingRead {
 		w.Header().Set(protocol.MSHCacheWriteHeader5m, strconv.Itoa(short))
 		w.Header().Set(protocol.MSHCacheWriteHeader1h, strconv.Itoa(long))
 	}
-	if fixture.fault == "header_mismatch" {
+	if !primingRead {
+		switch fixture.fault {
+		case "missing_header_5m":
+			w.Header().Del(protocol.MSHCacheWriteHeader5m)
+		case "missing_header_1h":
+			w.Header().Del(protocol.MSHCacheWriteHeader1h)
+		}
+	}
+	switch fixture.fault {
+	case "header_mismatch":
 		w.Header().Set(protocol.MSHCacheWriteHeader5m, "7")
+	case "negative_header":
+		w.Header().Set(protocol.MSHCacheWriteHeader5m, "-1")
+	case "fractional_header":
+		w.Header().Set(protocol.MSHCacheWriteHeader5m, "1.5")
+	case "duplicate_header":
+		w.Header().Add(protocol.MSHCacheWriteHeader5m, "0")
+	}
+	cacheCreation := map[string]any{
+		"ephemeral_5m_input_tokens": short,
+		"ephemeral_1h_input_tokens": long,
+	}
+	selected := "ephemeral_5m_input_tokens"
+	if ttl == "1h" {
+		selected = "ephemeral_1h_input_tokens"
+	}
+	switch fixture.fault {
+	case "body_wrong_ttl":
+		cacheCreation["ephemeral_5m_input_tokens"], cacheCreation["ephemeral_1h_input_tokens"] = long, short
+	case "body_missing_selected":
+		delete(cacheCreation, selected)
+	case "body_negative":
+		cacheCreation[selected] = -1
+	case "body_fractional":
+		cacheCreation[selected] = 1.5
+	case "body_sum_mismatch":
+		cacheCreation[selected] = write + 1
+	case "omit_zero_bucket":
+		for key, value := range cacheCreation {
+			if value == 0 {
+				delete(cacheCreation, key)
+			}
+		}
 	}
 	usage := map[string]any{}
 	var details map[string]any
@@ -210,7 +294,7 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		usage = map[string]any{
 			"input_tokens": 512, "output_tokens": 1, "cache_read_input_tokens": read,
 			"cache_creation_input_tokens": write,
-			"cache_creation":              map[string]any{"ephemeral_5m_input_tokens": short, "ephemeral_1h_input_tokens": long},
+			"cache_creation":              cacheCreation,
 		}
 		details = usage
 	} else {
@@ -218,8 +302,37 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		if fixture.protocol == domain.ProtocolOpenAIResponses {
 			input, output = "input_tokens", "output_tokens"
 		}
-		details = map[string]any{"cached_tokens": read, "cache_write_tokens": write}
+		details = map[string]any{
+			"cached_tokens": read, "cache_write_tokens": write, "cache_creation": cacheCreation,
+		}
 		usage = map[string]any{input: 1024, output: 1, "total_tokens": 1025, input + "_details": details}
+		if fixture.fault == "wrong_total" {
+			usage["total_tokens"] = 1026
+		}
+	}
+	switch fixture.fault {
+	case "no_body_ttl":
+		delete(details, "cache_creation")
+	case "body_wrong_type":
+		details["cache_creation"] = "invalid"
+	case "top_level_ttl":
+		usage["cache_creation"] = cacheCreation
+		delete(details, "cache_creation")
+	case "both_ttl":
+		usage["cache_creation"] = cacheCreation
+	case "top_level_invalid":
+		usage["cache_creation"] = "invalid"
+	case "top_level_wrong_ttl":
+		usage["cache_creation"] = map[string]any{
+			"ephemeral_5m_input_tokens": long,
+			"ephemeral_1h_input_tokens": short,
+		}
+	case "nested_wrong_ttl":
+		usage["cache_creation"] = cacheCreation
+		details["cache_creation"] = map[string]any{
+			"ephemeral_5m_input_tokens": long,
+			"ephemeral_1h_input_tokens": short,
+		}
 	}
 	field := "cache_write_tokens"
 	if fixture.protocol == domain.ProtocolAnthropicMessages {

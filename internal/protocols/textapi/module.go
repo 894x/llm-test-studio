@@ -103,6 +103,9 @@ func (module *Module) Execute(ctx context.Context, execution runtime.Execution) 
 		status := response.HTTP.StatusCode
 		observation.HTTPStatus = &status
 		observation.Metrics["ttfb_ms"] = response.TTFBMS
+		// Header diagnostics stay observable, but only decoding failures prevent
+		// following the remaining authored sequence steps.
+		issuesBeforeDecode := len(observation.Issues)
 		decoder := module.NewDecoder()
 		events := []json.RawMessage{}
 		if strings.HasPrefix(strings.ToLower(response.HTTP.Header.Get("Content-Type")), "text/event-stream") {
@@ -119,7 +122,7 @@ func (module *Module) Execute(ctx context.Context, execution runtime.Execution) 
 		}
 		observation.Exchanges = append(observation.Exchanges, exchange)
 		responses[step.ID] = append(json.RawMessage{}, observation.Response...)
-		if len(observation.Issues) > 0 {
+		if len(observation.Issues) > issuesBeforeDecode {
 			break
 		}
 	}
