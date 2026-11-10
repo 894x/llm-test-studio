@@ -54,6 +54,8 @@ import { ConnectionURLInput } from "./connection-url-input"
 import { protocolOptions } from "@/features/catalog/protocols"
 import { SaveChannelSheet } from "./save-channel-sheet"
 import { QuickTestModeSwitch, type QuickTestMode } from "./quick-test-mode-switch"
+import { BenchmarkWorkspace } from "@/features/benchmarks/benchmark-workspace"
+import type { BenchmarkClient } from "@/features/benchmarks/data"
 import { QuickTestHistory, type QuickTestHistoryItem } from "./quick-test-history"
 import { ModelIcon, ProtocolIcon } from "./model-icon"
 import type { HistoryChanged, HistoryVisibilityChange } from "@/features/history-recycle/data"
@@ -63,7 +65,7 @@ import { historyVisibility } from "@/features/history-recycle/visibility"
 const QuickPerformancePanel = lazy(() => import("./quick-performance-sheet").then(module => ({ default: module.QuickPerformancePanel })))
 const PlanTestWorkspace = lazy(() => import("./plan-test-workspace").then(module => ({ default: module.PlanTestWorkspace })))
 
-type Actions = JobClient & Partial<HistoryRecycleClient> & Partial<Pick<DesktopClient,
+type Actions = JobClient & Partial<BenchmarkClient> & Partial<HistoryRecycleClient> & Partial<Pick<DesktopClient,
   "getRunHistory" | "getRunSummaries" | "getReportGeneration" | "subscribeRemoteResults"
 >> & Pick<
   DesktopClient,
@@ -105,11 +107,19 @@ function performanceProfile({
   return profile
 }
 
-type QuickTaskWorkspaceProps = Omit<Parameters<typeof QuickTaskContent>[0], "mode" | "onModeChange" | "modeControl" | "selectedProtocol" | "onProtocolChange">
+type QuickTaskWorkspaceProps = Omit<Parameters<typeof QuickTaskContent>[0], "mode" | "onModeChange" | "modeControl" | "selectedProtocol" | "onProtocolChange"> & {
+  datasetTestIntent?: { sequence: number; datasetID: string }
+  onManageDatasets?: () => void
+}
 
 export function QuickTaskWorkspace(props: QuickTaskWorkspaceProps) {
   const { t } = useTranslation("quickTest")
-  const [mode, setMode] = useState<QuickTestMode>("functional")
+  const [mode, setMode] = useState<QuickTestMode>(props.datasetTestIntent?.sequence ? "benchmark" : "functional")
+  const [seenDatasetIntent, setSeenDatasetIntent] = useState(props.datasetTestIntent?.sequence ?? 0)
+  if ((props.datasetTestIntent?.sequence ?? 0) !== seenDatasetIntent) {
+    setSeenDatasetIntent(props.datasetTestIntent?.sequence ?? 0)
+    setMode("benchmark")
+  }
   const [connectionMode, setConnectionMode] = useState<"functional" | "performance">("functional")
   const [selectedProtocol, setSelectedProtocol] = useState<CatalogProtocol>(props.draft.task?.protocol ?? "openai-chat")
   const focusMode = useRef(false)
@@ -121,12 +131,12 @@ export function QuickTaskWorkspace(props: QuickTaskWorkspaceProps) {
   const changeMode = (next: QuickTestMode) => {
     focusMode.current = true
     setMode(next)
-    if (next !== "plan") setConnectionMode(next)
+    if (next !== "plan" && next !== "benchmark") setConnectionMode(next)
   }
   const modeControl = <QuickTestModeSwitch mode={mode} onChange={changeMode} onReady={focusModeControl} />
   return <>
-    <div hidden={mode === "plan"} data-quick-test-mode className="flex min-h-0 min-w-0 flex-1 flex-col [&[hidden]]:hidden">
-      <RetainedWorkspace active={mode !== "plan"} fallback={null}>
+    <div hidden={mode === "plan" || mode === "benchmark"} data-quick-test-mode className="flex min-h-0 min-w-0 flex-1 flex-col [&[hidden]]:hidden">
+      <RetainedWorkspace active={mode !== "plan" && mode !== "benchmark"} fallback={null}>
         <QuickTaskContent {...props} mode={connectionMode} modeControl={modeControl} selectedProtocol={selectedProtocol} onProtocolChange={setSelectedProtocol}
           onModeChange={next => { setConnectionMode(next); setMode(next) }} />
       </RetainedWorkspace>
@@ -146,6 +156,18 @@ export function QuickTaskWorkspace(props: QuickTaskWorkspaceProps) {
           }}
           onSaveChannel={props.onSaveChannel}
           onHistoryChanged={props.onHistoryChanged} historyChanges={props.historyChanges} />
+      </RetainedWorkspace>
+    </div>
+    <div hidden={mode !== "benchmark"} data-quick-test-mode className="flex min-h-0 min-w-0 flex-1 flex-col [&[hidden]]:hidden">
+      <RetainedWorkspace active={mode === "benchmark"} fallback={null}>
+        <BenchmarkWorkspace client={props.actions} modeControl={modeControl} catalog={props.catalog} connectionsReady={props.catalogResources?.connections.ready ?? true}
+          selectionIntent={props.datasetTestIntent} onManageDatasets={props.onManageDatasets}
+          connection={{ protocol: selectedProtocol, model: props.draft.model, channel_id: props.draft.channel_id, base_url: props.draft.base_url, api_key: props.draft.api_key }}
+          onConnectionChange={next => {
+            setSelectedProtocol(next.protocol)
+            props.onDraftChange(current => ({ ...current, model: next.model, channel_id: next.channel_id ?? "", base_url: next.base_url ?? "", api_key: next.api_key ?? "", credential_run_id: undefined }))
+          }}
+          onOpenExecution={id => props.onOpenExecution(null, id)} onOpenReport={props.onOpenReport} onSaveChannel={props.onSaveChannel} />
       </RetainedWorkspace>
     </div>
   </>

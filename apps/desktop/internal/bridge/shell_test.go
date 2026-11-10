@@ -45,8 +45,8 @@ func TestDesktopOptionsConfigureNativeStaticWorkspaceShell(t *testing.T) {
 	if configured.MinWidth != 960 || configured.MinHeight != 640 {
 		t.Fatalf("minimum window size = %dx%d, want 960x640", configured.MinWidth, configured.MinHeight)
 	}
-	if configured.DisableResize || configured.Fullscreen || configured.Frameless {
-		t.Fatal("desktop shell is not an ordinary resizable native window")
+	if configured.DisableResize || configured.Fullscreen || !configured.Frameless {
+		t.Fatal("desktop shell must be a resizable frameless window with a custom title bar")
 	}
 	if configured.BackgroundColour == nil || *configured.BackgroundColour != (struct {
 		R uint8 `json:"r"`
@@ -159,6 +159,8 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		gotCodes[match[1]] = struct{}{}
 	}
 	wantCodes := map[string]struct{}{
+		desktopCodeBenchmarkInvalid: {}, desktopCodeBenchmarkUnavailable: {}, desktopCodeBenchmarkRuntime: {},
+		desktopCodeBenchmarkBusy: {}, desktopCodeBenchmarkNotFound: {}, desktopCodeBenchmarkFormat: {},
 		desktopCodeJobInvalid: {}, desktopCodeJobNotFound: {}, desktopCodeJobConflict: {},
 		desktopCodeJobUnavailable: {}, desktopCodeJobPending: {}, desktopCodeJobCommitUnconfirmed: {},
 		desktopCodeJobQueryUnavailable: {}, desktopCodeJobCommandsUnavailable: {},

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useEffect, useRef, type ReactNode } from "react"
 import ActivityIcon from "lucide-react/dist/esm/icons/activity.mjs"
 import ArchiveRestoreIcon from "lucide-react/dist/esm/icons/archive-restore.mjs"
 import ContrastIcon from "lucide-react/dist/esm/icons/contrast.mjs"
@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next"
 
 import { useTheme, type ColorTheme, type ThemePreference } from "@/app/theme-context"
 import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +31,8 @@ import { cn } from "@/lib/utils"
 import { DESKTOP_PAGES, type DesktopPage } from "./navigation"
 import { useInterfaceZoom, type InterfaceZoom } from "./use-interface-zoom"
 import { ZoomFeedback } from "./zoom-feedback"
+import { useWindowControls } from "./use-window-controls"
+import { WindowControls } from "./window-controls"
 
 function InterfaceSettingsMenu({ zoom }: { zoom: InterfaceZoom }) {
   const { theme, setTheme, colorTheme, setColorTheme } = useTheme()
@@ -128,26 +131,45 @@ export function DesktopShell({
   const { t } = useTranslation("shell")
   const { t: tr } = useTranslation("historyRecycle")
   const zoom = useInterfaceZoom()
+  const windowControls = useWindowControls()
+  const navigation = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    const nav = navigation.current
+    if (!nav) return
+    const revealCurrentPage = () => {
+      nav.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" })
+    }
+    revealCurrentPage()
+    const observer = new ResizeObserver(revealCurrentPage)
+    observer.observe(nav)
+    return () => observer.disconnect()
+  }, [activePage])
+
   return (
     <div className="flex h-[calc(100svh/var(--interface-zoom,1))] min-h-0 flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex h-12 shrink-0 items-center bg-background px-4">
-        <div className="flex min-w-0 items-center gap-2">
+      <header data-window-drag="true"
+        className="flex h-12 shrink-0 items-center bg-background px-4"
+        onDoubleClick={event => {
+          const region = (event.target as Element).closest("[data-window-drag]")
+          if (region?.getAttribute("data-window-drag") === "true") windowControls.toggleMaximise?.()
+        }}>
+        <div className="mr-3 flex shrink-0 items-center gap-2" aria-label="LLM Test Studio">
           <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <ActivityIcon className="size-4" />
           </div>
-          <div className="mr-3 hidden min-w-0 min-[1100px]:block">
-            <div className="truncate text-sm font-semibold leading-none">
+          <div className="hidden min-[1100px]:block">
+            <div className="whitespace-nowrap text-[13px] font-semibold leading-none">
               LLM Test Studio
-            </div>
-            <div className="mt-1 text-[10px] leading-none text-muted-foreground">
-              {t("product.subtitle")}
             </div>
           </div>
         </div>
 
         <nav
+          ref={navigation}
+          data-window-drag="false"
           aria-label={t("navigationAria")}
-          className="flex h-10 min-w-0 flex-1 items-center overflow-x-auto overflow-y-hidden px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex h-10 min-w-0 items-center overflow-x-auto overflow-y-hidden px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {DESKTOP_PAGES.map((page) => {
             const active = page.id === activePage
@@ -169,7 +191,9 @@ export function DesktopShell({
           })}
         </nav>
 
-        <div className="desktop-header-actions ml-2 flex shrink-0 items-center gap-1">
+        <div className="min-w-8 flex-1 self-stretch" aria-hidden="true" />
+
+        <div data-window-drag="false" className="desktop-header-actions ml-2 flex shrink-0 items-center gap-1">
           {onOpenRecycleBin ? <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon-sm" aria-label={tr("title")}
@@ -186,6 +210,8 @@ export function DesktopShell({
           <InterfaceSettingsMenu zoom={zoom} />
           {actions}
         </div>
+        <Separator orientation="vertical" className="mx-3 h-4 data-vertical:self-center" />
+        <WindowControls controls={windowControls} />
       </header>
       {children}
       <ZoomFeedback zoom={zoom} />

@@ -12,6 +12,41 @@ import { protocolReportFixture, protocolReportSnapshot, reportID } from "@/test/
 import { performanceOverviewFixture } from "@/test/performance-overview-fixture"
 
 describe("ReportWorkspace", () => {
+  it("combines report filters with search, keeps checked reports and resets an empty result", async () => {
+    const user = userEvent.setup()
+    const detail = protocolReportFixture()
+    const seed = protocolReportSnapshot(detail).reports[0]
+    const snapshot: ReportSnapshot = { schema_version: 1, reports: [
+      { ...seed, id: reportID(91), plan_name: "Suite A", model_name: "all", channel_name: "Channel A" },
+      { ...seed, id: reportID(92), plan_name: "Suite A", model_name: "Model A", channel_name: "Channel B", run_status: "failed" },
+      { ...seed, id: reportID(93), plan_name: "Plan B", model_name: "Model B", channel_name: "Channel B" },
+    ] }
+    const getDetail = vi.fn(async () => detail)
+    render(<ReportWorkspace snapshot={snapshot} getDetail={getDetail} exportReport={vi.fn()} saveReportExport={vi.fn()}
+      copyReportPNG={vi.fn()} compareReports={vi.fn()} />)
+    const table = screen.getByRole("table", { name: "测试报告目录" })
+    await user.click(within(table).getAllByRole("checkbox")[1])
+    await user.click(screen.getByRole("combobox", { name: "套件或计划" }))
+    expect(screen.getAllByRole("option", { name: "Suite A" })).toHaveLength(1)
+    await user.click(screen.getByRole("option", { name: "Suite A" }))
+    expect(within(table).getAllByRole("row")).toHaveLength(3)
+    await user.click(screen.getByRole("combobox", { name: "渠道" }))
+    await user.click(screen.getByRole("option", { name: "Channel B" }))
+    expect(within(table).getAllByRole("row")).toHaveLength(2)
+    expect(table).toHaveTextContent("Model A")
+    await user.type(screen.getByRole("searchbox"), "missing")
+    expect(screen.queryByRole("table", { name: "测试报告目录" })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "清除筛选" }))
+    const restored = screen.getByRole("table", { name: "测试报告目录" })
+    expect(within(restored).getAllByRole("row")).toHaveLength(4)
+    expect(within(restored).getAllByRole("checkbox").filter(input => input.getAttribute("aria-checked") === "true")).toHaveLength(1)
+    expect(screen.getByRole("combobox", { name: "套件或计划" })).toHaveValue("全部套件 / 计划")
+    await user.click(screen.getByRole("combobox", { name: "模型" }))
+    await user.click(screen.getByRole("option", { name: "all" }))
+    expect(within(restored).getAllByRole("row")).toHaveLength(2)
+    expect(restored).toHaveTextContent("Channel A")
+    expect(getDetail).not.toHaveBeenCalled()
+  })
   it("uses the Core performance overview in the existing report without duplicating lower detail sections", async () => {
     const id = reportID(80)
     const detail: ReportDetail = { ...quickDetail(id) as Extract<ReportDetail, { source: "quick_performance" }>,
@@ -163,7 +198,7 @@ describe("ReportWorkspace", () => {
     expect(headline).toHaveTextContent("成功吞吐8 req/s")
     expect(headline).toHaveTextContent("TTFT P95（含推理）4,500 ms")
     expect(headline).toHaveTextContent("E2E P958,000 ms")
-    expect(headline).toHaveTextContent("传输与协议通过")
+    expect(within(headline).getByLabelText("传输与协议通过")).toHaveTextContent("通过")
     expect(headline.querySelector(".text-outcome-fail, .text-destructive")).toBeNull()
     expect(headline.compareDocumentPosition(within(report).getByText("测试配置")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(report).getByRole("table", { name: "延迟分布统计" })).toBeInTheDocument()
@@ -586,7 +621,7 @@ describe("ReportWorkspace", () => {
     const report = await screen.findByRole("region", { name: "归档性能报告" })
     expect(within(report).queryByRole("heading", { name: "SLO 与容量" })).not.toBeInTheDocument()
     const headline = within(report).getByRole("region", { name: "关键性能指标" })
-    expect(within(headline).getByText("容量评估未通过")).toHaveClass("text-destructive")
+    expect(within(headline).getByLabelText("容量评估未通过")).toHaveTextContent("失败")
     expect(headline).toHaveTextContent("3 / 6 项达标")
     expect(headline).toHaveTextContent("SLO 达标率")
     expect(report).not.toHaveTextContent("Goodput 13 req/s")
@@ -643,8 +678,11 @@ describe("ReportWorkspace", () => {
     )
     await user.click(screen.getByRole("button", { name: `查看报告：${label}报告` }))
     const report = await screen.findByRole("region", { name: "归档性能报告" })
-    expect(report).toHaveTextContent("传输与协议通过")
-    expect(report).toHaveTextContent(label)
+    expect(within(report).getByLabelText("传输与协议通过")).toHaveTextContent("通过")
+    const assessment = within(report).getByLabelText(label)
+    expect(assessment).toHaveTextContent(status === "passed" ? "通过" : status === "failed" ? "失败" : "未评")
+    assessment.focus()
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(label)
   })
 
   it("renders current sparse reports using optional profile defaults", async () => {

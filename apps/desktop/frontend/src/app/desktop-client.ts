@@ -1,8 +1,11 @@
 import { parseHistoryRecyclePreview, parseHistoryRecycleTarget, parseRecycledHistoryEntry, parseRecycledHistoryPage, type HistoryRecycleTarget, type HistoryRecyclePreview, type RecycledHistoryEntry, type RecycledHistoryPage } from "@/features/history-recycle/data"
 import type { QuickHistoryPage } from "@/features/quick-test/history-data"
+import { parseBenchmarkCatalog, parseBenchmarkRun, parseBenchmarkPage, parseBenchmarkReport, parseBenchmarkDatasetInventory, parseBenchmarkDatasetDownload, type BenchmarkClient, type BenchmarkCommand } from "@/features/benchmarks/data"
+import { benchmarkPreviewClient } from "@/features/benchmarks/preview-client"
 import { parseStartupProgress, READY_STARTUP, type StartupProgress } from "./startup-progress"
 import { parseDatabaseRecoveryResult, type DatabaseRecoveryResult } from "./database-recovery-data"
 import { DesktopDataError } from "@/app/data-error"
+import { parseReportComparison, type ReportComparison } from "@/features/reports/report-comparison-data"
 import { EMPTY_REMOTE_NODES, parseRemoteNodes, parseRemoteNodeUpgrade, parseNullableRemoteNodeUpgrade,
   type StartRemoteNodeUpgradeCommand, type RemoteNodeUpgradeAction, type RemoteNodeUpgradeView, type RemoteNodesSnapshot, type RemoteNodeDraft,
   type RemoteNodeAction, type RemoteNodeTaskConcurrencyCommand, type HostKeyConfirmation, type DefaultExecutionCommand } from "@/features/remote-nodes/data"
@@ -58,6 +61,12 @@ import {
 } from "@/features/reports/generation-progress"
 
 export type DesktopErrorCode =
+	| "benchmark_invalid"
+	| "benchmark_unavailable"
+	| "benchmark_runtime_unavailable"
+	| "benchmark_busy"
+	| "benchmark_not_found"
+	| "benchmark_format_unsupported"
   | "history_recycle_invalid"
   | "history_recycle_not_found"
   | "history_recycle_active"
@@ -164,7 +173,7 @@ export function isCatalogSavedRefreshFailure(error: unknown): error is DesktopCl
   return error instanceof DesktopClientError && error.code === "catalog_saved_refresh_failed"
 }
 
-export interface DesktopClient extends CatalogActions {
+export interface DesktopClient extends CatalogActions, BenchmarkClient {
   previewHistoryRecycle(target: HistoryRecycleTarget): Promise<HistoryRecyclePreview>
   getRecycledHistory(after: string): Promise<RecycledHistoryPage>
   recycleHistory(target: HistoryRecycleTarget): Promise<RecycledHistoryEntry>
@@ -200,6 +209,7 @@ export interface DesktopClient extends CatalogActions {
   subscribeReportGeneration(onProgress: (progress: ReportGenerationProgress) => void): () => void
   subscribeRemoteResults(onChange: () => void): () => void
   getReportDetail(reportId: string): Promise<ReportDetail>
+  compareReports(reportIDs: string[], baselineID: string): Promise<ReportComparison>
   exportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<ExportedReport>
   saveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<boolean>
   copyReportPNG(dataBase64: string): Promise<void>
@@ -255,6 +265,17 @@ export type DesktopDiagnosticsSnapshot = {
 }
 
 type WailsDesktopBinding = {
+  GetBenchmarkDatasets(): Promise<unknown>
+  ManageBenchmarkDataset(id: string, action: string): Promise<unknown>
+  GetBenchmarkCatalog(): Promise<unknown>
+  PrepareBenchmarkRuntime(): Promise<unknown>
+  StartBenchmark(command: BenchmarkCommand): Promise<unknown>
+  GetBenchmarks(after: string): Promise<unknown>
+  GetBenchmark(id: string): Promise<unknown>
+  GetBenchmarkReportOwner(reportID: string): Promise<unknown>
+  CancelBenchmark(id: string): Promise<unknown>
+  GetBenchmarkReport(runID: string, reportID: string, after: string): Promise<unknown>
+  ExportBenchmarkReport(runID: string, reportID: string): Promise<unknown>
   PreviewHistoryRecycle(target: HistoryRecycleTarget): Promise<unknown>
   GetRecycledHistory(after: string): Promise<unknown>
   RecycleHistory(target: HistoryRecycleTarget): Promise<unknown>
@@ -289,6 +310,7 @@ type WailsDesktopBinding = {
   GetReports(): Promise<unknown>
   GetReportGeneration(): Promise<unknown>
   GetReportDetail(reportId: string): Promise<unknown>
+  CompareReports(reportIDs: string[], baselineID: string): Promise<unknown>
   ExportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<unknown>
   SaveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<unknown>
   CopyReportPNG(dataBase64: string): Promise<unknown>
@@ -334,6 +356,8 @@ type FrontendDiagnostic = {
 }
 
 const REQUIRED_WAILS_BINDING_METHODS = [
+  "GetBenchmarkDatasets", "ManageBenchmarkDataset",
+  "GetBenchmarkCatalog", "PrepareBenchmarkRuntime", "StartBenchmark", "GetBenchmarks", "GetBenchmark", "GetBenchmarkReportOwner", "CancelBenchmark", "GetBenchmarkReport", "ExportBenchmarkReport",
   "PreviewHistoryRecycle", "GetRecycledHistory", "RecycleHistory", "RestoreHistory",
   "CreateLocalFileSelection", "ReleaseLocalFileSelection",
   "GetRemoteNodes", "SaveRemoteNode", "RefreshRemoteNode", "SetRemoteNodeTaskConcurrency", "ConfirmRemoteNodeHostKey", "SelectDefaultExecution",
@@ -341,7 +365,7 @@ const REQUIRED_WAILS_BINDING_METHODS = [
   "StartRemoteNodeUpgrade", "GetRemoteNodeUpgrade", "RetryRemoteNodeUpgrade", "RecoverRemoteNodeUpgrade",
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
   "GetStartupProgress", "BackupAndCreateDatabase", "OpenDatabaseRecoveryDirectory", "GetOverview", "GetAvailableReports", "GetRunHistory", "GetRunSummaries", "GetQuickTestHistory", "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
-  "SaveReportExport", "CopyReportPNG", "GetComparisons", "GetComparisonHistory", "LaunchJob", "GetJobs", "GetJob", "GetJobPerformanceResult", "ControlJob", "GetJobControls", "RetryJobControl", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
+  "CompareReports", "SaveReportExport", "CopyReportPNG", "GetComparisons", "GetComparisonHistory", "LaunchJob", "GetJobs", "GetJob", "GetJobPerformanceResult", "ControlJob", "GetJobControls", "RetryJobControl", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
   "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel", "SaveQuickTestTarget",
   "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
   "DeleteChannelModel", "CreateTestCase", "UpdateTestCase", "DeleteTestCase", "CreateSuite",
@@ -388,6 +412,7 @@ export function createFixtureClient(
     }))
   }
   return {
+    ...benchmarkPreviewClient(),
     async previewHistoryRecycle() { throw new DesktopClientError("history_recycle_unavailable") },
     async getRecycledHistory() { return { schema_version: 1, entries: [], next_cursor: "", has_more: false } },
     async recycleHistory() { throw new DesktopClientError("history_recycle_unavailable") },
@@ -442,6 +467,7 @@ export function createFixtureClient(
     async getReports() {
       return structuredClone(reports)
     },
+		async compareReports() { throw new DesktopClientError("reports_unavailable") },
 		async getReportDetail(reportId) {
 			const summary = reports.reports.find((report) => report.id === reportId)
 			if (!summary) throw new DesktopClientError("invalid_identifier")
@@ -617,6 +643,17 @@ function createLazyFixtureClient(): DesktopClient {
     ({ BUILTIN_CATALOG }) => createFixtureClient(EMPTY_WORKSPACE, BUILTIN_CATALOG, EMPTY_REPORTS),
   )
   return {
+    getBenchmarkDatasets: async () => (await client).getBenchmarkDatasets(),
+    manageBenchmarkDataset: async (id, action) => (await client).manageBenchmarkDataset(id, action),
+    getBenchmarkCatalog: async () => (await client).getBenchmarkCatalog(),
+    prepareBenchmarkRuntime: async () => (await client).prepareBenchmarkRuntime(),
+    startBenchmark: async command => (await client).startBenchmark(command),
+    getBenchmarks: async after => (await client).getBenchmarks(after),
+    getBenchmark: async id => (await client).getBenchmark(id),
+    getBenchmarkReportOwner: async id => (await client).getBenchmarkReportOwner(id),
+    cancelBenchmark: async id => (await client).cancelBenchmark(id),
+    getBenchmarkReport: async (runID, reportID, after) => (await client).getBenchmarkReport(runID, reportID, after),
+    exportBenchmarkReport: async (runID, reportID) => (await client).exportBenchmarkReport(runID, reportID),
     previewHistoryRecycle: async target => (await client).previewHistoryRecycle(target),
     getRecycledHistory: async after => (await client).getRecycledHistory(after),
     recycleHistory: async target => (await client).recycleHistory(target),
@@ -667,6 +704,7 @@ function createLazyFixtureClient(): DesktopClient {
       return () => { active = false; unsubscribe() }
     },
 		getReportDetail: async (reportId) => (await client).getReportDetail(reportId),
+    compareReports: async (reportIDs, baselineID) => (await client).compareReports(reportIDs, baselineID),
 		exportReport: async (reportId, format, watermark, locale) => (await client).exportReport(reportId, format, watermark, locale),
 		saveReportExport: async (filename, mediaType, dataBase64, locale) => (await client).saveReportExport(filename, mediaType, dataBase64, locale),
 		copyReportPNG: async (dataBase64) => (await client).copyReportPNG(dataBase64),
@@ -746,6 +784,29 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
     definitions: catalogRead("definitions"), quick_test: catalogRead("quick_test"),
   }
   return {
+    getBenchmarkDatasets: () => callBinding(() => binding.GetBenchmarkDatasets(), parseBenchmarkDatasetInventory),
+    manageBenchmarkDataset: (id, action) => callBinding(() => binding.ManageBenchmarkDataset(id, action), parseBenchmarkDatasetDownload),
+    getBenchmarkCatalog: () => callBinding(() => binding.GetBenchmarkCatalog(), parseBenchmarkCatalog),
+    prepareBenchmarkRuntime: () => callBinding(() => binding.PrepareBenchmarkRuntime(), parseVoid),
+    startBenchmark: command => callBinding(() => binding.StartBenchmark(command), parseBenchmarkRun),
+    getBenchmarks: after => callBinding(() => binding.GetBenchmarks(after), parseBenchmarkPage),
+    getBenchmark: id => callBinding(() => binding.GetBenchmark(id), value => {
+      const run = parseBenchmarkRun(value)
+      if (run.id !== id) throw new DesktopDataError("Benchmark identity mismatch")
+      return run
+    }),
+    cancelBenchmark: id => callBinding(() => binding.CancelBenchmark(id), parseVoid),
+    getBenchmarkReportOwner: reportID => callBinding(() => binding.GetBenchmarkReportOwner(reportID), value => {
+      const run = parseBenchmarkRun(value)
+      if (!run.datasets.some(dataset => dataset.report_id === reportID)) throw new DesktopDataError("Benchmark report owner mismatch")
+      return run
+    }),
+    getBenchmarkReport: (runID, reportID, after) => callBinding(() => binding.GetBenchmarkReport(runID, reportID, after), value => {
+      const report = parseBenchmarkReport(value)
+      if (report.run_id !== runID || report.result.report_id !== reportID) throw new DesktopDataError("Benchmark report identity mismatch")
+      return report
+    }),
+    exportBenchmarkReport: (runID, reportID) => callBinding(() => binding.ExportBenchmarkReport(runID, reportID), parseExportedReport),
     previewHistoryRecycle: async target => callBinding(() => binding.PreviewHistoryRecycle(parseHistoryRecycleTarget(target)), value => {
       const preview = parseHistoryRecyclePreview(value)
       validateHistoryTarget(preview.entry, target)
@@ -855,6 +916,7 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       )),
 		getReportDetail: async (reportId) =>
 			callBinding(() => binding.GetReportDetail(reportId), parseReportDetail),
+    compareReports: async (reportIDs, baselineID) => callBinding(() => binding.CompareReports(reportIDs, baselineID), parseReportComparison),
 		exportReport: async (reportId, format, watermark, locale) =>
 			callBinding(() => binding.ExportReport(reportId, format, watermark, locale), parseExportedReport),
 		saveReportExport: async (filename, mediaType, dataBase64, locale) =>
@@ -1183,6 +1245,14 @@ function reportFrontendFailure(
   }
 }
 
+export function reportWorkspaceRenderFailure(error: unknown): void {
+  reportWailsRuntimeFailure({
+    operation: "load_workspace",
+    error_code: "frontend_operation_failed",
+    detail: `render workspace: ${frontendDiagnosticDetail(error)}`.slice(0, 2048),
+  })
+}
+
 function reportWailsRuntimeFailure(diagnostic: FrontendDiagnostic): void {
 	const runtime = (window as typeof window & {
 		runtime?: { LogError?: (message: string) => void }
@@ -1325,6 +1395,7 @@ function isWorkspaceRun(value: unknown): boolean {
     isRecord(value) &&
     (value.job_id === undefined || isUUID(value.job_id)) &&
     (value.report_id === undefined || isUUID(value.report_id)) &&
+    (value.suite_id === undefined || (value.source === "quick_task" && isUUID(value.suite_id))) &&
     isCaseProgress(value) &&
     isUUID(value.id) &&
     isPositiveSafeInteger(value.revision) &&
@@ -1376,6 +1447,7 @@ function parseRun(value: unknown) {
       status: suite.status as "not_started" | "queued" | "running" | "completed" | "failed" | "cancelled",
     })),
     ...(record.source === "quick_task" ? { source: "quick_task" as const } : {}),
+    ...(record.suite_id === undefined ? {} : { suite_id: record.suite_id as string }),
     id: record.id as string,
     ...(record.job_id === undefined ? {} : { job_id: record.job_id as string }),
     ...(record.report_id === undefined ? {} : { report_id: record.report_id as string }),

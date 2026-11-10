@@ -1,4 +1,6 @@
 import { protocolReportFixture } from "@/test/protocol-report-fixture"
+import { reportComparisonFixture } from "@/test/report-comparison-fixture"
+import { benchmarkPreviewClient } from "@/features/benchmarks/preview-client"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
@@ -365,6 +367,17 @@ describe("Wails desktop client", () => {
     await expect(createDesktopClient().getWorkspace()).resolves.toEqual(payload)
   })
 
+  it("preserves the frozen suite identity in quick run summaries", async () => {
+    const payload = structuredClone(FIXTURE_WORKSPACE)
+    const suiteID = "88888888-8888-4888-8888-888888888881"
+    Object.assign(payload.runs[0], { source: "quick_task", suite_id: suiteID, load_mode: "single",
+      planned: payload.runs[0].case_count, duration_ms: 0, completed: 0, passed: 0, failed: 0, observed: 0, indeterminate: 0 })
+    installBinding(payload)
+    expect((await createDesktopClient().getWorkspace()).runs[0].suite_id).toBe(suiteID)
+    payload.runs[0].suite_id = "invalid"
+    await expect(createDesktopClient().getWorkspace()).rejects.toThrow("运行记录")
+  })
+
   it("loads snapshot-backed authored Run history after the current plan is deleted", async () => {
     const payload = structuredClone(FIXTURE_WORKSPACE)
     payload.plans = []
@@ -727,6 +740,17 @@ describe("Wails desktop client", () => {
     expect(binding.GetJob).not.toHaveBeenCalled()
   })
 
+  it("reads report comparisons through the parsed binding boundary", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const payload = reportComparisonFixture()
+    const ids = payload.reports.map(detail => detail.source === "run" ? detail.report.id : detail.performance.report_id!)
+    binding.CompareReports.mockResolvedValueOnce(payload as never)
+    const result = await createDesktopClient().compareReports(ids, ids[0])
+    expect(result.reports).toHaveLength(2)
+    expect(binding.CompareReports).toHaveBeenCalledWith(ids, ids[0])
+    binding.CompareReports.mockResolvedValueOnce({ ...payload, schema_version: 9 } as never)
+    await expect(createDesktopClient().compareReports(ids, ids[0])).rejects.toThrow()
+  })
 	it("reads complete report details and forwards all export formats", async () => {
 		const binding = installBinding(FIXTURE_WORKSPACE)
 		const client = createDesktopClient()
@@ -1226,7 +1250,13 @@ function installBinding(
   catalog: unknown = FIXTURE_CATALOG,
   reports: unknown = FIXTURE_REPORTS,
 ) {
+  const benchmark = benchmarkPreviewClient()
   const binding = {
+    GetBenchmarkCatalog: vi.fn(benchmark.getBenchmarkCatalog), PrepareBenchmarkRuntime: vi.fn(benchmark.prepareBenchmarkRuntime),
+    GetBenchmarkDatasets: vi.fn(benchmark.getBenchmarkDatasets), ManageBenchmarkDataset: vi.fn(benchmark.manageBenchmarkDataset),
+    GetBenchmarkReportOwner: vi.fn(benchmark.getBenchmarkReportOwner),
+    StartBenchmark: vi.fn(benchmark.startBenchmark), GetBenchmarks: vi.fn(benchmark.getBenchmarks), GetBenchmark: vi.fn(benchmark.getBenchmark),
+    CancelBenchmark: vi.fn(benchmark.cancelBenchmark), GetBenchmarkReport: vi.fn(benchmark.getBenchmarkReport), ExportBenchmarkReport: vi.fn(benchmark.exportBenchmarkReport),
     PreviewHistoryRecycle: vi.fn<(target: unknown) => Promise<unknown>>(),
     GetRecycledHistory: vi.fn(async (_after?: string): Promise<unknown> => ({ schema_version: 1, entries: [], next_cursor: "", has_more: false })),
     RecycleHistory: vi.fn<(target: unknown) => Promise<unknown>>(),
@@ -1265,6 +1295,7 @@ function installBinding(
 		OpenDiagnosticsDirectory: vi.fn(async () => undefined),
 		ReportFrontendDiagnostic: vi.fn(async () => undefined),
 		GetReportDetail: vi.fn(async (reportID: string) => structuredClone(reportDetailFixture(reportID))),
+    CompareReports: vi.fn(),
 			ExportReport: vi.fn(async (reportID: string, format: string, _watermark: string) => ({
 			filename: `llm-test-studio-report-${reportID}.${format}`,
 			media_type: format === "json" ? "application/json" : "application/octet-stream",

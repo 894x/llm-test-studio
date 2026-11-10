@@ -4,7 +4,7 @@
 - Case key prefix: `k31.`
 - Case files: 442
 - Selected cases: 93
-- Cases asserting 4xx HTTP rejection: 39
+- Cases asserting 4xx HTTP rejection: 37
 
 ## Dimensions
 
@@ -151,10 +151,10 @@
 | `K31-P043-stop-item-33-bytes/case.json` | `k31.stop_item_33_bytes` | `parameters` | `equals, non_empty` | `max_completion_tokens, messages, stop` | yes |
 | `K31-P050-max-completion-minimal/case.json` | `k31.max_completion_minimal` | `parameters` | `equals, non_empty` | `max_completion_tokens, messages` | no |
 | `K31-P051-max-completion-context-overflow/case.json` | `k31.max_completion_context_overflow` | `parameters` | `equals, length_equals, non_empty` | `max_completion_tokens, messages` | no |
-| `K31-P052-max-completion-over-model-limit/case.json` | `k31.max_completion_over_model_limit` | `parameters` | `equals, non_empty` | `max_completion_tokens, messages` | yes |
+| `K31-P052-max-completion-over-model-limit/case.json` | `k31.max_completion_over_model_limit` | `parameters` | `equals, non_empty` | `max_completion_tokens, messages` | no |
 | `K31-R001-reasoning-effort-low/case.json` | `k31.reasoning_effort_low` | `reasoning-parameters` | `equals` | `max_completion_tokens, messages, reasoning_effort` | no |
 | `K31-R002-reasoning-effort-high/case.json` | `k31.reasoning_effort_high` | `reasoning-parameters` | `equals` | `max_completion_tokens, messages, reasoning_effort` | no |
 | `K31-R003-reasoning-effort-max/case.json` | `k31.reasoning_effort_max` | `reasoning-parameters` | `equals` | `max_completion_tokens, messages, reasoning_effort` | no |
-| `K31-R004-reasoning-effort-invalid/case.json` | `k31.reasoning_effort_invalid` | `reasoning-parameters` | `equals, non_empty` | `max_completion_tokens, messages, reasoning_effort` | yes |
+| `K31-R004-reasoning-effort-invalid/case.json` | `k31.reasoning_effort_invalid` | `reasoning-parameters` | `equals, non_empty` | `max_completion_tokens, messages, reasoning_effort` | no |
 
 > This is a structural inventory, not proof of provider-contract coverage.

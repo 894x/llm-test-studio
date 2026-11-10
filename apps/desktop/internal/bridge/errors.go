@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/894x/llm-test-studio/internal/application/benchmarks"
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
 	"github.com/894x/llm-test-studio/internal/application/historyrecycle"
@@ -32,6 +33,12 @@ var (
 )
 
 const (
+	desktopCodeBenchmarkInvalid          = "benchmark_invalid"
+	desktopCodeBenchmarkUnavailable      = "benchmark_unavailable"
+	desktopCodeBenchmarkRuntime          = "benchmark_runtime_unavailable"
+	desktopCodeBenchmarkBusy             = "benchmark_busy"
+	desktopCodeBenchmarkNotFound         = "benchmark_not_found"
+	desktopCodeBenchmarkFormat           = "benchmark_format_unsupported"
 	desktopCodeNotStarted                = "desktop_not_started"
 	desktopCodeStartupFailed             = "desktop_startup_failed"
 	DesktopCodeStopped                   = "desktop_stopped"
@@ -104,6 +111,10 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 	}
 
 	switch {
+	case errors.Is(internal, benchmarks.ErrInvalid), errors.Is(internal, benchmarks.ErrUnavailable),
+		errors.Is(internal, benchmarks.ErrRuntime), errors.Is(internal, benchmarks.ErrBusy),
+		errors.Is(internal, benchmarks.ErrNotFound), errors.Is(internal, benchmarks.ErrFormat):
+		return DesktopBindingError{Code: benchmarks.PublicError(internal)}
 	case errors.Is(internal, historyrecycle.ErrInvalid):
 		return DesktopBindingError{Code: desktopCodeHistoryRecycleInvalid}
 	case errors.Is(internal, historyrecycle.ErrNotFound):
@@ -229,6 +240,9 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 
 func isDesktopBindingCode(code string) bool {
 	switch code {
+	case desktopCodeBenchmarkInvalid, desktopCodeBenchmarkUnavailable, desktopCodeBenchmarkRuntime,
+		desktopCodeBenchmarkBusy, desktopCodeBenchmarkNotFound, desktopCodeBenchmarkFormat:
+		return true
 	case desktopCodeHistoryRecycleInvalid, desktopCodeHistoryRecycleNotFound, desktopCodeHistoryRecycleActive,
 		desktopCodeHistoryRecycleUnconfirmed, desktopCodeHistoryRecycleUnavailable:
 		return true

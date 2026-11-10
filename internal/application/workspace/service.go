@@ -59,6 +59,7 @@ type RunProjection struct {
 	Channel       TargetProjection
 	Status        domain.RunStatus
 	Source        string
+	SuiteID       string
 	Failure       *domain.RunFailure
 	Entries       []RunEntryProjection
 	ReportID      string
@@ -137,6 +138,7 @@ type RunSummary struct {
 	ObservedCaseCount uint64           `json:"observed_case_count"`
 	EntryProgress     []EntryProgress  `json:"entry_progress"`
 	Source            string           `json:"source,omitempty"`
+	SuiteID           string           `json:"suite_id,omitempty"`
 	ID                string           `json:"id"`
 	Revision          uint64           `json:"revision"`
 	PlanID            string           `json:"plan_id"`
@@ -321,6 +323,12 @@ func (projection RunProjection) Validate() error {
 	if projection.Source == "quick_task" && projection.Plan.ID != projection.Meta.ID {
 		return errors.New("quick task plan identity differs from run identity")
 	}
+	if projection.Source == "quick_task" && !domain.IsUUID(projection.SuiteID) {
+		return errors.New("invalid quick task suite identity")
+	}
+	if projection.Source != "quick_task" && projection.SuiteID != "" {
+		return errors.New("suite identity on a plan run")
+	}
 	if projection.ReportID != "" && !domain.IsUUID(projection.ReportID) {
 		return errors.New("invalid report identity")
 	}
@@ -385,6 +393,7 @@ func summarizeRun(projection RunProjection) RunSummary {
 		JobID: projection.JobID, ReportID: projection.ReportID,
 		PlanID: projection.Plan.ID, PlanRevision: projection.Plan.Revision, PlanName: projection.PlanName,
 		Status: projection.Status, Conclusion: projection.Conclusion, Source: projection.Source,
+		SuiteID: projection.SuiteID,
 		ModelID: projection.Model.ID, ModelRevision: projection.Model.Revision, ModelName: projection.Model.Name,
 		ChannelID: projection.Channel.ID, ChannelRevision: projection.Channel.Revision, ChannelName: projection.Channel.Name,
 		LoadMode: load.Mode, Concurrency: load.Concurrency,

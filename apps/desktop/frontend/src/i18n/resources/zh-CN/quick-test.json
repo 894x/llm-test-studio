@@ -257,6 +257,8 @@
   "modes": {
     "functional": "功能测试",
     "performance": "性能测试",
-    "plan": "计划测试"
-  }
+    "plan": "计划测试",
+    "benchmark": "数据测试"
+  },
+  "benchmarkTitle": "数据测试"
 }

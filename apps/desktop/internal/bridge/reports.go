@@ -7,6 +7,54 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
+func (app *DesktopApp) CompareReports(reportIDs []string, baselineID string) (reporting.Comparison, error) {
+	if len(reportIDs) < 2 || len(reportIDs) > reporting.MaxComparisonReports || !domain.IsUUID(baselineID) {
+		return reporting.Comparison{}, app.safeBindingError(ErrInvalidIdentifier)
+	}
+	seen := make(map[string]bool, len(reportIDs))
+	for _, id := range reportIDs {
+		if !domain.IsUUID(id) || seen[id] {
+			return reporting.Comparison{}, app.safeBindingError(ErrInvalidIdentifier)
+		}
+		seen[id] = true
+	}
+	if !seen[baselineID] {
+		return reporting.Comparison{}, app.safeBindingError(ErrInvalidIdentifier)
+	}
+	lease, err := app.acquire(desktopRequirements{reports: true})
+	if err != nil {
+		return reporting.Comparison{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	documents, ok := lease.reports.(ReportDocumentQuery)
+	if !ok || isNilInterface(documents) {
+		return reporting.Comparison{}, app.safeBindingError(ErrReportingUnavailable)
+	}
+	details := make([]reporting.Detail, 0, len(reportIDs))
+	for _, id := range reportIDs {
+		if err := lease.ctx.Err(); err != nil {
+			return reporting.Comparison{}, app.safeBindingError(err)
+		}
+		detail, err := documents.Detail(lease.ctx, id)
+		if err != nil {
+			return reporting.Comparison{}, app.safeBindingError(fmt.Errorf("read comparison report: %w", err))
+		}
+		actualID := detail.Report.ID
+		if detail.Source == reporting.SourceQuickPerformance && detail.Performance != nil {
+			actualID = detail.Performance.ReportID
+		}
+		if actualID != id {
+			return reporting.Comparison{}, app.safeBindingError(reporting.ErrInconsistent)
+		}
+		details = append(details, detail)
+	}
+	comparison, err := reporting.Compare(details, baselineID)
+	if err != nil {
+		return reporting.Comparison{}, app.safeBindingError(fmt.Errorf("compare reports: %w", err))
+	}
+	return comparison, nil
+}
+
 func (app *DesktopApp) GetReportGeneration() (reporting.GenerationSnapshot, error) {
 	lease, err := app.acquire(desktopRequirements{})
 	if err != nil {

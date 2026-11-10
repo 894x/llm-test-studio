@@ -3,12 +3,13 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactN
 import { useTranslation } from "react-i18next"
 import PanelRightIcon from "lucide-react/dist/esm/icons/panel-right.mjs"
 import FileTextIcon from "lucide-react/dist/esm/icons/file-text.mjs"
+import FilterXIcon from "lucide-react/dist/esm/icons/filter-x.mjs"
+import RefreshCwIcon from "lucide-react/dist/esm/icons/refresh-cw.mjs"
 import { publicDesktopErrorMessage } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
-import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchableSelect } from "@/components/ui/searchable-select"
@@ -16,6 +17,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { CatalogSearch } from "@/features/catalog/catalog-search"
 import { JobDetails } from "@/features/jobs/job-details"
 import type { JobStatus, JobView, SubmissionView } from "@/features/jobs/data"
 import type { JobClient } from "@/features/jobs/execution"
@@ -31,8 +33,13 @@ import { useExecutionJobs } from "./use-execution-jobs"
 import type { HistoryChanged, HistoryVisibilityChange } from "@/features/history-recycle/data"
 import { RecycleHistoryButton, type HistoryRecycleClient } from "@/features/history-recycle/recycle-history-button"
 import { historyVisibility } from "@/features/history-recycle/visibility"
+import { BenchmarkExecutionDetails } from "@/features/benchmarks/benchmark-details"
+import { BenchmarkProgress, BenchmarkStatus } from "@/features/benchmarks/benchmark-workspace"
+import { useBenchmarks } from "@/features/benchmarks/use-benchmarks"
+import type { BenchmarkClient, BenchmarkRun } from "@/features/benchmarks/data"
 
-type ExecutionRow = { id: string; job?: JobView; runs: RunRecord[]; title: string; time: string }
+type ExecutionRow = { id: string; job?: JobView; benchmark?: BenchmarkRun; runs: RunRecord[]; title: string; time: string }
+const definitionKey = (run: RunRecord) => run.quickTask ? run.suiteId && `suite:${run.suiteId}` : `plan:${run.planId}`
 const STATUS_CLASS: Record<JobStatus | SubmissionView["delivery"] | RunStatus, string> = {
   prepared: "text-muted-foreground",
   pending: "text-warning-strong",
@@ -57,7 +64,7 @@ const isDesktop = () => window.matchMedia(desktopQuery).matches
 export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, preferredJob, preferredRunID, commandError,
   renderRunShortcuts, onJobChange, onOpenReport, onOpenComparison, readStatus, historyRevision,
   onHistoryChanged, historyChanges = [] }: {
-  client: JobClient & Partial<RunHistoryClient> & Partial<HistoryRecycleClient>; snapshot: WorkspaceSnapshot; reports: ReportSnapshot
+  client: JobClient & Partial<RunHistoryClient> & Partial<HistoryRecycleClient> & Partial<BenchmarkClient>; snapshot: WorkspaceSnapshot; reports: ReportSnapshot
   preferredJob: JobView | null; preferredRunID?: string; commandError: string
   renderRunShortcuts?: RunShortcutRenderer
   onJobChange?: (job: JobView) => void
@@ -72,7 +79,15 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
   const { t: tj } = useTranslation("jobs")
   const [localHistoryChanges, setLocalHistoryChanges] = useState<HistoryVisibilityChange[]>([])
   const history = useExecutionJobs(client, preferredJob)
-  const runHistory = useRunHistory(client, history.jobs, preferredRunID)
+  const benchmarks = useBenchmarks(client)
+  const receiveBenchmarks = benchmarks.receive
+  useEffect(() => {
+    if (preferredRunID?.length !== 57 || !client.getBenchmark) return
+    let active = true
+    void client.getBenchmark(preferredRunID).then(run => { if (active) receiveBenchmarks([run]) }).catch(() => {})
+    return () => { active = false }
+  }, [client, preferredRunID, receiveBenchmarks])
+  const runHistory = useRunHistory(client, history.jobs, preferredRunID?.length === 57 ? undefined : preferredRunID)
   const appliedHistoryChanges = useRef(0)
   const applyJobHistory = history.applyHistoryChange
   const applyRunHistory = runHistory.applyHistoryChange
@@ -98,20 +113,30 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
   const [selectedChildID, setSelectedChildID] = useState(preferredRunID ?? "")
   const [detailTab, setDetailTab] = useState("summary")
   const [query, setQuery] = useState("")
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [kind, setKind] = useState("all")
   const [location, setLocation] = useState("all")
   const [status, setStatus] = useState("all")
-  const [plan, setPlan] = useState("all")
+  const [definition, setDefinition] = useState("all")
   const [standaloneLimit, setStandaloneLimit] = useState(25)
   const [shownPreferred, setShownPreferred] = useState("")
   const preferred = preferredJob?.job_id ?? (preferredRunID ? snapshot.runs.find(run => run.id === preferredRunID)?.job_id ?? preferredRunID : "")
   if (preferred && preferred !== shownPreferred) {
     setShownPreferred(preferred); setSelectedID(preferred)
-    setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setPlan("all")
+    setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setDefinition("all")
   }
   const presentation = useMemo(() => presentWorkspace(snapshot, {
     locale: i18n.resolvedLanguage ?? i18n.language, t: (key, values) => t(key, values),
   }), [snapshot, i18n.resolvedLanguage, i18n.language, t])
+  const definitionOptions = useMemo(() => {
+    const options = new Map(presentation.plans.map(plan => [`plan:${plan.id}`, t("executions.plan", { name: plan.name })]))
+    const runs = [...snapshot.runs].sort((a, b) => b.started_at.localeCompare(a.started_at) || b.id.localeCompare(a.id))
+    for (const run of runs) {
+      const key = run.source === "quick_task" ? run.suite_id && `suite:${run.suite_id}` : `plan:${run.plan_id}`
+      if (key && !options.has(key)) options.set(key, t(run.source === "quick_task" ? "executions.suite" : "executions.plan", { name: run.plan_name }))
+    }
+    return [{ value: "all", label: t("executions.allDefinitions") }, ...Array.from(options, ([value, label]) => ({ value, label }))]
+  }, [presentation.plans, snapshot.runs, t])
   const rows = useMemo(() => {
     const runs = new Map(presentation.runs.map(run => [run.id, run]))
     const sources = new Map(snapshot.runs.map(run => [run.id, run]))
@@ -125,27 +150,28 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
     const standalone = presentation.runs.filter(run => !sources.get(run.id)?.job_id && !owned.has(run.id))
     executions.push(...standalone.slice(0, standaloneLimit).map(run => ({ id: run.id, runs: [run], title: run.title,
       time: sources.get(run.id)!.started_at })))
+    executions.push(...benchmarks.runs.map(run => ({ id: run.id, benchmark: run, runs: [], title: run.datasets.map(dataset => dataset.dataset.name).join(" · "), time: run.created_at })))
     executions.sort((a, b) => b.time.localeCompare(a.time) || b.id.localeCompare(a.id))
     return { executions, moreStandalone: standalone.length > standaloneLimit || runHistory.hasMore }
-  }, [history.jobs, presentation.runs, snapshot.runs, standaloneLimit, runHistory.hasMore, tj])
+  }, [history.jobs, benchmarks.runs, presentation.runs, snapshot.runs, standaloneLimit, runHistory.hasMore, tj])
   const needle = query.trim().toLocaleLowerCase()
   const hidden = historyVisibility([...localHistoryChanges, ...historyChanges])
   const visible = rows.executions.filter(row =>
     !hidden.jobs.has(row.id) && !hidden.runs.has(row.id) &&
-    (kind === "all" || (row.job?.kind ?? "run") === kind) &&
-    (location === "all" || row.job?.location.kind === location) &&
-    (status === "all" || (row.job ? row.job.execution?.status ?? `delivery_${row.job.submission?.delivery}` : row.runs[0]?.coreStatus) === status) &&
-    (plan === "all" || row.runs.some(run => run.planId === plan)) &&
-    (!needle || [row.title, row.id, row.job?.executor.node_id, ...row.runs.flatMap(run => [run.id, run.model, run.channel])]
+    (kind === "all" || (row.benchmark ? "benchmark" : row.job?.kind ?? "run") === kind) &&
+    (location === "all" || (row.benchmark ? "local" : row.job?.location.kind) === location) &&
+    (status === "all" || (row.benchmark?.status ?? (row.job ? row.job.execution?.status ?? `delivery_${row.job.submission?.delivery}` : row.runs[0]?.coreStatus)) === status) &&
+    (definition === "all" || row.runs.some(run => definitionKey(run) === definition)) &&
+    (!needle || [row.title, row.id, row.job?.executor.node_id, row.benchmark?.target.model, row.benchmark?.target.channel_name, ...row.runs.flatMap(run => [run.id, run.model, run.channel])]
       .some(value => value?.toLocaleLowerCase().includes(needle))))
   const selected = visible.find(row => row.id === selectedID) ?? visible[0]
   const selectedJob = selected?.job
   useEffect(() => { if (selectedJob) onJobChange?.(selectedJob) }, [selectedJob, onJobChange])
-  const filtered = !!needle || [kind, location, status, plan].some(value => value !== "all")
-  const recycleAction = selected && client.previewHistoryRecycle && client.recycleHistory ? <RecycleHistoryButton compact
+  const filtered = !!needle || [kind, location, status, definition].some(value => value !== "all")
+  const recycleAction = selected && !selected.benchmark && client.previewHistoryRecycle && client.recycleHistory ? <RecycleHistoryButton compact
     key={selected.id} client={client as HistoryRecycleClient} target={{ kind: selected.job ? "job" : "run", id: selected.id }}
     onHistoryChanged={onHistoryChanged} onRecycled={(entry, action) => { setLocalHistoryChanges(current => [...current, { entry, action }]); void applyJobHistory(entry, action); void applyRunHistory(entry, action); setSelectedID(""); setSelectedChildID("") }} /> : null
-  const details = selected ? <div className="flex min-h-0 min-w-0 flex-1 flex-col"><ExecutionInspector key={selected.id} row={selected} client={client} reports={reports}
+  const details = selected?.benchmark ? <BenchmarkExecutionDetails key={selected.id} run={selected.benchmark} client={client} onChange={() => void benchmarks.refresh()} onOpenReport={onOpenReport} /> : selected ? <div className="flex min-h-0 min-w-0 flex-1 flex-col"><ExecutionInspector key={selected.id} row={selected} client={client} reports={reports}
     selectedChildID={selectedChildID} onSelectChild={setSelectedChildID} detailTab={detailTab} onDetailTabChange={setDetailTab}
     renderRunShortcuts={renderRunShortcuts} recycleAction={recycleAction} onJobChange={onJobChange} onOpenReport={onOpenReport} onOpenComparison={onOpenComparison} /></div>
     : <p className="p-4 text-xs text-muted-foreground">{t("inspector.noneSelected")}</p>
@@ -154,29 +180,42 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
     if (history.pending || runHistory.pending) return
     history.loadMore()
     void runHistory.loadMore()
+    void benchmarks.loadMore()
     setStandaloneLimit(limit => limit + 25)
   }
   return <main className="flex min-h-0 min-w-0 flex-1 gap-4 pl-4">
     <section aria-labelledby="workspace-heading" className="flex min-h-0 min-w-0 flex-1 flex-col max-[1179px]:pr-4">
-      <div className="flex shrink-0 items-center justify-between gap-3 py-3">
+      <div className="flex shrink-0 items-end justify-between gap-3 py-3">
         <div className="min-w-0"><h1 id="workspace-heading" className="text-lg font-semibold tracking-tight">{t("title")}</h1>
           <p className="mt-1 text-[11px] text-muted-foreground">{t("description")}</p></div>
         <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
-          <span>{t("executions.shown", { count: visible.length })}</span>
-          {filtered ? <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setPlan("all") }}>{t("executions.clear")}</Button> : null}
-          <Button size="sm" variant="ghost" disabled={history.pending} onClick={() => { history.retry(); void runHistory.refresh() }}>{history.pending ? <Spinner /> : null}{t("executions.refresh")}</Button>
           {!desktop && selected ? <Sheet><SheetTrigger asChild><Button variant="outline" size="sm"><PanelRightIcon />{t("mobile.details")}</Button></SheetTrigger>
           <SheetContent className="data-[side=right]:w-[340px] max-w-full gap-0 p-0 pt-8">
             <SheetHeader className="sr-only"><SheetTitle>{t("inspector.details")}</SheetTitle><SheetDescription>{selected.title}</SheetDescription></SheetHeader>
             {details}
           </SheetContent></Sheet> : null}
+          <CatalogSearch search={{ query, setQuery, inputRef: searchInputRef, total: rows.executions.length, matches: visible.length,
+            clear: () => { setQuery(""); searchInputRef.current?.focus() } }} label={t("executions.search")} placeholder={t("executions.search")}
+            totalLabel={t("executions.shown", { count: visible.length })} />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild><Button size="icon-sm" variant="ghost" aria-label={t("executions.refresh")} disabled={history.pending || benchmarks.pending}
+                onClick={() => { history.retry(); void runHistory.refresh(); void benchmarks.refresh() }}>{history.pending ? <Spinner /> : <RefreshCwIcon aria-hidden="true" />}</Button></TooltipTrigger>
+              <TooltipContent>{t("executions.refresh")}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild><Button size="icon-sm" variant="ghost" aria-label={t("executions.clear")} disabled={!filtered}
+                onClick={() => { setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setDefinition("all") }}><FilterXIcon aria-hidden="true" /></Button></TooltipTrigger>
+              <TooltipContent>{t("executions.clear")}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
       {readStatus ? <div className="shrink-0">{readStatus}</div> : null}
-      <div className="grid shrink-0 grid-cols-[minmax(180px,1.6fr)_104px_104px_116px_minmax(124px,1fr)] gap-2 pb-3">
-        <Input aria-label={t("executions.search")} placeholder={t("executions.search")} value={query} onChange={event => setQuery(event.target.value)} />
+      <div className="grid shrink-0 grid-cols-[112px_112px_128px_minmax(0,1fr)] gap-2 pb-3">
         <SearchableSelect aria-label={t("executions.kind")} value={kind} onValueChange={setKind} options={[
           { value: "all", label: t("executions.allKinds") }, ...["run", "performance", "comparison"].map(value => ({ value, label: tj(`kinds.${value}`) })),
+          { value: "benchmark", label: t("benchmarks:kind") },
         ]} />
         <SearchableSelect aria-label={t("executions.location")} value={location} onValueChange={setLocation} options={[
           { value: "all", label: t("executions.allLocations") }, ...["local", "remote"].map(value => ({ value, label: tj(value) })),
@@ -185,11 +224,10 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
           { value: "all", label: t("executions.allStatuses") }, ...["queued", "starting", "running", "draining", "completed", "failed", "cancelled"].map(value => ({ value, label: tj(`statuses.${value}`) })),
           ...["prepared", "pending", "accepted"].map(value => ({ value: `delivery_${value}`, label: tj(`deliveryStates.${value}`) })),
         ]} />
-        <SearchableSelect aria-label={t("plans.aria")} value={plan} onValueChange={setPlan} options={[
-          { value: "all", label: t("plans.all") }, ...Array.from(new Map([...presentation.plans.map(item => [item.id, item.name] as const), ...snapshot.runs.map(run => [run.plan_id, run.plan_name] as const)])).map(([value, label]) => ({ value, label })),
-        ]} />
+        <SearchableSelect aria-label={t("executions.definition")} value={definition} onValueChange={setDefinition} options={definitionOptions} />
       </div>
       {(history.error || runHistory.error) ? <Alert className="mb-2"><AlertDescription>{publicDesktopErrorMessage(history.error || runHistory.error, tj("readFailed"))}</AlertDescription></Alert> : null}
+      {benchmarks.error ? <Alert className="mb-2"><AlertDescription>{publicDesktopErrorMessage(benchmarks.error, t("benchmarks:loadError"))}</AlertDescription></Alert> : null}
       {commandError ? <Alert variant="destructive" className="mb-2"><AlertDescription>{commandError}</AlertDescription></Alert> : null}
       <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1" onScrollCapture={event => {
         const viewport = event.target as HTMLElement
@@ -203,18 +241,19 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
           <TableBody>{visible.map(row => <TableRow key={row.id} aria-selected={selected?.id === row.id} data-state={selected?.id === row.id ? "selected" : undefined} onClick={() => setSelectedID(row.id)}>
             <TableCell><ExecutionStatus row={row} /></TableCell>
             <TableCell><Button variant="link" size="sm" className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs text-foreground" aria-label={t("table.view", { title: row.title })} onClick={() => setSelectedID(row.id)}>{row.title}</Button>
-              <p className="mt-1 text-[10px] text-muted-foreground">{tj(`kinds.${row.job?.kind ?? "run"}`)}</p></TableCell>
-            <TableCell><p className="text-xs">{row.runs[0]?.model ?? "—"}</p><p className="mt-1 text-[10px] text-muted-foreground">{row.runs[0]?.channel}</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">{row.benchmark ? t("benchmarks:kind") : tj(`kinds.${row.job?.kind ?? "run"}`)}</p></TableCell>
+            <TableCell><p className="text-xs">{row.benchmark?.target.model ?? row.runs[0]?.model ?? "—"}</p><p className="mt-1 text-[10px] text-muted-foreground">{row.benchmark?.target.channel_name ?? row.runs[0]?.channel}</p>
+              {row.benchmark ? <p className="mt-1 text-[11px]">{t("benchmarks:local")}</p> : null}
               {row.job ? <p className="mt-1 text-[11px]">{tj(row.job.location.kind)}{!row.job.submission ? ` · ${tj("sharedNode")}` : ""}</p> : null}</TableCell>
             <TableCell><ExecutionProgress row={row} /></TableCell>
             <TableCell className="text-[11px] tabular-nums">{row.time ? new Date(row.time).toLocaleString(i18n.resolvedLanguage ?? i18n.language) : "—"}</TableCell>
           </TableRow>)}</TableBody>
-        </Table> : <Empty><EmptyTitle>{history.pending ? t("executions.loading") : t(filtered ? plan !== "all" ? "table.emptyFiltered" : "executions.emptyFiltered" : "table.empty")}</EmptyTitle>
+        </Table> : <Empty><EmptyTitle>{history.pending ? t("executions.loading") : t(filtered ? "executions.emptyFiltered" : "table.empty")}</EmptyTitle>
           <EmptyDescription>{filtered ? t("executions.noMatches") : t("table.emptyDescription")}</EmptyDescription></Empty>}
       </ScrollArea>
       <div className="flex shrink-0 items-center justify-between gap-2 py-2">
         <span className="text-[11px] text-muted-foreground">{t("executions.historyHint")}</span>
-        {history.hasMore || rows.moreStandalone ? <Button variant="outline" size="sm" disabled={history.pending || runHistory.pending} onClick={loadMore}>{t("executions.more")}</Button> : null}
+        {history.hasMore || rows.moreStandalone || benchmarks.next ? <Button variant="outline" size="sm" disabled={history.pending || runHistory.pending || benchmarks.pending} onClick={loadMore}>{t("executions.more")}</Button> : null}
       </div>
     </section>
     {desktop ? <aside aria-label={t("inspector.details")} className="flex min-h-0 min-w-0 w-[320px] shrink-0 flex-col border-l border-divider">{details}</aside> : null}
@@ -224,6 +263,7 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
 function ExecutionStatus({ row }: { row: ExecutionRow }) {
   const { t } = useTranslation("common")
   const { t: tj } = useTranslation("jobs")
+  if (row.benchmark) return <BenchmarkStatus status={row.benchmark.status} />
   const status = row.job ? row.job.execution?.status ?? row.job.submission!.delivery : row.runs[0].status
   const label = row.job ? row.job.execution ? tj(`statuses.${row.job.execution.status}`)
     : tj(`deliveryStates.${row.job.submission!.delivery}`) : t(`status.${row.runs[0].status}`)
@@ -235,6 +275,7 @@ function ExecutionStatus({ row }: { row: ExecutionRow }) {
 function ExecutionProgress({ row }: { row: ExecutionRow }) {
   const { t } = useTranslation("runs")
   const { t: tj } = useTranslation("jobs")
+  if (row.benchmark) return <div className="space-y-2">{row.benchmark.datasets.map(dataset => <div key={dataset.report_id}><p className="text-[10px] text-muted-foreground">{dataset.dataset.name}</p><BenchmarkProgress dataset={dataset} /></div>)}</div>
   const progress = row.job?.progress?.progress
   const run = row.runs[0]
   if (row.job?.kind === "comparison") return <p className="text-[11px] text-muted-foreground">{t("executions.children", { count: row.job.run_ids.length })}</p>

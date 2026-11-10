@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 
+	"github.com/894x/llm-test-studio/internal/application/benchmarks"
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
 	"github.com/894x/llm-test-studio/internal/application/historyrecycle"
@@ -110,6 +111,7 @@ type HistoryRecycleService interface {
 }
 
 type Dependencies struct {
+	Benchmarks             *benchmarks.Service
 	HistoryRecycle         HistoryRecycleService
 	Overview               OverviewQuery
 	ComparisonHistory      ComparisonHistoryQuery

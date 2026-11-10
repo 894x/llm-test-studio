@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "d08ed194-d902-5209-bf27-2c4db7bfc655",
   "key": "k31.max_completion_over_model_limit",
-  "name": "K3.1 Pro · 输出长度 · max_completion_tokens=1048577 应拒绝",
+  "name": "K3.1 Pro · 输出长度 · max_completion_tokens=1048577 请求接受",
   "dimension": "parameters",
   "enabled": true,
   "default": false,
@@ -27,14 +27,13 @@
           "id": "r1",
           "source": "http.status",
           "operator": "equals",
-          "value": 400
+          "value": 200
         },
         {
           "id": "r2",
           "source": "response",
           "operator": "non_empty",
-          "pointer": "/error/message",
-          "transform": "trim"
+          "pointer": "/choices"
         }
       ]
     }

@@ -5,6 +5,8 @@
   "frontend:dir": "frontend",
   "frontend:install": "pnpm install --frozen-lockfile",
   "frontend:build": "pnpm build",
+  "frontend:dev:watcher": "pnpm dev --host 127.0.0.1",
+  "frontend:dev:serverUrl": "auto",
   "author": {
     "name": "llm-test-studio"
   }

@@ -15,6 +15,23 @@
 
 Highspeed 的既有完整套件排除三个仅适用于 Pro 的动态工具场景，共用日常套件也不包含这些场景。Pro 和 Highspeed 共用 Case 定义不代表一次运行能够验证两个模型：需要分别选择模型执行。不同协议继续使用各自的请求和断言。
 
+## 工具场景输出预算（2026-11-11）
+
+本次复核限定为 K3 Chat、K3 Responses、K3.1 Pro / Highspeed Chat 及已有 KVV 工具专项中的已启用、预期 HTTP 200 的工具相关场景，包含工具选择、动态工具、名称与 Schema、工具历史回放和请求接受检查。42 个 Case 文件中的 49 份协议定义统一使用 4096 tokens 的输出预算：45 份从原有 200、2048 或 2560 提高至 4096，另 4 份保持原有 4096：
+
+| 定义范围 | 数量 | 调整字段 |
+| --- | ---: | --- |
+| K3 Chat（含保留的独立工具调用 Case） | 9 | 原有 `max_tokens` 或 `max_completion_tokens` |
+| K3.1 Pro / Highspeed 共用 Chat | 12 | 原有 `max_tokens` 或 `max_completion_tokens` |
+| KVV 同步 / 流式工具成功路径 | 6 | `max_completion_tokens` |
+| K3 Responses 工具成功路径 | 22 | `max_output_tokens` |
+
+2026-11-11 核对的[模型参数说明](https://platform.kimi.com/docs/api/models-overview)指出，三款 K3 模型始终思考，默认 `reasoning_effort=max`；[Chat API](https://platform.kimi.com/docs/api/chat)说明生成达到上限时会以 `length` 结束，并推荐以 `max_completion_tokens` 替代已弃用的 `max_tokens`。4096 是本项目为工具场景预留的生成预算，不是供应商推荐的固定值，也不保证所有请求都不会截断；实际输出可提前结束。此次保留每个 Case 原有字段及推理档位，继续覆盖旧字段兼容行为，避免同时发送两个预算字段。
+
+参数拒绝、故意截断、输出上限边界和禁用场景保留各自预算与断言。Case schema 2/3、Suite schema 1、稳定 ID、key、套件成员和断言均保持，已有公开 CLI、API、runner 和存储格式无需改变，不新增弃用或移除期限，也无需数据迁移。新运行会使用统一后的内置预算，上调的场景最坏输出量和费用上限相应增加；其他模型复用这些 Case 时也会使用新预算。同 ID 用户覆盖继续优先，历史冻结快照、报告及结论不回写或重算。降级使用旧二进制自带的预算，数据不需要转换。
+
+验证已通过：`data/cases`、`data/suites`、`internal/casecodec`、Chat / Responses 协议测试，4 份 manifest 对应的 27 个 Suite 生成一致性检查，以及逐字段差异检查和 `git diff --check`。1057 个未选中 Case 文件与修改前一致；对照复核前基线，40 个 Case 文件中的 45 份定义仅改变预算值，其余 4 份目标定义保持原值。证据限定为 T0 本地验证，本次没有发送供应商请求。既有覆盖矩阵中的 partial、deferred、blocked 和文档冲突继续有效，此调整不增加契约覆盖或供应商实测证据。
+
 ## 成员变化和已有引用
 
 - K3 Chat 官方基础套件删除与 `must.tool_choice_required` 的 Chat 请求和断言完全一致的 `must.tool_call` 引用，成员由 86 调整为 85。`must.tool_call` 及其 Responses 定义仍然保留。

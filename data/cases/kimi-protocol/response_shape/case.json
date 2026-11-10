@@ -1,0 +1,1293 @@
+{
+  "schema_version": 3,
+  "id": "0a6c2a65-2d4b-5421-b0f0-4a6f048110a1",
+  "key": "kimi.protocol.response_shape",
+  "name": "Kimi K3 / K3.1 · 响应结构",
+  "description": "目的：检查 K3 / K3.1 普通文本响应的原生信封和内容容器。要求成功、可见文本及正确容器；可选字段允许缺省，返回时检查类型与协议常量。不是整个 API 的全量 JSON Schema 校验。 来源及适用范围：doc/kimi-protocol-checks.md，核验日期 2026-11-07。T1；运行时绑定 kimi-k3 或 kimi-k3.1-pro。",
+  "dimension": "protocol",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "计算 17×23，简短回答结果。"
+            }
+          ],
+          "max_tokens": 2048,
+          "reasoning_effort": "low"
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "pointer": "",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "issues",
+          "source": "issues",
+          "pointer": "",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "root",
+          "source": "response",
+          "pointer": "",
+          "operator": "type",
+          "value": "object"
+        },
+        {
+          "id": "visible_text",
+          "source": "text",
+          "pointer": "",
+          "operator": "non_empty"
+        },
+        {
+          "id": "id",
+          "any": [
+            {
+              "id": "id_absent",
+              "source": "response",
+              "pointer": "/id",
+              "operator": "not_exists"
+            },
+            {
+              "id": "id_value",
+              "source": "response",
+              "pointer": "/id",
+              "operator": "type",
+              "value": "string"
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "any": [
+            {
+              "id": "model_absent",
+              "source": "response",
+              "pointer": "/model",
+              "operator": "not_exists"
+            },
+            {
+              "id": "model_value",
+              "source": "response",
+              "pointer": "/model",
+              "operator": "type",
+              "value": "string"
+            }
+          ]
+        },
+        {
+          "id": "object",
+          "any": [
+            {
+              "id": "object_absent",
+              "source": "response",
+              "pointer": "/object",
+              "operator": "not_exists"
+            },
+            {
+              "id": "object_value",
+              "source": "response",
+              "pointer": "/object",
+              "operator": "equals",
+              "value": "chat.completion"
+            }
+          ]
+        },
+        {
+          "id": "created",
+          "any": [
+            {
+              "id": "created_absent",
+              "source": "response",
+              "pointer": "/created",
+              "operator": "not_exists"
+            },
+            {
+              "id": "created_value",
+              "source": "response",
+              "pointer": "/created",
+              "operator": "type",
+              "value": "integer"
+            }
+          ]
+        },
+        {
+          "id": "choices",
+          "source": "response",
+          "pointer": "/choices",
+          "operator": "type",
+          "value": "array"
+        },
+        {
+          "id": "choice_count",
+          "source": "response",
+          "pointer": "/choices",
+          "operator": "length_equals",
+          "value": 1
+        },
+        {
+          "id": "choice_shape",
+          "source": "response",
+          "pointer": "/choices",
+          "each": [
+            {
+              "id": "choice_object",
+              "source": "item",
+              "pointer": "",
+              "operator": "type",
+              "value": "object"
+            },
+            {
+              "id": "index",
+              "any": [
+                {
+                  "id": "index_absent",
+                  "source": "item",
+                  "pointer": "/index",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "index_value",
+                  "source": "item",
+                  "pointer": "/index",
+                  "operator": "type",
+                  "value": "integer"
+                }
+              ]
+            },
+            {
+              "id": "message",
+              "source": "item",
+              "pointer": "/message",
+              "operator": "type",
+              "value": "object"
+            },
+            {
+              "id": "assistant",
+              "any": [
+                {
+                  "id": "assistant_absent",
+                  "source": "item",
+                  "pointer": "/message/role",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "assistant_value",
+                  "source": "item",
+                  "pointer": "/message/role",
+                  "operator": "equals",
+                  "value": "assistant"
+                }
+              ]
+            },
+            {
+              "id": "content",
+              "any": [
+                {
+                  "id": "content_absent",
+                  "source": "item",
+                  "pointer": "/message/content",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "content_null",
+                  "source": "item",
+                  "pointer": "/message/content",
+                  "operator": "equals",
+                  "value": null
+                },
+                {
+                  "id": "content_value",
+                  "source": "item",
+                  "pointer": "/message/content",
+                  "operator": "type",
+                  "value": "string"
+                }
+              ]
+            },
+            {
+              "id": "reasoning_content",
+              "any": [
+                {
+                  "id": "reasoning_content_absent",
+                  "source": "item",
+                  "pointer": "/message/reasoning_content",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "reasoning_content_null",
+                  "source": "item",
+                  "pointer": "/message/reasoning_content",
+                  "operator": "equals",
+                  "value": null
+                },
+                {
+                  "id": "reasoning_content_value",
+                  "source": "item",
+                  "pointer": "/message/reasoning_content",
+                  "operator": "type",
+                  "value": "string"
+                }
+              ]
+            },
+            {
+              "id": "finish",
+              "any": [
+                {
+                  "id": "finish_absent",
+                  "source": "item",
+                  "pointer": "/finish_reason",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "finish_value",
+                  "source": "item",
+                  "pointer": "/finish_reason",
+                  "operator": "in",
+                  "value": [
+                    "stop",
+                    "length",
+                    "tool_calls"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "usage_shape",
+          "any": [
+            {
+              "id": "usage_shape_absent",
+              "source": "response",
+              "pointer": "/usage",
+              "operator": "not_exists"
+            },
+            {
+              "id": "usage_shape_value",
+              "source": "response",
+              "pointer": "/usage",
+              "operator": "type",
+              "value": "object"
+            }
+          ]
+        },
+        {
+          "id": "count_prompt_tokens_integer",
+          "any": [
+            {
+              "id": "count_prompt_tokens_integer_absent",
+              "source": "response",
+              "pointer": "/usage/prompt_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_prompt_tokens_integer_value",
+              "source": "response",
+              "pointer": "/usage/prompt_tokens",
+              "operator": "type",
+              "value": "integer"
+            }
+          ]
+        },
+        {
+          "id": "count_prompt_tokens_nonnegative",
+          "any": [
+            {
+              "id": "count_prompt_tokens_nonnegative_absent",
+              "source": "response",
+              "pointer": "/usage/prompt_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_prompt_tokens_nonnegative_value",
+              "source": "response",
+              "pointer": "/usage/prompt_tokens",
+              "operator": "gte",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "count_completion_tokens_integer",
+          "any": [
+            {
+              "id": "count_completion_tokens_integer_absent",
+              "source": "response",
+              "pointer": "/usage/completion_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_completion_tokens_integer_value",
+              "source": "response",
+              "pointer": "/usage/completion_tokens",
+              "operator": "type",
+              "value": "integer"
+            }
+          ]
+        },
+        {
+          "id": "count_completion_tokens_nonnegative",
+          "any": [
+            {
+              "id": "count_completion_tokens_nonnegative_absent",
+              "source": "response",
+              "pointer": "/usage/completion_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_completion_tokens_nonnegative_value",
+              "source": "response",
+              "pointer": "/usage/completion_tokens",
+              "operator": "gte",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "count_total_tokens_integer",
+          "any": [
+            {
+              "id": "count_total_tokens_integer_absent",
+              "source": "response",
+              "pointer": "/usage/total_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_total_tokens_integer_value",
+              "source": "response",
+              "pointer": "/usage/total_tokens",
+              "operator": "type",
+              "value": "integer"
+            }
+          ]
+        },
+        {
+          "id": "count_total_tokens_nonnegative",
+          "any": [
+            {
+              "id": "count_total_tokens_nonnegative_absent",
+              "source": "response",
+              "pointer": "/usage/total_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_total_tokens_nonnegative_value",
+              "source": "response",
+              "pointer": "/usage/total_tokens",
+              "operator": "gte",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "计算 17×23，简短回答结果。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "pointer": "",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "issues",
+          "source": "issues",
+          "pointer": "",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "root",
+          "source": "response",
+          "pointer": "",
+          "operator": "type",
+          "value": "object"
+        },
+        {
+          "id": "visible_text",
+          "source": "text",
+          "pointer": "",
+          "operator": "non_empty"
+        },
+        {
+          "id": "id",
+          "any": [
+            {
+              "id": "id_absent",
+              "source": "response",
+              "pointer": "/id",
+              "operator": "not_exists"
+            },
+            {
+              "id": "id_value",
+              "source": "response",
+              "pointer": "/id",
+              "operator": "type",
+              "value": "string"
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "any": [
+            {
+              "id": "model_absent",
+              "source": "response",
+              "pointer": "/model",
+              "operator": "not_exists"
+            },
+            {
+              "id": "model_value",
+              "source": "response",
+              "pointer": "/model",
+              "operator": "type",
+              "value": "string"
+            }
+          ]
+        },
+        {
+          "id": "object",
+          "any": [
+            {
+              "id": "object_absent",
+              "source": "response",
+              "pointer": "/object",
+              "operator": "not_exists"
+            },
+            {
+              "id": "object_value",
+              "source": "response",
+              "pointer": "/object",
+              "operator": "equals",
+              "value": "response"
+            }
+          ]
+        },
+        {
+          "id": "created",
+          "any": [
+            {
+              "id": "created_absent",
+              "source": "response",
+              "pointer": "/created_at",
+              "operator": "not_exists"
+            },
+            {
+              "id": "created_value",
+              "source": "response",
+              "pointer": "/created_at",
+              "operator": "type",
+              "value": "integer"
+            }
+          ]
+        },
+        {
+          "id": "completed",
+          "source": "response",
+          "pointer": "/status",
+          "operator": "equals",
+          "value": "completed"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "pointer": "/output",
+          "operator": "type",
+          "value": "array"
+        },
+        {
+          "id": "output_shape",
+          "source": "response",
+          "pointer": "/output",
+          "each": [
+            {
+              "id": "output_item",
+              "source": "item",
+              "pointer": "",
+              "operator": "type",
+              "value": "object"
+            },
+            {
+              "id": "output_type",
+              "source": "item",
+              "pointer": "/type",
+              "operator": "type",
+              "value": "string"
+            },
+            {
+              "id": "output_id",
+              "any": [
+                {
+                  "id": "output_id_absent",
+                  "source": "item",
+                  "pointer": "/id",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "output_id_value",
+                  "source": "item",
+                  "pointer": "/id",
+                  "operator": "type",
+                  "value": "string"
+                }
+              ]
+            },
+            {
+              "id": "output_role",
+              "any": [
+                {
+                  "id": "output_role_absent",
+                  "source": "item",
+                  "pointer": "/role",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "output_role_value",
+                  "source": "item",
+                  "pointer": "/role",
+                  "operator": "equals",
+                  "value": "assistant"
+                }
+              ]
+            },
+            {
+              "id": "output_content",
+              "any": [
+                {
+                  "id": "output_content_absent",
+                  "source": "item",
+                  "pointer": "/content",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "output_content_value",
+                  "source": "item",
+                  "pointer": "/content",
+                  "operator": "type",
+                  "value": "array"
+                }
+              ]
+            },
+            {
+              "id": "message_output_fields",
+              "any": [
+                {
+                  "id": "message_output_fields_other",
+                  "source": "item",
+                  "pointer": "/type",
+                  "operator": "not_equals",
+                  "value": "message"
+                },
+                {
+                  "id": "message_output_fields_fields",
+                  "all": [
+                    {
+                      "id": "output_message_content",
+                      "source": "item",
+                      "pointer": "/content",
+                      "each": [
+                        {
+                          "id": "part_object",
+                          "source": "item",
+                          "pointer": "",
+                          "operator": "type",
+                          "value": "object"
+                        },
+                        {
+                          "id": "part_type",
+                          "source": "item",
+                          "pointer": "/type",
+                          "operator": "type",
+                          "value": "string"
+                        },
+                        {
+                          "id": "text_part_fields",
+                          "any": [
+                            {
+                              "id": "text_part_fields_other",
+                              "source": "item",
+                              "pointer": "/type",
+                              "operator": "not_equals",
+                              "value": "output_text"
+                            },
+                            {
+                              "id": "text_part_fields_fields",
+                              "all": [
+                                {
+                                  "id": "required_output_text",
+                                  "source": "item",
+                                  "pointer": "/text",
+                                  "operator": "type",
+                                  "value": "string"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "refusal_part_fields",
+                          "any": [
+                            {
+                              "id": "refusal_part_fields_other",
+                              "source": "item",
+                              "pointer": "/type",
+                              "operator": "not_equals",
+                              "value": "refusal"
+                            },
+                            {
+                              "id": "refusal_part_fields_fields",
+                              "all": [
+                                {
+                                  "id": "required_refusal",
+                                  "source": "item",
+                                  "pointer": "/refusal",
+                                  "operator": "type",
+                                  "value": "string"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "usage_shape",
+          "any": [
+            {
+              "id": "usage_shape_absent",
+              "source": "response",
+              "pointer": "/usage",
+              "operator": "not_exists"
+            },
+            {
+              "id": "usage_shape_null",
+              "source": "response",
+              "pointer": "/usage",
+              "operator": "equals",
+              "value": null
+            },
+            {
+              "id": "usage_shape_value",
+              "source": "response",
+              "pointer": "/usage",
+              "operator": "type",
+              "value": "object"
+            }
+          ]
+        },
+        {
+          "id": "usage_counters",
+          "any": [
+            {
+              "id": "usage_is_null",
+              "source": "response",
+              "pointer": "/usage",
+              "operator": "equals",
+              "value": null
+            },
+            {
+              "id": "usage_counter_types",
+              "all": [
+                {
+                  "id": "count_input_tokens_integer",
+                  "any": [
+                    {
+                      "id": "count_input_tokens_integer_absent",
+                      "source": "response",
+                      "pointer": "/usage/input_tokens",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "count_input_tokens_integer_value",
+                      "source": "response",
+                      "pointer": "/usage/input_tokens",
+                      "operator": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                {
+                  "id": "count_input_tokens_nonnegative",
+                  "any": [
+                    {
+                      "id": "count_input_tokens_nonnegative_absent",
+                      "source": "response",
+                      "pointer": "/usage/input_tokens",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "count_input_tokens_nonnegative_value",
+                      "source": "response",
+                      "pointer": "/usage/input_tokens",
+                      "operator": "gte",
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "id": "count_output_tokens_integer",
+                  "any": [
+                    {
+                      "id": "count_output_tokens_integer_absent",
+                      "source": "response",
+                      "pointer": "/usage/output_tokens",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "count_output_tokens_integer_value",
+                      "source": "response",
+                      "pointer": "/usage/output_tokens",
+                      "operator": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                {
+                  "id": "count_output_tokens_nonnegative",
+                  "any": [
+                    {
+                      "id": "count_output_tokens_nonnegative_absent",
+                      "source": "response",
+                      "pointer": "/usage/output_tokens",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "count_output_tokens_nonnegative_value",
+                      "source": "response",
+                      "pointer": "/usage/output_tokens",
+                      "operator": "gte",
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "id": "count_total_tokens_integer",
+                  "any": [
+                    {
+                      "id": "count_total_tokens_integer_absent",
+                      "source": "response",
+                      "pointer": "/usage/total_tokens",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "count_total_tokens_integer_value",
+                      "source": "response",
+                      "pointer": "/usage/total_tokens",
+                      "operator": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                {
+                  "id": "count_total_tokens_nonnegative",
+                  "any": [
+                    {
+                      "id": "count_total_tokens_nonnegative_absent",
+                      "source": "response",
+                      "pointer": "/usage/total_tokens",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "count_total_tokens_nonnegative_value",
+                      "source": "response",
+                      "pointer": "/usage/total_tokens",
+                      "operator": "gte",
+                      "value": 0
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "anthropic-messages": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "计算 17×23，简短回答结果。"
+            }
+          ],
+          "max_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "pointer": "",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "issues",
+          "source": "issues",
+          "pointer": "",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "root",
+          "source": "response",
+          "pointer": "",
+          "operator": "type",
+          "value": "object"
+        },
+        {
+          "id": "visible_text",
+          "source": "text",
+          "pointer": "",
+          "operator": "non_empty"
+        },
+        {
+          "id": "id",
+          "any": [
+            {
+              "id": "id_absent",
+              "source": "response",
+              "pointer": "/id",
+              "operator": "not_exists"
+            },
+            {
+              "id": "id_value",
+              "source": "response",
+              "pointer": "/id",
+              "operator": "type",
+              "value": "string"
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "any": [
+            {
+              "id": "model_absent",
+              "source": "response",
+              "pointer": "/model",
+              "operator": "not_exists"
+            },
+            {
+              "id": "model_value",
+              "source": "response",
+              "pointer": "/model",
+              "operator": "type",
+              "value": "string"
+            }
+          ]
+        },
+        {
+          "id": "type",
+          "any": [
+            {
+              "id": "type_absent",
+              "source": "response",
+              "pointer": "/type",
+              "operator": "not_exists"
+            },
+            {
+              "id": "type_value",
+              "source": "response",
+              "pointer": "/type",
+              "operator": "equals",
+              "value": "message"
+            }
+          ]
+        },
+        {
+          "id": "assistant",
+          "any": [
+            {
+              "id": "assistant_absent",
+              "source": "response",
+              "pointer": "/role",
+              "operator": "not_exists"
+            },
+            {
+              "id": "assistant_value",
+              "source": "response",
+              "pointer": "/role",
+              "operator": "equals",
+              "value": "assistant"
+            }
+          ]
+        },
+        {
+          "id": "stop",
+          "any": [
+            {
+              "id": "stop_absent",
+              "source": "response",
+              "pointer": "/stop_reason",
+              "operator": "not_exists"
+            },
+            {
+              "id": "stop_value",
+              "source": "response",
+              "pointer": "/stop_reason",
+              "operator": "in",
+              "value": [
+                "end_turn",
+                "max_tokens",
+                "tool_use",
+                "refusal",
+                null
+              ]
+            }
+          ]
+        },
+        {
+          "id": "stop_sequence",
+          "any": [
+            {
+              "id": "stop_sequence_absent",
+              "source": "response",
+              "pointer": "/stop_sequence",
+              "operator": "not_exists"
+            },
+            {
+              "id": "stop_sequence_null",
+              "source": "response",
+              "pointer": "/stop_sequence",
+              "operator": "equals",
+              "value": null
+            },
+            {
+              "id": "stop_sequence_value",
+              "source": "response",
+              "pointer": "/stop_sequence",
+              "operator": "type",
+              "value": "string"
+            }
+          ]
+        },
+        {
+          "id": "content",
+          "source": "response",
+          "pointer": "/content",
+          "operator": "type",
+          "value": "array"
+        },
+        {
+          "id": "block_shape",
+          "source": "response",
+          "pointer": "/content",
+          "each": [
+            {
+              "id": "block",
+              "source": "item",
+              "pointer": "",
+              "operator": "type",
+              "value": "object"
+            },
+            {
+              "id": "block_type",
+              "source": "item",
+              "pointer": "/type",
+              "operator": "type",
+              "value": "string"
+            },
+            {
+              "id": "block_text",
+              "any": [
+                {
+                  "id": "block_text_absent",
+                  "source": "item",
+                  "pointer": "/text",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "block_text_value",
+                  "source": "item",
+                  "pointer": "/text",
+                  "operator": "type",
+                  "value": "string"
+                }
+              ]
+            },
+            {
+              "id": "block_thinking",
+              "any": [
+                {
+                  "id": "block_thinking_absent",
+                  "source": "item",
+                  "pointer": "/thinking",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "block_thinking_value",
+                  "source": "item",
+                  "pointer": "/thinking",
+                  "operator": "type",
+                  "value": "string"
+                }
+              ]
+            },
+            {
+              "id": "block_signature",
+              "any": [
+                {
+                  "id": "block_signature_absent",
+                  "source": "item",
+                  "pointer": "/signature",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "block_signature_value",
+                  "source": "item",
+                  "pointer": "/signature",
+                  "operator": "type",
+                  "value": "string"
+                }
+              ]
+            },
+            {
+              "id": "text_block_fields",
+              "any": [
+                {
+                  "id": "text_block_fields_other",
+                  "source": "item",
+                  "pointer": "/type",
+                  "operator": "not_equals",
+                  "value": "text"
+                },
+                {
+                  "id": "text_block_fields_fields",
+                  "all": [
+                    {
+                      "id": "required_block_text",
+                      "source": "item",
+                      "pointer": "/text",
+                      "operator": "type",
+                      "value": "string"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "thinking_block_fields",
+              "any": [
+                {
+                  "id": "thinking_block_fields_other",
+                  "source": "item",
+                  "pointer": "/type",
+                  "operator": "not_equals",
+                  "value": "thinking"
+                },
+                {
+                  "id": "thinking_block_fields_fields",
+                  "all": [
+                    {
+                      "id": "required_block_thinking",
+                      "source": "item",
+                      "pointer": "/thinking",
+                      "operator": "type",
+                      "value": "string"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "usage_shape",
+          "any": [
+            {
+              "id": "usage_shape_absent",
+              "source": "response",
+              "pointer": "/usage",
+              "operator": "not_exists"
+            },
+            {
+              "id": "usage_shape_value",
+              "source": "response",
+              "pointer": "/usage",
+              "operator": "type",
+              "value": "object"
+            }
+          ]
+        },
+        {
+          "id": "count_input_tokens_integer",
+          "any": [
+            {
+              "id": "count_input_tokens_integer_absent",
+              "source": "response",
+              "pointer": "/usage/input_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_input_tokens_integer_value",
+              "source": "response",
+              "pointer": "/usage/input_tokens",
+              "operator": "type",
+              "value": "integer"
+            }
+          ]
+        },
+        {
+          "id": "count_input_tokens_nonnegative",
+          "any": [
+            {
+              "id": "count_input_tokens_nonnegative_absent",
+              "source": "response",
+              "pointer": "/usage/input_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_input_tokens_nonnegative_value",
+              "source": "response",
+              "pointer": "/usage/input_tokens",
+              "operator": "gte",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "count_output_tokens_integer",
+          "any": [
+            {
+              "id": "count_output_tokens_integer_absent",
+              "source": "response",
+              "pointer": "/usage/output_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_output_tokens_integer_value",
+              "source": "response",
+              "pointer": "/usage/output_tokens",
+              "operator": "type",
+              "value": "integer"
+            }
+          ]
+        },
+        {
+          "id": "count_output_tokens_nonnegative",
+          "any": [
+            {
+              "id": "count_output_tokens_nonnegative_absent",
+              "source": "response",
+              "pointer": "/usage/output_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_output_tokens_nonnegative_value",
+              "source": "response",
+              "pointer": "/usage/output_tokens",
+              "operator": "gte",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "count_cache_read_input_tokens_integer",
+          "any": [
+            {
+              "id": "count_cache_read_input_tokens_integer_absent",
+              "source": "response",
+              "pointer": "/usage/cache_read_input_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_cache_read_input_tokens_integer_value",
+              "source": "response",
+              "pointer": "/usage/cache_read_input_tokens",
+              "operator": "type",
+              "value": "integer"
+            }
+          ]
+        },
+        {
+          "id": "count_cache_read_input_tokens_nonnegative",
+          "any": [
+            {
+              "id": "count_cache_read_input_tokens_nonnegative_absent",
+              "source": "response",
+              "pointer": "/usage/cache_read_input_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_cache_read_input_tokens_nonnegative_value",
+              "source": "response",
+              "pointer": "/usage/cache_read_input_tokens",
+              "operator": "gte",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "count_cache_creation_input_tokens_integer",
+          "any": [
+            {
+              "id": "count_cache_creation_input_tokens_integer_absent",
+              "source": "response",
+              "pointer": "/usage/cache_creation_input_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_cache_creation_input_tokens_integer_value",
+              "source": "response",
+              "pointer": "/usage/cache_creation_input_tokens",
+              "operator": "type",
+              "value": "integer"
+            }
+          ]
+        },
+        {
+          "id": "count_cache_creation_input_tokens_nonnegative",
+          "any": [
+            {
+              "id": "count_cache_creation_input_tokens_nonnegative_absent",
+              "source": "response",
+              "pointer": "/usage/cache_creation_input_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "count_cache_creation_input_tokens_nonnegative_value",
+              "source": "response",
+              "pointer": "/usage/cache_creation_input_tokens",
+              "operator": "gte",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

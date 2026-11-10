@@ -1,0 +1,13 @@
+[project]
+name = "llm-test-inspect-worker"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "inspect-ai==0.3.287",
+  "inspect-evals==0.27.0",
+  "openai==3.46.0",
+  "anthropic==2.6.0",
+]
+
+[tool.uv]
+package = false

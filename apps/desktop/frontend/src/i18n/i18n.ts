@@ -1,3 +1,5 @@
+import enBenchmarks from "./resources/en-US/benchmarks.json"
+import zhBenchmarks from "./resources/zh-CN/benchmarks.json"
 import enExecutionOrigin from "./resources/en-US/execution-origin.json"
 import zhExecutionOrigin from "./resources/zh-CN/execution-origin.json"
 import enJobs from "./resources/en-US/jobs.json"
@@ -32,8 +34,8 @@ import enHistoryRecycle from "./resources/en-US/history-recycle.json"
 import zhHistoryRecycle from "./resources/zh-CN/history-recycle.json"
 
 export const resources = {
-  "zh-CN": { historyRecycle: zhHistoryRecycle, executionOrigin: zhExecutionOrigin, jobs: zhJobs, remoteNodes: zhRemoteNodes, desktop: zhDesktop, app: zhApp, catalog: zhCatalog, common: zhCommon, comparisons: zhComparisons, overview: zhOverview, quickTest: zhQuickTest, reports: zhReports, runs: zhRuns, shell: zhShell },
-  "en-US": { historyRecycle: enHistoryRecycle, executionOrigin: enExecutionOrigin, jobs: enJobs, remoteNodes: enRemoteNodes, desktop: enDesktop, app: enApp, catalog: enCatalog, common: enCommon, comparisons: enComparisons, overview: enOverview, quickTest: enQuickTest, reports: enReports, runs: enRuns, shell: enShell },
+  "zh-CN": { benchmarks: zhBenchmarks, historyRecycle: zhHistoryRecycle, executionOrigin: zhExecutionOrigin, jobs: zhJobs, remoteNodes: zhRemoteNodes, desktop: zhDesktop, app: zhApp, catalog: zhCatalog, common: zhCommon, comparisons: zhComparisons, overview: zhOverview, quickTest: zhQuickTest, reports: zhReports, runs: zhRuns, shell: zhShell },
+  "en-US": { benchmarks: enBenchmarks, historyRecycle: enHistoryRecycle, executionOrigin: enExecutionOrigin, jobs: enJobs, remoteNodes: enRemoteNodes, desktop: enDesktop, app: enApp, catalog: enCatalog, common: enCommon, comparisons: enComparisons, overview: enOverview, quickTest: enQuickTest, reports: enReports, runs: enRuns, shell: enShell },
 } as const
 
 export function createAppI18n(locale: SupportedLocale): i18n {

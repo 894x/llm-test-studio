@@ -1,4 +1,5 @@
 import { Activity, Suspense, useState, type ReactNode } from "react"
+import { WorkspaceErrorBoundary } from "./workspace-error-boundary"
 
 // Visit lazily, then preserve the page's state and DOM (including scroll offsets).
 // Activity disconnects effects while hidden, so page observers and polls stop.
@@ -12,6 +13,8 @@ export function RetainedWorkspace({ active, children, fallback }: {
   if (!active && !visited) return null
 
   return <Activity mode={active ? "visible" : "hidden"}>
-    <Suspense fallback={fallback}>{children}</Suspense>
+    <WorkspaceErrorBoundary>
+      <Suspense fallback={fallback}>{children}</Suspense>
+    </WorkspaceErrorBoundary>
   </Activity>
 }

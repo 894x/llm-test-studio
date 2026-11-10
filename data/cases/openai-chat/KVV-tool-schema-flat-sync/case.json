@@ -21,7 +21,7 @@
             }
           ],
           "reasoning_effort": "low",
-          "max_completion_tokens": 2048,
+          "max_completion_tokens": 4096,
           "tools": [
             {
               "type": "function",

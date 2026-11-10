@@ -279,6 +279,9 @@ func TestWorkspaceRunProjectionsUseCurrentSnapshotForQuickTask(t *testing.T) {
 	if len(projections) != 1 || projections[0].PlanName != fixture.plan.Name || projections[0].Plan.ID != fixture.plan.ID || projections[0].Plan.Revision != fixture.plan.Revision {
 		t.Fatalf("quick projection %#v", projections)
 	}
+	if projections[0].SuiteID != snapshot.Entries[0].TargetID {
+		t.Fatalf("quick suite identity = %q, want %q", projections[0].SuiteID, snapshot.Entries[0].TargetID)
+	}
 }
 
 func TestWorkspaceRunProjectionsRejectSummaryCriticalCorruption(t *testing.T) {

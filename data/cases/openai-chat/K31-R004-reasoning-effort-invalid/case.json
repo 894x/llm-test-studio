@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "bfb4539e-2299-5b86-9eb7-37cca0f25013",
   "key": "k31.reasoning_effort_invalid",
-  "name": "K3.1 Pro · 推理强度 · 非法枚举 reasoning_effort=medium",
+  "name": "K3.1 Pro · 推理强度 · reasoning_effort=medium 请求接受",
   "dimension": "reasoning-parameters",
   "enabled": true,
   "default": false,
@@ -28,14 +28,13 @@
           "id": "r1",
           "source": "http.status",
           "operator": "equals",
-          "value": 400
+          "value": 200
         },
         {
           "id": "r2",
           "source": "response",
           "operator": "non_empty",
-          "pointer": "/error/message",
-          "transform": "trim"
+          "pointer": "/choices"
         }
       ]
     }

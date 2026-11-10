@@ -4,6 +4,7 @@
     "quickTest": "快速测试",
     "catalog": "模型与渠道",
     "cases": "用例",
+    "datasets": "数据集",
     "plans": "计划",
     "runs": "运行",
     "reports": "报告"
@@ -12,6 +13,19 @@
     "subtitle": "本地测试工作台"
   },
   "navigationAria": "主导航",
+  "pageError": {
+    "title": "页面加载失败",
+    "description": "页面资源加载失败或发生异常。你仍可使用顶部导航打开其他页面。",
+    "reloadHint": "重新加载可再次尝试；未保存的输入和当前界面状态会重置，已保存的记录不受影响。",
+    "reload": "重新加载界面"
+  },
+  "window": {
+    "controls": "窗口操作",
+    "minimise": "最小化",
+    "maximise": "最大化",
+    "restore": "还原窗口",
+    "close": "关闭窗口"
+  },
   "zoom": {
     "current": "界面缩放 {{percent}}%",
     "increase": "放大",

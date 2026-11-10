@@ -8,6 +8,7 @@ import { useDismissTransientOverlays } from "./use-transient-overlay"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./tooltip"
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "./sheet"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./dropdown-menu"
+import { Popover, PopoverContent, PopoverTrigger } from "./popover"
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle, AlertDialogTrigger } from "./alert-dialog"
 import { SearchableSelect } from "./searchable-select"
 import { Autocomplete, AutocompleteContent, AutocompleteInput, AutocompleteItem, AutocompleteList } from "./autocomplete"
@@ -70,7 +71,7 @@ it("removes portaled tooltips while retaining page data, filters, pagination and
   await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument())
 })
 
-it.each(["sheet", "confirmation", "menu"] as const)("dismisses a controlled %s and releases its modal locks", async kind => {
+it.each(["sheet", "confirmation", "menu", "popover"] as const)("dismisses a controlled %s and releases its modal locks", async kind => {
   const onClose = vi.fn()
   function Overlay() {
     const [open, setOpen] = useState(false)
@@ -82,11 +83,14 @@ it.each(["sheet", "confirmation", "menu"] as const)("dismisses a controlled %s a
     if (kind === "confirmation") return <AlertDialog open={open} onOpenChange={change}>
       <AlertDialogTrigger>Open overlay</AlertDialogTrigger><AlertDialogContent><AlertDialogTitle>Confirm</AlertDialogTitle><AlertDialogDescription>Details</AlertDialogDescription><AlertDialogCancel>Cancel</AlertDialogCancel></AlertDialogContent>
     </AlertDialog>
+    if (kind === "popover") return <Popover open={open} onOpenChange={change}>
+      <PopoverTrigger>Open overlay</PopoverTrigger><PopoverContent aria-label="Export"><button>PNG</button></PopoverContent>
+    </Popover>
     return <DropdownMenu open={open} onOpenChange={change}><DropdownMenuTrigger>Open overlay</DropdownMenuTrigger><DropdownMenuContent><DropdownMenuItem>Action</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
   }
   const user = userEvent.setup()
   fixture(<Overlay />)
-  const role = kind === "sheet" ? "dialog" : kind === "confirmation" ? "alertdialog" : "menu"
+  const role = kind === "sheet" || kind === "popover" ? "dialog" : kind === "confirmation" ? "alertdialog" : "menu"
   await user.click(screen.getByText("Open overlay"))
   expect(await screen.findByRole(role)).toBeVisible()
   // A real hash/programmatic transition does not need to click through the modal.

@@ -3,7 +3,7 @@
   "key": "openai-responses.kimi.cache-usage",
   "name": "Kimi 缓存 usage 对账 · openai-responses",
   "protocol": "openai-responses",
-  "description": "K3 / K3.1 Pro 专项 T3：5m、1h、默认 TTL 的流式和非流式实际写入，以及两档重复读取。Chat 包含 MSH 用量头，Messages 包含 TTL 写入拆分。运行产生费用；不纳入日常套件，不证明跨时间保留。",
+  "description": "K3 / K3.1 Pro 专项 T3：默认/5m/1h 的 JSON/SSE 冷写入和重复读取，独立验证 usage，不要求 MSH 头；返回扩展 TTL 时对账。运行产生费用；非日常套件，不证明跨时间保留。",
   "cases": [
     {
       "case_id": "c69198ce-66ee-4324-8346-6e3bba2992ac"

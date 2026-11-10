@@ -143,6 +143,10 @@
     "empty": "No channel comparisons yet"
   },
   "executions": {
+    "definition": "Suite or plan",
+    "allDefinitions": "All suites / plans",
+    "suite": "Suite · {{name}}",
+    "plan": "Plan · {{name}}",
     "search": "Search name, model, channel or ID",
     "kind": "Test type",
     "allKinds": "All types",

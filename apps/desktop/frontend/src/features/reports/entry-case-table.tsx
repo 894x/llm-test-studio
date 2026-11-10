@@ -19,6 +19,7 @@ import { desktopLocale } from "@/i18n/runtime"
 import type { ReportCaseDetail, ReportEntryDetail, ReportResult } from "./data"
 import { copyReportTextToClipboard } from "./report-clipboard"
 import { CaseSeverityBadge } from "./case-severity-badge"
+import { MetricValue } from "./metric-value"
 
 const PAGE_SIZE = 50
 const DETAIL_PAGE_SIZE = 20
@@ -43,11 +44,10 @@ export function EntryCaseTable({
   const summaryWidth = entry.cases.reduce((width, caseItem) => {
     const { passed, failed, observed, indeterminate } = caseItem.verification
     const counts = [passed, failed, observed, indeterminate].filter(count => count > 0)
-    // Keep the summary's share of the width consistent across pages.
-    const contentWidth = counts.reduce((total, count) => total + 18 + String(count).length * 7, 0)
-    return Math.max(width, 20 + contentWidth + Math.max(0, counts.length - 1) * 8)
-  }, 96)
-  const columnWeights = [280, 96, 56, 80, ...columnWidths, summaryWidth]
+    // Fit the widest count across all pages; multiple statuses wrap within the column.
+    return Math.max(width, ...counts.map(count => 38 + String(count).length * 7))
+  }, 56)
+  const columnWeights = [280, 96, 56, 80, ...columnWidths]
   const totalWeight = columnWeights.reduce((total, weight) => total + weight, 0)
   const selectedCaseIndex = entry.cases.findIndex(caseItem => caseItem.case_id === selectedCaseID)
   // A new navigation request locates its case; manual paging then takes precedence.
@@ -74,7 +74,8 @@ export function EntryCaseTable({
     <div className="min-w-0">
       <Table aria-label={t("protocolDesign.caseTable")} className="table-fixed [&_[data-slot=badge]]:h-auto [&_[data-slot=badge]]:min-h-5 [&_[data-slot=badge]]:max-w-full [&_[data-slot=badge]]:whitespace-normal">
         <colgroup>
-          {columnWeights.map((weight, index) => <col key={index} style={{ width: `${weight / totalWeight * 100}%` }} />)}
+          {columnWeights.map((weight, index) => <col key={index} style={index === 0 ? undefined : { width: `${weight / totalWeight * 100}%` }} />)}
+          <col style={{ width: summaryWidth }} />
         </colgroup>
         <TableHeader><TableRow className="hover:bg-transparent">
           <TableHead className="h-8 pl-3 text-[11px]">{t("protocolDesign.caseName")}</TableHead>
@@ -218,7 +219,7 @@ function ExecutionMetrics({ result }: { result: ReportResult }) {
   return <dl aria-label={t("protocolDesign.executionMetrics")} className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4">
     {metrics.map(([key, label, unit]) => <div key={key} className="min-w-0">
       <dt className="text-[10px] text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 text-xs tabular-nums">{result.metrics[key] === undefined ? "—" : `${number(result.metrics[key])}${unit ? ` ${unit}` : ""}`}</dd>
+      <dd className="mt-0.5 text-xs tabular-nums"><MetricValue value={result.metrics[key] === undefined ? "—" : number(result.metrics[key])} unit={unit} /></dd>
     </div>)}
   </dl>
 }
@@ -280,11 +281,11 @@ function ResultPagination({ page, count, size, onPage }: { page: number; count: 
   if (count <= size) return null
   return <div className="flex items-center justify-end gap-2 border-t px-3 py-2 text-xs"><span className="tabular-nums">{page + 1} / {Math.ceil(count / size)}</span><Button variant="outline" size="xs" disabled={!page} onClick={() => onPage(page - 1)}>{t("protocolDesign.previous")}</Button><Button variant="outline" size="xs" disabled={(page + 1) * size >= count} onClick={() => onPage(page + 1)}>{t("protocolDesign.next")}</Button></div>
 }
-function caseColumn(caseItem: ReportCaseDetail, column: ProtocolColumn): string {
+function caseColumn(caseItem: ReportCaseDetail, column: ProtocolColumn) {
   if (column.metric) {
     const metric = caseItem.metrics[column.metric]
     const unit = column.metric === "completion_tokens" ? "" : metric?.unit
-    return metric ? `${number(metric.value)}${unit ? ` ${unit}` : ""}` : "—"
+    return metric ? <MetricValue value={number(metric.value)} unit={unit} /> : "—"
   }
   const observations = caseItem.request_results
     .filter(result => result.dimensions?.phase !== "warmup")

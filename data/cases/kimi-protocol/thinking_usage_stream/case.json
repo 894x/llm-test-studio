@@ -1,0 +1,692 @@
+{
+  "schema_version": 3,
+  "id": "53d51910-3ffe-52b8-9eaa-9704aaf1277a",
+  "key": "kimi.protocol.thinking_usage_stream",
+  "name": "Kimi K3 / K3.1 · 思考用量完整性 · 流式",
+  "description": "目的：发现 K3 / K3.1 在供应商或网关响应中丢失思考用量明细。要求原生 usage、全部总数及 reasoning_tokens / thinking_tokens 为非负整数，思考数不超过输出数；Chat/Responses 检查总数加和。显式零有效，缺失不补零。这是按官方示例选择的严格完整性探针，不把可选属性一概视为强制字段。 流式要求正常结束且无协议问题，检查已保存事件的结构；原始事件最多保存 256 条，不声称所有事件均已检查。 来源及适用范围：doc/kimi-protocol-checks.md，核验日期 2026-11-07。T1；运行时绑定 kimi-k3 或 kimi-k3.1-pro。",
+  "dimension": "protocol",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "计算 17×23，简短回答结果。"
+            }
+          ],
+          "max_tokens": 2048,
+          "reasoning_effort": "low",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "pointer": "",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "issues",
+          "source": "issues",
+          "pointer": "",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "visible_text",
+          "source": "text",
+          "pointer": "",
+          "operator": "non_empty"
+        },
+        {
+          "id": "usage",
+          "source": "response",
+          "pointer": "/usage",
+          "operator": "type",
+          "value": "object"
+        },
+        {
+          "id": "count_prompt_tokens_integer",
+          "source": "response",
+          "pointer": "/usage/prompt_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "count_prompt_tokens_nonnegative",
+          "source": "response",
+          "pointer": "/usage/prompt_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "count_completion_tokens_integer",
+          "source": "response",
+          "pointer": "/usage/completion_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "count_completion_tokens_nonnegative",
+          "source": "response",
+          "pointer": "/usage/completion_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "count_total_tokens_integer",
+          "source": "response",
+          "pointer": "/usage/total_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "count_total_tokens_nonnegative",
+          "source": "response",
+          "pointer": "/usage/total_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "thinking_details",
+          "source": "response",
+          "pointer": "/usage/completion_tokens_details",
+          "operator": "type",
+          "value": "object"
+        },
+        {
+          "id": "thinking_integer",
+          "source": "response",
+          "pointer": "/usage/completion_tokens_details/reasoning_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "thinking_nonnegative",
+          "source": "response",
+          "pointer": "/usage/completion_tokens_details/reasoning_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "thinking_within_output",
+          "source": "response",
+          "pointer": "/usage/completion_tokens_details/reasoning_tokens",
+          "operator": "lte",
+          "expected_from": {
+            "source": "response",
+            "pointer": "/usage/completion_tokens"
+          }
+        },
+        {
+          "id": "usage_sum",
+          "source": "response",
+          "pointer": "/usage",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/total_tokens",
+            "parts": [
+              "/prompt_tokens",
+              "/completion_tokens"
+            ]
+          }
+        },
+        {
+          "id": "stream_completed",
+          "source": "stream.completed",
+          "pointer": "",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "events_present",
+          "source": "requests",
+          "pointer": "/0/events",
+          "operator": "non_empty"
+        },
+        {
+          "id": "event_shapes",
+          "source": "requests",
+          "pointer": "/0/events",
+          "each": [
+            {
+              "id": "event_object",
+              "source": "item",
+              "pointer": "",
+              "operator": "type",
+              "value": "object"
+            },
+            {
+              "id": "event_id",
+              "any": [
+                {
+                  "id": "event_id_absent",
+                  "source": "item",
+                  "pointer": "/id",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "event_id_value",
+                  "source": "item",
+                  "pointer": "/id",
+                  "operator": "type",
+                  "value": "string"
+                }
+              ]
+            },
+            {
+              "id": "event_model",
+              "any": [
+                {
+                  "id": "event_model_absent",
+                  "source": "item",
+                  "pointer": "/model",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "event_model_value",
+                  "source": "item",
+                  "pointer": "/model",
+                  "operator": "type",
+                  "value": "string"
+                }
+              ]
+            },
+            {
+              "id": "event_object_kind",
+              "any": [
+                {
+                  "id": "event_object_kind_absent",
+                  "source": "item",
+                  "pointer": "/object",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "event_object_kind_value",
+                  "source": "item",
+                  "pointer": "/object",
+                  "operator": "equals",
+                  "value": "chat.completion.chunk"
+                }
+              ]
+            },
+            {
+              "id": "event_created",
+              "any": [
+                {
+                  "id": "event_created_absent",
+                  "source": "item",
+                  "pointer": "/created",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "event_created_value",
+                  "source": "item",
+                  "pointer": "/created",
+                  "operator": "type",
+                  "value": "integer"
+                }
+              ]
+            },
+            {
+              "id": "event_choices",
+              "source": "item",
+              "pointer": "/choices",
+              "operator": "type",
+              "value": "array"
+            }
+          ]
+        },
+        {
+          "id": "stream_data_after_done",
+          "source": "metrics",
+          "pointer": "/stream_data_after_done",
+          "operator": "equals",
+          "value": 0
+        },
+        {
+          "id": "stream_content_after_finish",
+          "source": "metrics",
+          "pointer": "/stream_content_after_finish",
+          "operator": "equals",
+          "value": 0
+        },
+        {
+          "id": "stream_invalid_delta_count",
+          "source": "metrics",
+          "pointer": "/stream_invalid_delta_count",
+          "operator": "equals",
+          "value": 0
+        },
+        {
+          "id": "stream_provider_error_count",
+          "source": "metrics",
+          "pointer": "/stream_provider_error_count",
+          "operator": "equals",
+          "value": 0
+        },
+        {
+          "id": "stream_finish",
+          "source": "metrics",
+          "pointer": "/stream_finish_count",
+          "operator": "equals",
+          "value": 1
+        },
+        {
+          "id": "final_usage",
+          "source": "metrics",
+          "pointer": "/stream_final_usage_count",
+          "operator": "equals",
+          "value": 1
+        }
+      ]
+    },
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "计算 17×23，简短回答结果。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "stream": true
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "pointer": "",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "issues",
+          "source": "issues",
+          "pointer": "",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "visible_text",
+          "source": "text",
+          "pointer": "",
+          "operator": "non_empty"
+        },
+        {
+          "id": "usage",
+          "source": "response",
+          "pointer": "/usage",
+          "operator": "type",
+          "value": "object"
+        },
+        {
+          "id": "count_input_tokens_integer",
+          "source": "response",
+          "pointer": "/usage/input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "count_input_tokens_nonnegative",
+          "source": "response",
+          "pointer": "/usage/input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "count_output_tokens_integer",
+          "source": "response",
+          "pointer": "/usage/output_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "count_output_tokens_nonnegative",
+          "source": "response",
+          "pointer": "/usage/output_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "count_total_tokens_integer",
+          "source": "response",
+          "pointer": "/usage/total_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "count_total_tokens_nonnegative",
+          "source": "response",
+          "pointer": "/usage/total_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "thinking_details",
+          "source": "response",
+          "pointer": "/usage/output_tokens_details",
+          "operator": "type",
+          "value": "object"
+        },
+        {
+          "id": "thinking_integer",
+          "source": "response",
+          "pointer": "/usage/output_tokens_details/reasoning_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "thinking_nonnegative",
+          "source": "response",
+          "pointer": "/usage/output_tokens_details/reasoning_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "thinking_within_output",
+          "source": "response",
+          "pointer": "/usage/output_tokens_details/reasoning_tokens",
+          "operator": "lte",
+          "expected_from": {
+            "source": "response",
+            "pointer": "/usage/output_tokens"
+          }
+        },
+        {
+          "id": "usage_sum",
+          "source": "response",
+          "pointer": "/usage",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/total_tokens",
+            "parts": [
+              "/input_tokens",
+              "/output_tokens"
+            ]
+          }
+        },
+        {
+          "id": "stream_completed",
+          "source": "stream.completed",
+          "pointer": "",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "events_present",
+          "source": "requests",
+          "pointer": "/0/events",
+          "operator": "non_empty"
+        },
+        {
+          "id": "event_shapes",
+          "source": "requests",
+          "pointer": "/0/events",
+          "each": [
+            {
+              "id": "event_object",
+              "source": "item",
+              "pointer": "",
+              "operator": "type",
+              "value": "object"
+            },
+            {
+              "id": "event_type",
+              "source": "item",
+              "pointer": "/type",
+              "operator": "type",
+              "value": "string"
+            },
+            {
+              "id": "event_sequence",
+              "source": "item",
+              "pointer": "/sequence_number",
+              "operator": "type",
+              "value": "integer"
+            }
+          ]
+        }
+      ]
+    },
+    "anthropic-messages": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "计算 17×23，简短回答结果。"
+            }
+          ],
+          "max_tokens": 2048,
+          "stream": true
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "pointer": "",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "issues",
+          "source": "issues",
+          "pointer": "",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "visible_text",
+          "source": "text",
+          "pointer": "",
+          "operator": "non_empty"
+        },
+        {
+          "id": "usage",
+          "source": "response",
+          "pointer": "/usage",
+          "operator": "type",
+          "value": "object"
+        },
+        {
+          "id": "count_input_tokens_integer",
+          "source": "response",
+          "pointer": "/usage/input_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "count_input_tokens_nonnegative",
+          "source": "response",
+          "pointer": "/usage/input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "count_output_tokens_integer",
+          "source": "response",
+          "pointer": "/usage/output_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "count_output_tokens_nonnegative",
+          "source": "response",
+          "pointer": "/usage/output_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "thinking_details",
+          "source": "response",
+          "pointer": "/usage/output_tokens_details",
+          "operator": "type",
+          "value": "object"
+        },
+        {
+          "id": "thinking_integer",
+          "source": "response",
+          "pointer": "/usage/output_tokens_details/thinking_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "thinking_nonnegative",
+          "source": "response",
+          "pointer": "/usage/output_tokens_details/thinking_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "thinking_within_output",
+          "source": "response",
+          "pointer": "/usage/output_tokens_details/thinking_tokens",
+          "operator": "lte",
+          "expected_from": {
+            "source": "response",
+            "pointer": "/usage/output_tokens"
+          }
+        },
+        {
+          "id": "stream_completed",
+          "source": "stream.completed",
+          "pointer": "",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "events_present",
+          "source": "requests",
+          "pointer": "/0/events",
+          "operator": "non_empty"
+        },
+        {
+          "id": "event_shapes",
+          "source": "requests",
+          "pointer": "/0/events",
+          "each": [
+            {
+              "id": "event_object",
+              "source": "item",
+              "pointer": "",
+              "operator": "type",
+              "value": "object"
+            },
+            {
+              "id": "event_type",
+              "source": "item",
+              "pointer": "/type",
+              "operator": "type",
+              "value": "string"
+            },
+            {
+              "id": "event_message",
+              "any": [
+                {
+                  "id": "event_message_absent",
+                  "source": "item",
+                  "pointer": "/message",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "event_message_value",
+                  "source": "item",
+                  "pointer": "/message",
+                  "operator": "type",
+                  "value": "object"
+                }
+              ]
+            },
+            {
+              "id": "event_start_usage",
+              "any": [
+                {
+                  "id": "event_start_usage_absent",
+                  "source": "item",
+                  "pointer": "/message/usage",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "event_start_usage_value",
+                  "source": "item",
+                  "pointer": "/message/usage",
+                  "operator": "type",
+                  "value": "object"
+                }
+              ]
+            },
+            {
+              "id": "event_delta_usage",
+              "any": [
+                {
+                  "id": "event_delta_usage_absent",
+                  "source": "item",
+                  "pointer": "/usage",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "event_delta_usage_value",
+                  "source": "item",
+                  "pointer": "/usage",
+                  "operator": "type",
+                  "value": "object"
+                }
+              ]
+            },
+            {
+              "id": "event_delta",
+              "any": [
+                {
+                  "id": "event_delta_absent",
+                  "source": "item",
+                  "pointer": "/delta",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "event_delta_value",
+                  "source": "item",
+                  "pointer": "/delta",
+                  "operator": "type",
+                  "value": "object"
+                }
+              ]
+            },
+            {
+              "id": "event_block",
+              "any": [
+                {
+                  "id": "event_block_absent",
+                  "source": "item",
+                  "pointer": "/content_block",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "event_block_value",
+                  "source": "item",
+                  "pointer": "/content_block",
+                  "operator": "type",
+                  "value": "object"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

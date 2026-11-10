@@ -4,6 +4,7 @@
     "quickTest": "Quick Test",
     "catalog": "Models & Channels",
     "cases": "Cases",
+    "datasets": "Datasets",
     "plans": "Plans",
     "runs": "Runs",
     "reports": "Reports"
@@ -12,6 +13,19 @@
     "subtitle": "Local testing workspace"
   },
   "navigationAria": "Main navigation",
+  "pageError": {
+    "title": "Unable to load this page",
+    "description": "Page resources failed to load or an unexpected error occurred. You can still use the navigation above to open other pages.",
+    "reloadHint": "Reload to try again. Unsaved inputs and the current view will be reset; saved records will remain available.",
+    "reload": "Reload interface"
+  },
+  "window": {
+    "controls": "Window controls",
+    "minimise": "Minimise",
+    "maximise": "Maximise",
+    "restore": "Restore window",
+    "close": "Close window"
+  },
   "zoom": {
     "current": "Interface zoom {{percent}}%",
     "increase": "Zoom in",

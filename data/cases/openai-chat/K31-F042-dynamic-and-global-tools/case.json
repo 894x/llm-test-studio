@@ -62,7 +62,7 @@
               }
             }
           ],
-          "max_completion_tokens": 2560
+          "max_completion_tokens": 4096
         }
       },
       "assertions": [

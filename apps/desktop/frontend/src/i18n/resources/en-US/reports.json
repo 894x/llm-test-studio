@@ -1,4 +1,19 @@
 {
+  "filters": {
+    "label": "Report filters",
+    "kind": "Report type",
+    "allKinds": "All types",
+    "kinds": { "run": "Test reports", "quick_performance": "Performance reports", "comparison": "Channel comparisons", "benchmark": "Dataset evaluations" },
+    "status": "Run status",
+    "allStatuses": "All statuses",
+    "model": "Model",
+    "channel": "Channel",
+    "definition": "Suite or plan",
+    "all": { "model": "All models", "channel": "All channels", "definition": "All suites / plans" },
+    "shown": "{{count}} / {{total}} shown",
+    "hint": "Filters apply to loaded records; suites and plans use their names saved in reports.",
+    "clear": "Clear filters"
+  },
   "dimensions": {
     "names": {
       "artifact": "Artifacts",
@@ -139,6 +154,33 @@
     "unavailable": "Unavailable",
     "retry": "Retry",
     "unassigned": "Requests without a case"
+  },
+  "compare": {
+    "title": "Report comparison",
+    "description": "Compare archived results, including the same channel at different times.",
+    "action": "Compare reports ({{count}})",
+    "clear": "Clear selection",
+    "add": "Compare with other reports",
+    "select": "Select report: {{channel}} · {{model}} · {{time}}",
+    "selectVisible": "Select visible reports",
+    "selectionHint": "Select 2–{{max}} reports; selections persist across filters.",
+    "benchmarkUnavailable": "Dataset evaluation reports are not supported in this comparison yet",
+    "baseline": "Baseline report",
+    "onlyDifferences": "Differences only",
+    "table": "Report comparison results",
+    "hint": "Preserves archived conclusions. Changed definitions, parameters or load are marked without deltas; missing coverage is not a failure.",
+    "loading": "Loading and aligning reports…",
+    "error": "Unable to read comparison reports. Please retry.",
+    "noDifferences": "There are no differences in these test items.",
+    "evidence": "View evidence",
+    "change": {
+      "regressed": "New failure",
+      "recovered": "Recovered",
+      "changed": "Result changed",
+      "conditions_changed": "Test conditions changed",
+      "added": "Not covered by baseline",
+      "missing": "Not covered by this report"
+    }
   },
   "title": "Test Reports",
   "detailTitle": "Report details",
@@ -301,6 +343,20 @@
   "conclusion": {
     "passed": "Passed",
     "failed": "Failed"
+  },
+  "status": {
+    "running": "Running",
+    "draining": "Draining",
+    "passed": "Passed",
+    "completed": "Completed",
+    "failed": "Failed",
+    "queued": "Queued",
+    "cancelled": "Cancelled"
+  },
+  "assessmentStatus": {
+    "passed": "Passed",
+    "failed": "Failed",
+    "not_evaluated": "Not evaluated"
   },
   "system": {
     "quickPerformance": "Performance test",

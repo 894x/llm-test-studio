@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "key": "kimi.protocol_integrity",
+  "name": "Kimi K3 / K3.1 协议完整性 · openai-responses",
+  "protocol": "openai-responses",
+  "description": "4 个短请求检查非流式/流式响应结构与思考用量明细，能发现原生明细缺失或类型错误。严格用量探针要求文档示例中的字段存在；不等同于通用可选字段标准。运行时选择 kimi-k3 或 kimi-k3.1-pro；执行将产生 API 费用。",
+  "cases": [
+    {
+      "case_id": "0a6c2a65-2d4b-5421-b0f0-4a6f048110a1"
+    },
+    {
+      "case_id": "3fdd6aed-263d-5ba4-98ff-7a499c1ef418"
+    },
+    {
+      "case_id": "71841b16-b022-5a88-9d20-d7912a3f9f17"
+    },
+    {
+      "case_id": "53d51910-3ffe-52b8-9eaa-9704aaf1277a"
+    }
+  ],
+  "inputs": []
+}

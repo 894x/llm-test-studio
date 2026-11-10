@@ -3,7 +3,7 @@
   "id": "f20d65f3-6948-4b6c-bea1-93ffbcaf8f42",
   "key": "kimi.cache.write_1h_stream",
   "name": "Kimi 缓存 · 1h · 写入对账 · 流式",
-  "description": "T3；适用 kimi-k3 / kimi-k3.1-pro；1h TTL；最终流式 usage。新随机长前缀必须实际写入，避免缓存预热造成伪通过。Chat 同时核验 MSH 两档计数；Responses 核验原生 usage；Messages 核验 cache_creation 两档拆分。运行需要付费，不在日常套件执行。来源：https://platform.kimi.com/docs/guide/context-caching，核验日期 2026-11-03。",
+  "description": "T3；kimi-k3 / kimi-k3.1-pro；1h TTL（default 用例省略选项）；独立 usage 对账，不要求 MSH 响应头。检查原生计数、总量、读取不重写；Chat/Responses 返回扩展 cache_creation 时严格核验 TTL，缺失扩展不推测。Messages 必须返回原生 TTL 拆分。付费专项、非默认。来源：https://platform.kimi.com/docs/guide/context-caching；2026-11-09。",
   "dimension": "cache",
   "enabled": true,
   "default": false,
@@ -56,8 +56,22 @@
           "id": "protocol",
           "source": "issues",
           "pointer": "",
-          "operator": "length_equals",
-          "value": 0
+          "each": [
+            {
+              "id": "allowed_header_issue_stage",
+              "source": "item",
+              "pointer": "/stage",
+              "operator": "equals",
+              "value": "headers"
+            },
+            {
+              "id": "allowed_header_issue_code",
+              "source": "item",
+              "pointer": "/code",
+              "operator": "equals",
+              "value": "invalid_cache_write_header"
+            }
+          ]
         },
         {
           "id": "status_0",
@@ -116,34 +130,6 @@
           "value": 0
         },
         {
-          "id": "ttl_0_integer_0",
-          "source": "requests",
-          "pointer": "/0/metrics/msh_usage_cache_write_tokens_5m",
-          "operator": "type",
-          "value": "integer"
-        },
-        {
-          "id": "ttl_0_nonnegative_0",
-          "source": "requests",
-          "pointer": "/0/metrics/msh_usage_cache_write_tokens_5m",
-          "operator": "gte",
-          "value": 0
-        },
-        {
-          "id": "ttl_1_integer_0",
-          "source": "requests",
-          "pointer": "/0/metrics/msh_usage_cache_write_tokens_1h",
-          "operator": "type",
-          "value": "integer"
-        },
-        {
-          "id": "ttl_1_nonnegative_0",
-          "source": "requests",
-          "pointer": "/0/metrics/msh_usage_cache_write_tokens_1h",
-          "operator": "gte",
-          "value": 0
-        },
-        {
           "id": "write_bound_0",
           "source": "requests",
           "pointer": "/0/response/usage/prompt_tokens_details/cache_write_tokens",
@@ -164,30 +150,10 @@
           }
         },
         {
-          "id": "ttl_sum_0",
-          "source": "requests",
-          "pointer": "/0",
-          "operator": "sum_equals",
-          "value": {
-            "total": "/response/usage/prompt_tokens_details/cache_write_tokens",
-            "parts": [
-              "/metrics/msh_usage_cache_write_tokens_5m",
-              "/metrics/msh_usage_cache_write_tokens_1h"
-            ]
-          }
-        },
-        {
           "id": "positive_write_0",
           "source": "requests",
           "pointer": "/0/response/usage/prompt_tokens_details/cache_write_tokens",
           "operator": "gt",
-          "value": 0
-        },
-        {
-          "id": "other_ttl_zero_0",
-          "source": "requests",
-          "pointer": "/0/metrics/msh_usage_cache_write_tokens_5m",
-          "operator": "equals",
           "value": 0
         },
         {
@@ -210,6 +176,243 @@
           "pointer": "/0/metrics/stream_content_after_finish",
           "operator": "equals",
           "value": 0
+        },
+        {
+          "id": "output_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/completion_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "output_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/completion_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "total_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/total_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "total_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/total_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "token_sum_0",
+          "source": "requests",
+          "pointer": "/0",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/response/usage/total_tokens",
+            "parts": [
+              "/response/usage/prompt_tokens",
+              "/response/usage/completion_tokens"
+            ]
+          }
+        },
+        {
+          "id": "body_ttl_0_0",
+          "any": [
+            {
+              "id": "body_ttl_0_0_absent",
+              "source": "requests",
+              "pointer": "/0/response/usage/cache_creation",
+              "operator": "not_exists"
+            },
+            {
+              "id": "body_ttl_0_0_present",
+              "all": [
+                {
+                  "id": "body_ttl_0_0_object",
+                  "source": "requests",
+                  "pointer": "/0/response/usage/cache_creation",
+                  "operator": "type",
+                  "value": "object"
+                },
+                {
+                  "id": "body_ttl_0_0_selected",
+                  "any": [
+                    {
+                      "id": "body_ttl_0_0_zero_write",
+                      "all": [
+                        {
+                          "id": "body_ttl_0_0_selected_absent",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/cache_creation/ephemeral_1h_input_tokens",
+                          "operator": "not_exists"
+                        },
+                        {
+                          "id": "body_ttl_0_0_no_write",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/prompt_tokens_details/cache_write_tokens",
+                          "operator": "equals",
+                          "value": 0
+                        }
+                      ]
+                    },
+                    {
+                      "id": "body_ttl_0_0_selected_present",
+                      "all": [
+                        {
+                          "id": "body_ttl_0_0_selected_integer",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/cache_creation/ephemeral_1h_input_tokens",
+                          "operator": "type",
+                          "value": "integer"
+                        },
+                        {
+                          "id": "body_ttl_0_0_selected_total",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/cache_creation/ephemeral_1h_input_tokens",
+                          "operator": "equals",
+                          "expected_from": {
+                            "source": "requests",
+                            "pointer": "/0/response/usage/prompt_tokens_details/cache_write_tokens"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "body_ttl_0_0_other",
+                  "any": [
+                    {
+                      "id": "body_ttl_0_0_other_absent",
+                      "source": "requests",
+                      "pointer": "/0/response/usage/cache_creation/ephemeral_5m_input_tokens",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "body_ttl_0_0_other_zero",
+                      "all": [
+                        {
+                          "id": "body_ttl_0_0_other_integer",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/cache_creation/ephemeral_5m_input_tokens",
+                          "operator": "type",
+                          "value": "integer"
+                        },
+                        {
+                          "id": "body_ttl_0_0_other_value",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/cache_creation/ephemeral_5m_input_tokens",
+                          "operator": "equals",
+                          "value": 0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "body_ttl_0_1",
+          "any": [
+            {
+              "id": "body_ttl_0_1_absent",
+              "source": "requests",
+              "pointer": "/0/response/usage/prompt_tokens_details/cache_creation",
+              "operator": "not_exists"
+            },
+            {
+              "id": "body_ttl_0_1_present",
+              "all": [
+                {
+                  "id": "body_ttl_0_1_object",
+                  "source": "requests",
+                  "pointer": "/0/response/usage/prompt_tokens_details/cache_creation",
+                  "operator": "type",
+                  "value": "object"
+                },
+                {
+                  "id": "body_ttl_0_1_selected",
+                  "any": [
+                    {
+                      "id": "body_ttl_0_1_zero_write",
+                      "all": [
+                        {
+                          "id": "body_ttl_0_1_selected_absent",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/prompt_tokens_details/cache_creation/ephemeral_1h_input_tokens",
+                          "operator": "not_exists"
+                        },
+                        {
+                          "id": "body_ttl_0_1_no_write",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/prompt_tokens_details/cache_write_tokens",
+                          "operator": "equals",
+                          "value": 0
+                        }
+                      ]
+                    },
+                    {
+                      "id": "body_ttl_0_1_selected_present",
+                      "all": [
+                        {
+                          "id": "body_ttl_0_1_selected_integer",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/prompt_tokens_details/cache_creation/ephemeral_1h_input_tokens",
+                          "operator": "type",
+                          "value": "integer"
+                        },
+                        {
+                          "id": "body_ttl_0_1_selected_total",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/prompt_tokens_details/cache_creation/ephemeral_1h_input_tokens",
+                          "operator": "equals",
+                          "expected_from": {
+                            "source": "requests",
+                            "pointer": "/0/response/usage/prompt_tokens_details/cache_write_tokens"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "body_ttl_0_1_other",
+                  "any": [
+                    {
+                      "id": "body_ttl_0_1_other_absent",
+                      "source": "requests",
+                      "pointer": "/0/response/usage/prompt_tokens_details/cache_creation/ephemeral_5m_input_tokens",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "body_ttl_0_1_other_zero",
+                      "all": [
+                        {
+                          "id": "body_ttl_0_1_other_integer",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/prompt_tokens_details/cache_creation/ephemeral_5m_input_tokens",
+                          "operator": "type",
+                          "value": "integer"
+                        },
+                        {
+                          "id": "body_ttl_0_1_other_value",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/prompt_tokens_details/cache_creation/ephemeral_5m_input_tokens",
+                          "operator": "equals",
+                          "value": 0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -260,8 +463,22 @@
           "id": "protocol",
           "source": "issues",
           "pointer": "",
-          "operator": "length_equals",
-          "value": 0
+          "each": [
+            {
+              "id": "allowed_header_issue_stage",
+              "source": "item",
+              "pointer": "/stage",
+              "operator": "equals",
+              "value": "headers"
+            },
+            {
+              "id": "allowed_header_issue_code",
+              "source": "item",
+              "pointer": "/code",
+              "operator": "equals",
+              "value": "invalid_cache_write_header"
+            }
+          ]
         },
         {
           "id": "status_0",
@@ -345,6 +562,243 @@
           "pointer": "/0/response/usage/input_tokens_details/cache_write_tokens",
           "operator": "gt",
           "value": 0
+        },
+        {
+          "id": "output_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/output_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "output_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/output_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "total_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/total_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "total_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/total_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "token_sum_0",
+          "source": "requests",
+          "pointer": "/0",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/response/usage/total_tokens",
+            "parts": [
+              "/response/usage/input_tokens",
+              "/response/usage/output_tokens"
+            ]
+          }
+        },
+        {
+          "id": "body_ttl_0_0",
+          "any": [
+            {
+              "id": "body_ttl_0_0_absent",
+              "source": "requests",
+              "pointer": "/0/response/usage/cache_creation",
+              "operator": "not_exists"
+            },
+            {
+              "id": "body_ttl_0_0_present",
+              "all": [
+                {
+                  "id": "body_ttl_0_0_object",
+                  "source": "requests",
+                  "pointer": "/0/response/usage/cache_creation",
+                  "operator": "type",
+                  "value": "object"
+                },
+                {
+                  "id": "body_ttl_0_0_selected",
+                  "any": [
+                    {
+                      "id": "body_ttl_0_0_zero_write",
+                      "all": [
+                        {
+                          "id": "body_ttl_0_0_selected_absent",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/cache_creation/ephemeral_1h_input_tokens",
+                          "operator": "not_exists"
+                        },
+                        {
+                          "id": "body_ttl_0_0_no_write",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/input_tokens_details/cache_write_tokens",
+                          "operator": "equals",
+                          "value": 0
+                        }
+                      ]
+                    },
+                    {
+                      "id": "body_ttl_0_0_selected_present",
+                      "all": [
+                        {
+                          "id": "body_ttl_0_0_selected_integer",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/cache_creation/ephemeral_1h_input_tokens",
+                          "operator": "type",
+                          "value": "integer"
+                        },
+                        {
+                          "id": "body_ttl_0_0_selected_total",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/cache_creation/ephemeral_1h_input_tokens",
+                          "operator": "equals",
+                          "expected_from": {
+                            "source": "requests",
+                            "pointer": "/0/response/usage/input_tokens_details/cache_write_tokens"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "body_ttl_0_0_other",
+                  "any": [
+                    {
+                      "id": "body_ttl_0_0_other_absent",
+                      "source": "requests",
+                      "pointer": "/0/response/usage/cache_creation/ephemeral_5m_input_tokens",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "body_ttl_0_0_other_zero",
+                      "all": [
+                        {
+                          "id": "body_ttl_0_0_other_integer",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/cache_creation/ephemeral_5m_input_tokens",
+                          "operator": "type",
+                          "value": "integer"
+                        },
+                        {
+                          "id": "body_ttl_0_0_other_value",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/cache_creation/ephemeral_5m_input_tokens",
+                          "operator": "equals",
+                          "value": 0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "body_ttl_0_1",
+          "any": [
+            {
+              "id": "body_ttl_0_1_absent",
+              "source": "requests",
+              "pointer": "/0/response/usage/input_tokens_details/cache_creation",
+              "operator": "not_exists"
+            },
+            {
+              "id": "body_ttl_0_1_present",
+              "all": [
+                {
+                  "id": "body_ttl_0_1_object",
+                  "source": "requests",
+                  "pointer": "/0/response/usage/input_tokens_details/cache_creation",
+                  "operator": "type",
+                  "value": "object"
+                },
+                {
+                  "id": "body_ttl_0_1_selected",
+                  "any": [
+                    {
+                      "id": "body_ttl_0_1_zero_write",
+                      "all": [
+                        {
+                          "id": "body_ttl_0_1_selected_absent",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/input_tokens_details/cache_creation/ephemeral_1h_input_tokens",
+                          "operator": "not_exists"
+                        },
+                        {
+                          "id": "body_ttl_0_1_no_write",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/input_tokens_details/cache_write_tokens",
+                          "operator": "equals",
+                          "value": 0
+                        }
+                      ]
+                    },
+                    {
+                      "id": "body_ttl_0_1_selected_present",
+                      "all": [
+                        {
+                          "id": "body_ttl_0_1_selected_integer",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/input_tokens_details/cache_creation/ephemeral_1h_input_tokens",
+                          "operator": "type",
+                          "value": "integer"
+                        },
+                        {
+                          "id": "body_ttl_0_1_selected_total",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/input_tokens_details/cache_creation/ephemeral_1h_input_tokens",
+                          "operator": "equals",
+                          "expected_from": {
+                            "source": "requests",
+                            "pointer": "/0/response/usage/input_tokens_details/cache_write_tokens"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "body_ttl_0_1_other",
+                  "any": [
+                    {
+                      "id": "body_ttl_0_1_other_absent",
+                      "source": "requests",
+                      "pointer": "/0/response/usage/input_tokens_details/cache_creation/ephemeral_5m_input_tokens",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "body_ttl_0_1_other_zero",
+                      "all": [
+                        {
+                          "id": "body_ttl_0_1_other_integer",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/input_tokens_details/cache_creation/ephemeral_5m_input_tokens",
+                          "operator": "type",
+                          "value": "integer"
+                        },
+                        {
+                          "id": "body_ttl_0_1_other_value",
+                          "source": "requests",
+                          "pointer": "/0/response/usage/input_tokens_details/cache_creation/ephemeral_5m_input_tokens",
+                          "operator": "equals",
+                          "value": 0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -387,8 +841,22 @@
           "id": "protocol",
           "source": "issues",
           "pointer": "",
-          "operator": "length_equals",
-          "value": 0
+          "each": [
+            {
+              "id": "allowed_header_issue_stage",
+              "source": "item",
+              "pointer": "/stage",
+              "operator": "equals",
+              "value": "headers"
+            },
+            {
+              "id": "allowed_header_issue_code",
+              "source": "item",
+              "pointer": "/code",
+              "operator": "equals",
+              "value": "invalid_cache_write_header"
+            }
+          ]
         },
         {
           "id": "status_0",
@@ -499,6 +967,20 @@
           "source": "requests",
           "pointer": "/0/response/usage/cache_creation/ephemeral_5m_input_tokens",
           "operator": "equals",
+          "value": 0
+        },
+        {
+          "id": "output_integer_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/output_tokens",
+          "operator": "type",
+          "value": "integer"
+        },
+        {
+          "id": "output_nonnegative_0",
+          "source": "requests",
+          "pointer": "/0/response/usage/output_tokens",
+          "operator": "gte",
           "value": 0
         }
       ]
