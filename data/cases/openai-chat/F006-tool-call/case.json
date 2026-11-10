@@ -41,7 +41,7 @@
             }
           ],
           "tool_choice": "required",
-          "max_tokens": 200
+          "max_tokens": 4096
         }
       },
       "assertions": [
@@ -89,7 +89,7 @@
       },
       "request": {
         "body": {
-          "max_output_tokens": 2048,
+          "max_output_tokens": 4096,
           "input": {
             "$input": "prompt"
           },

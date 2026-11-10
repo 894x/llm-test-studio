@@ -44,7 +44,7 @@
           "reasoning": {
             "effort": "low"
           },
-          "max_output_tokens": 2048,
+          "max_output_tokens": 4096,
           "tools": [
             {
               "type": "custom",

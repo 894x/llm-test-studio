@@ -39,7 +39,7 @@
               }
             }
           ],
-          "max_tokens": 200
+          "max_tokens": 4096
         }
       },
       "assertions": [
