@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useId, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
+import ChevronLeftIcon from "lucide-react/dist/esm/icons/chevron-left.mjs"
 import ChevronDownIcon from "lucide-react/dist/esm/icons/chevron-down.mjs"
 import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right.mjs"
 import { Button } from "@/components/ui/button"
@@ -8,16 +9,17 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { ExecutionDetails, VerificationBadge } from "./entry-case-table"
 import { QuickPerformanceRequestAnalysis } from "@/features/quick-test/quick-performance-request-analysis"
 import { blobToBase64 } from "./report-export-encoding"
 import { copyReportPNGToClipboard } from "./report-clipboard"
 import { ReportExportControls } from "./report-export-controls"
+import { CaseSeverityBadge } from "./case-severity-badge"
+import { ComparisonChannelHeader, ComparisonTableColumns } from "./comparison-channel-header"
 import { comparisonReportID, type CompareReports, type ReportComparison, type ReportComparisonCell } from "./report-comparison-data"
 import type { ReportDetail, ReportExportFormat } from "./data"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
-import "./report-comparison-view.css"
 
 export function ReportComparisonView({ reportIDs, compareReports, saveReportExport, copyReportPNG, exportVisualReport = createVisualReportExport }: {
   reportIDs: string[]
@@ -30,6 +32,7 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
   const [baseline, setBaseline] = useState(reportIDs[0])
   const [onlyDifferences, setOnlyDifferences] = useState(false)
   const [retry, setRetry] = useState(0)
+  const [hiddenReports, setHiddenReports] = useState<string[]>([])
   const [expandedRow, setExpandedRow] = useState({ comparison: "", row: "" })
   const [state, setState] = useState<{ key: string; data?: ReportComparison; error?: boolean }>({ key: "" })
   const [exporting, setExporting] = useState<ReportExportFormat | "copy" | "">("")
@@ -37,6 +40,7 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
   const [exportError, setExportError] = useState("")
   const [exportData, setExportData] = useState<{ comparison: ReportComparison; width: number } | null>(null)
   const workspace = useRef<HTMLDivElement>(null)
+  const resultsID = useId()
   const exportReady = useRef<((element: HTMLElement) => void) | null>(null)
   const baselineID = reportIDs.includes(baseline) ? baseline : reportIDs[0]
   const idsKey = JSON.stringify(reportIDs)
@@ -44,6 +48,7 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
   const expanded = expandedRow.comparison === comparisonKey ? expandedRow.row : ""
   const key = JSON.stringify([idsKey, baselineID, retry])
   const data = state.key === key ? state.data : undefined
+  const visibleReports = (data?.reports ?? []).filter(detail => !hiddenReports.includes(comparisonReportID(detail)))
   useEffect(() => {
     let active = true
     const ids: string[] = JSON.parse(idsKey)
@@ -89,11 +94,26 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
       </div>
       <label className="flex items-center gap-2 text-xs"><Checkbox checked={onlyDifferences} disabled={Boolean(exporting)} onCheckedChange={checked => setOnlyDifferences(checked === true)} />{t("compare.onlyDifferences")}</label>
     </div>
+    {data ? <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2" aria-label={t("comparison.channelControls")}>
+      {data.reports.map((detail, index) => {
+        const id = comparisonReportID(detail)
+        const channel = reportInfo(detail).channel
+        const collapsed = hiddenReports.includes(id)
+        return <Button key={id} variant={collapsed ? "outline" : "secondary"} size="sm"
+          className="h-auto min-h-8 max-w-full whitespace-normal [overflow-wrap:anywhere]"
+          disabled={Boolean(exporting) || (!collapsed && visibleReports.length === 1)} aria-expanded={!collapsed}
+          aria-controls={resultsID} aria-label={t(collapsed ? "comparison.expand" : "comparison.collapse", { channel })}
+          onClick={() => setHiddenReports(current => collapsed ? current.filter(value => value !== id) : [...current, id])}>
+          {index === 0 ? <ChevronLeftIcon /> : <ChevronRightIcon />}{channel}
+          <span className="text-muted-foreground">{t(collapsed ? "comparison.expandLabel" : "comparison.collapseLabel")}</span>
+        </Button>
+      })}
+    </div> : null}
     <ScrollArea className="min-h-0 flex-1" contentWidth="viewport">
       {!data ? state.key === key && state.error ? <div role="alert" className="p-4 text-xs text-destructive">{t("compare.error")}<Button className="ml-2" variant="outline" size="sm" onClick={() => setRetry(value => value + 1)}>{t("comparison.retry")}</Button></div> :
         <div role="status" className="flex items-center gap-2 p-4 text-xs"><Spinner />{t("compare.loading")}</div> :
-        <div className="min-w-0 space-y-3 p-4"><p className="text-xs text-muted-foreground">{t("compare.hint")}</p>
-          <ReportComparisonBody key={comparisonKey} data={data} onlyDifferences={onlyDifferences} expanded={expanded}
+        <div id={resultsID} className="min-w-0 space-y-3 p-4">
+          <ReportComparisonBody key={comparisonKey} data={data} hiddenReports={hiddenReports} onlyDifferences={onlyDifferences} expanded={expanded}
             onExpandedChange={row => setExpandedRow({ comparison: comparisonKey, row })} disabled={Boolean(exporting)} />
           <details className="max-w-sm text-xs"><summary className="cursor-pointer py-2">{t("inspector.exportAria")}</summary>
             <ReportExportControls watermark={watermark} onWatermarkChange={setWatermark} exporting={exporting} error={exportError}
@@ -103,7 +123,7 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
     </ScrollArea>
     {exportData ? <div aria-hidden="true" className="pointer-events-none fixed left-[-10000px] top-0" style={{ width: exportData.width }}>
       <article data-report-export-document ref={element => { if (element && exportReady.current) { exportReady.current(element); exportReady.current = null } }} className="relative bg-background p-4 text-foreground">
-        <ReportComparisonBody data={exportData.comparison} onlyDifferences={onlyDifferences} expanded={expanded} exporting />
+        <ReportComparisonBody data={exportData.comparison} hiddenReports={hiddenReports} onlyDifferences={onlyDifferences} expanded={expanded} exporting />
         <div data-report-watermark className="pointer-events-none absolute inset-0 grid grid-cols-2 content-around overflow-hidden">
           {Array.from({ length: 8 }, (_, index) => <span key={index} className="-rotate-12 text-center text-4xl font-semibold text-muted-foreground/15">{watermark.trim() || "rhzs"}</span>)}
         </div>
@@ -112,8 +132,9 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
   </div>
 }
 
-function ReportComparisonBody({ data, onlyDifferences, expanded, onExpandedChange, exporting = false, disabled = false }: {
+function ReportComparisonBody({ data, hiddenReports, onlyDifferences, expanded, onExpandedChange, exporting = false, disabled = false }: {
   data: ReportComparison
+  hiddenReports: string[]
   onlyDifferences: boolean
   expanded: string
   onExpandedChange?: (row: string) => void
@@ -122,6 +143,7 @@ function ReportComparisonBody({ data, onlyDifferences, expanded, onExpandedChang
 }) {
   const { t } = useTranslation("reports")
   const detailsID = useId()
+  const reports = data.reports.filter(detail => !hiddenReports.includes(comparisonReportID(detail)))
   const [page, setPage] = useState(0)
   const rows = onlyDifferences ? data.rows.filter(row => row.different) : data.rows
   const lastPage = Math.max(0, Math.ceil(rows.length / 40) - 1)
@@ -129,21 +151,13 @@ function ReportComparisonBody({ data, onlyDifferences, expanded, onExpandedChang
   const visible = exporting ? rows : rows.slice(currentPage * 40, (currentPage + 1) * 40)
   return <TooltipProvider delayDuration={250}><section aria-label={t("compare.title")} className="min-w-0 space-y-3">
     <Table aria-label={t("compare.table")} className="table-fixed text-xs">
-      <colgroup><col style={{ width: 220 }} /><col span={data.reports.length} /></colgroup>
+      <ComparisonTableColumns channels={reports.length} />
       <TableHeader><TableRow>
         <TableHead>{t("protocolDesign.caseName")}</TableHead>
-        {data.reports.map(detail => {
+        {reports.map(detail => {
           const info = reportInfo(detail)
           const id = comparisonReportID(detail)
-          return <TableHead key={id} className="whitespace-normal py-3 align-top [overflow-wrap:anywhere]">
-            <div className="report-comparison-channel"><div className="report-comparison-channel-heading">
-              <Tooltip><TooltipTrigger asChild><div className="report-comparison-channel-label rounded-sm outline-none focus-visible:outline-2 focus-visible:outline-ring" tabIndex={exporting ? undefined : 0}>
-                <div className="report-comparison-channel-name font-medium">{info.channel}</div>
-                <div className="report-comparison-channel-model font-normal text-muted-foreground">{info.model}</div>
-              </div></TooltipTrigger><TooltipContent className="whitespace-normal [overflow-wrap:anywhere]">{reportLabel(detail)}</TooltipContent></Tooltip>
-              {id === data.baseline_id ? <span className="report-comparison-channel-baseline mt-1 block">{t("compare.baseline")}</span> : null}
-            </div></div>
-          </TableHead>
+          return <ComparisonChannelHeader key={id} channel={info.channel} model={info.model} baseline={id === data.baseline_id} exporting={exporting} />
         })}
       </TableRow></TableHeader>
       <TableBody>{visible.map(row => <Fragment key={row.key}>
@@ -157,19 +171,28 @@ function ReportComparisonBody({ data, onlyDifferences, expanded, onExpandedChang
               </Button>}
             <div className="mt-1 text-muted-foreground">{row.entry_name}</div>
           </TableCell>
-          {row.cells.map(cell => <TableCell key={cell.report_id} className="whitespace-normal align-top [overflow-wrap:anywhere]">
-            <div className="flex flex-col items-start gap-1.5">
-              {cell.status === "not_run" ? <span>{t("comparison.noResult")}</span> : <VerificationBadge status={cell.status as "passed" | "failed" | "not_applicable" | "indeterminate"} />}
-              {cell.change !== "same" && cell.change !== "baseline" ? <span className={cell.change === "regressed" ? "text-destructive" : cell.change === "recovered" ? "text-success-strong" : "text-muted-foreground"}>{t(`compare.change.${cell.change}`)}</span> : null}
-            </div>
-          </TableCell>)}
+          {row.cells.flatMap(cell => {
+            const detail = reports.find(detail => comparisonReportID(detail) === cell.report_id)
+            if (!detail) return []
+            const caseItem = detail.source === "run" ? detail.entries.find(entry => entry.entry_id === cell.entry_id)?.cases.find(item => item.case_id === cell.case_id) : undefined
+            return <TableCell key={cell.report_id} className="whitespace-normal align-top [overflow-wrap:anywhere]">
+              <div className="flex min-h-7 flex-wrap items-center gap-2 py-1">
+                {caseItem ? <CaseSeverityBadge severity={caseItem.severity} /> : null}
+                {cell.change === "missing" ? <span className="text-muted-foreground">{t("compare.change.missing")}</span> :
+                  cell.status === "not_run" ? <span>{t("comparison.noResult")}</span> : <VerificationBadge status={cell.status as "passed" | "failed" | "not_applicable" | "indeterminate"} />}
+              </div>
+            </TableCell>
+          })}
         </TableRow>
-        {expanded === row.key ? <TableRow id={`${detailsID}-${encodeURIComponent(row.key)}`}><TableCell colSpan={data.reports.length + 1} className="whitespace-normal py-3">
+        {expanded === row.key ? <TableRow id={`${detailsID}-${encodeURIComponent(row.key)}`}><TableCell colSpan={reports.length + 1} className="whitespace-normal py-3">
           <div className="grid min-w-0 gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))" }}>
-            {row.cells.map((cell, index) => <div key={cell.report_id} className="min-w-0 space-y-3"><h3 className="font-medium">{reportLabel(data.reports[index])}</h3>
-              <ComparisonMetrics cell={cell} baselineID={data.baseline_id} />
-              <ComparisonEvidence detail={data.reports[index]} cell={cell} />
-            </div>)}
+            {row.cells.flatMap(cell => {
+              const detail = reports.find(detail => comparisonReportID(detail) === cell.report_id)
+              return detail ? <div key={cell.report_id} className="min-w-0 space-y-3"><h3 className="font-medium">{reportLabel(detail)}</h3>
+                <ComparisonMetrics cell={cell} baselineID={data.baseline_id} />
+                <ComparisonEvidence detail={detail} cell={cell} />
+              </div> : []
+            })}
           </div>
         </TableCell></TableRow> : null}
       </Fragment>)}</TableBody>

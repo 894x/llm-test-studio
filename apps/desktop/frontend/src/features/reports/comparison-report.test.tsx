@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest"
 import { createAppI18n } from "@/i18n/i18n"
 import type { ComparisonSnapshot } from "@/features/comparisons/data"
 import { protocolReportFixture, protocolReportSnapshot, reportID } from "@/test/protocol-report-fixture"
+import { reportComparisonFixture } from "@/test/report-comparison-fixture"
 import type { ReportSnapshot } from "./data"
 import { ReportWorkspace } from "./report-workspace"
 
@@ -41,6 +42,42 @@ async function openComparison(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("channel comparison reports", () => {
+  it.each(["shortcut", "list"])("retains differences filtering when opening a complete batch from the %s", async source => {
+    const data = fixture(); const user = userEvent.setup()
+    const comparison = reportComparisonFixture(data.left, data.right)
+    const compareReports = vi.fn(async () => comparison)
+    mount(data, { compareReports, ...(source === "shortcut" ? { preferredReportID: data.comparisons.comparisons[0].id } : {}) })
+    if (source === "list") await user.click(screen.getByRole("button", { name: "查看渠道对比报告：test-model" }))
+    const table = await screen.findByRole("table", { name: "报告对比结果" })
+    expect(screen.getByRole("combobox", { name: "基准报告" })).toBeEnabled()
+    expect(table).toHaveTextContent("Unchanged case")
+    await user.click(screen.getByRole("checkbox", { name: "仅看差异" }))
+    expect(table).not.toHaveTextContent("Unchanged case")
+    expect(table).toHaveTextContent("Reject invalid parameter")
+    expect(compareReports).toHaveBeenCalledExactlyOnceWith([data.left.report.id, data.right.report.id], data.left.report.id)
+    expect(data.getDetail).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "返回报告列表" }))
+    expect(screen.getByRole("table", { name: "测试报告目录" })).toBeInTheDocument()
+    expect(screen.queryByRole("table", { name: "报告对比结果" })).not.toBeInTheDocument()
+  })
+
+  it("offers differences filtering when a directly opened batch finishes archiving", async () => {
+    const data = fixture()
+    const comparison = reportComparisonFixture(data.left, data.right)
+    const compareReports = vi.fn(async () => comparison)
+    const complete = data.snapshot
+    data.snapshot = { ...complete, reports: [complete.reports[0]] }
+    const preferredReportID = data.comparisons.comparisons[0].id
+    const rendered = mount(data, { compareReports, preferredReportID })
+    expect(await screen.findByRole("table", { name: "渠道对比用例结果" })).toHaveTextContent("等待报告生成")
+    expect(compareReports).not.toHaveBeenCalled()
+    rendered.rerender(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace snapshot={complete} comparisons={data.comparisons}
+      preferredReportID={preferredReportID} compareReports={compareReports} getDetail={data.getDetail}
+      exportReport={vi.fn()} saveReportExport={vi.fn()} copyReportPNG={vi.fn()} /></I18nextProvider>)
+    await screen.findByRole("table", { name: "报告对比结果" })
+    expect(screen.getByRole("checkbox", { name: "仅看差异" })).toBeEnabled()
+  })
+
   it("interleaves batch history and independently selectable reports by time", () => {
     const data = fixture()
     const newer = { ...data.snapshot.reports[0], id: reportID(50), run_id: reportID(51),
@@ -74,25 +111,26 @@ describe("channel comparison reports", () => {
     expect(within(table).getAllByRole("columnheader")).toHaveLength(3)
     expect(within(table).getAllByText("Reject invalid parameter")).toHaveLength(1)
     expect(within(table).queryByRole("columnheader", { name: "E2E" })).not.toBeInTheDocument()
-    await user.click(within(table).getByRole("button", { name: "查看渠道 B的用例详情：Reject invalid parameter" }))
+    expect(document.querySelector("#comparison-report-results time")).toBeNull()
+    expect(within(table).getAllByText("必过")).toHaveLength(2)
+    await user.click(within(table).getByRole("button", { name: "Reject invalid parameter" }))
     expect(within(table).getAllByRole("table", { name: "逐条断言结果" })).toHaveLength(2)
     await user.click(screen.getByRole("button", { name: "返回报告列表" }))
     expect(screen.getByRole("searchbox")).toHaveValue("渠道 B")
   })
 
-  it("folds either side into all columns and keeps a channel visible", async () => {
+  it("folds either side while preserving result cells and keeps a channel visible", async () => {
     const data = fixture(); const user = userEvent.setup(); mount(data)
     await openComparison(user)
     await user.click(screen.getByRole("button", { name: "折叠渠道：渠道 B" }))
-    let table = screen.getByRole("table", { name: "执行项用例结果" })
-    for (const name of ["E2E", "TTFT", "TPOT", "输出", "汇总"]) {
-      expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument()
-    }
+    let table = screen.getByRole("table", { name: "渠道对比用例结果" })
+    expect(within(table).getAllByRole("columnheader").map(header => header.textContent)).toEqual(["用例名称", "渠道 A"])
+    expect(table).toHaveTextContent("必过通过")
     expect(screen.getByRole("button", { name: "折叠渠道：渠道 A" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "展开渠道：渠道 B" })).toHaveAttribute("aria-expanded", "false")
     await user.click(screen.getByRole("button", { name: "展开渠道：渠道 B" }))
     await user.click(screen.getByRole("button", { name: "折叠渠道：渠道 A" }))
-    table = screen.getByRole("table", { name: "执行项用例结果" })
+    table = screen.getByRole("table", { name: "渠道对比用例结果" })
     expect(within(table).getByText("失败")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "折叠渠道：渠道 B" })).toBeDisabled()
     await user.click(screen.getByRole("button", { name: "展开渠道：渠道 A" }))
@@ -166,13 +204,11 @@ describe("channel comparison reports", () => {
     expect(html).toHaveTextContent("Case 59")
     expect(Array.from(html.querySelectorAll("thead th"), header => header.textContent)).toEqual(["用例名称", "渠道 A", "渠道 B"])
     expect(html).toHaveTextContent("rhzs")
-    expect(Array.from(html.querySelectorAll("time"), time => time.dateTime)).toEqual([
-      data.left.report.generated_at, data.right.report.generated_at,
-    ])
-    expect(html.querySelector("time")?.textContent).toMatch(/GMT|UTC/)
+    expect(html.querySelector("time")).toBeNull()
+    expect(html).toHaveTextContent("必过通过")
     await waitFor(() => expect(screen.getByRole("button", { name: "PNG" })).toBeEnabled())
     await user.click(screen.getByRole("button", { name: "折叠渠道：渠道 B" }))
-    const visibleHeaders = within(screen.getByRole("table", { name: "执行项用例结果" }))
+    const visibleHeaders = within(screen.getByRole("table", { name: "渠道对比用例结果" }))
       .getAllByRole("columnheader").map(header => header.textContent)
     visualExport.mockImplementationOnce(async element => {
       exportedDocuments.push(element.cloneNode(true) as HTMLElement)
@@ -183,11 +219,9 @@ describe("channel comparison reports", () => {
     const png = exportedDocuments[1]
     const exportedHeaders = Array.from(png.querySelectorAll("thead th"), header => header.textContent)
     expect(exportedHeaders).toEqual(visibleHeaders)
-    expect(exportedHeaders).toEqual(expect.arrayContaining([
-      "用例名称", "等级", "验证结果", "HTTP", "E2E", "TTFT", "TPOT", "输出", "汇总",
-    ]))
+    expect(exportedHeaders).toEqual(["用例名称", "渠道 A"])
     expect(png).toHaveTextContent("Case 59")
-    expect(Array.from(png.querySelectorAll("time"), time => time.dateTime)).toEqual([data.left.report.generated_at])
+    expect(png.querySelector("time")).toBeNull()
   })
 
   it("still opens an individual channel report from a run shortcut", async () => {

@@ -99,7 +99,6 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   const [comparingReportIDs, setComparingReportIDs] = useState<string[]>([])
   const compareTrigger = useRef<HTMLButtonElement>(null)
   const availableCheckedIDs = checkedReportIDs.filter(id => visibleReports.some(report => report.id === id))
-  const isComparing = comparingReportIDs.length >= 2
   if (comparingReportIDs.some(id => hidden.reports.has(id) || hidden.runs.has(snapshot.reports.find(report => report.id === id)?.run_id ?? ""))) {
     setComparingReportIDs([])
   }
@@ -175,9 +174,17 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   const detail = detailState.reportID === selectedReportID ? detailState.detail ?? null : null
   const detailError = detailState.reportID === selectedReportID && detailState.error ? t("detailError") : ""
   const isViewingReport = viewingReportID !== "" && viewingReportID === selectedItem?.id
+  const batchReportIDs = selectedComparison?.channels.flatMap(channel => {
+    const report = reportsByRun.get(channel.run_id)
+    return report ? [report.id] : []
+  }) ?? []
+  const directComparisonIDs = isViewingReport && compareReports && batchReportIDs.length === selectedComparison?.channels.length &&
+    batchReportIDs.length >= 2 && batchReportIDs.length <= MAX_COMPARISON_REPORTS ? batchReportIDs : []
+  const activeComparisonIDs = comparingReportIDs.length >= 2 ? comparingReportIDs : directComparisonIDs
+  const isComparing = activeComparisonIDs.length >= 2
   const selectedVerdict = selectedBenchmark ? selectedBenchmark.result.dataset.name : selectedComparison ? t("comparison.title") : selected ? displayReportVerdict(selected, t) : t("generic")
   const comparisonReport = useComparisonReport({ comparison: selectedComparison, snapshot: { schema_version: 1, reports: visibleReports }, getDetail,
-    saveReportExport, copyReportPNG, exportVisualReport, active: isViewingReport })
+    saveReportExport, copyReportPNG, exportVisualReport, active: isViewingReport && !isComparing })
   const openBatchReports = (comparison: ComparisonSnapshot["comparisons"][number]) => {
     setSelectedID(comparison.id)
     const ids = comparison.channels.flatMap(channel => { const report = reportsByRun.get(channel.run_id); return report ? [report.id] : [] })
@@ -347,7 +354,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
           {hasFilters || textSearch.query.trim() ? <Button size="sm" variant="ghost" onClick={clearFilters}>{t("filters.clear")}</Button> : null}
         </div>
       </div> : null}
-      {isComparing && compareReports ? <ReportComparisonView key={comparingReportIDs.join(",")} reportIDs={comparingReportIDs} compareReports={compareReports}
+      {isComparing && compareReports ? <ReportComparisonView key={activeComparisonIDs.join(",")} reportIDs={activeComparisonIDs} compareReports={compareReports}
         saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport} /> : search.empty && !isViewingReport ? <CatalogSearchEmpty onClear={clearFilters} /> : items.length === 0 ? (
         <ScrollArea className="min-h-0 flex-1 border-t">
           <Empty><EmptyTitle>{t("empty")}</EmptyTitle><EmptyDescription>{t("emptyHint")}</EmptyDescription></Empty>

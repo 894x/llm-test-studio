@@ -34,7 +34,8 @@ describe("report comparison", () => {
     expect(within(table).getAllByRole("columnheader")).toHaveLength(3)
     expect(table.querySelectorAll("time")).toHaveLength(0)
     expect((screen.getByRole("combobox", { name: "基准报告" }) as HTMLInputElement).value).not.toMatch(/2026|GMT/)
-    expect(table).toHaveTextContent("新增失败")
+    expect(table).not.toHaveTextContent("新增失败")
+    expect(table).toHaveTextContent("必过")
     await user.click(screen.getByRole("checkbox", { name: "仅看差异" }))
     expect(screen.queryByText("Unchanged case")).not.toBeInTheDocument()
     expect(within(table).queryByText("E2E")).not.toBeInTheDocument()
@@ -44,6 +45,15 @@ describe("report comparison", () => {
     expect(within(cells[0] as HTMLElement).getAllByRole("button")).toHaveLength(1)
     expect(within(cells[1] as HTMLElement).queryByRole("button")).not.toBeInTheDocument()
     expect(within(cells[2] as HTMLElement).queryByRole("button")).not.toBeInTheDocument()
+    expect(cells[1]).toHaveTextContent("必过通过")
+    expect(cells[2]).toHaveTextContent("必过失败")
+    const collapseButtons = screen.getAllByRole("button", { name: "折叠渠道：test-channel" })
+    await user.click(collapseButtons[1])
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(2)
+    expect(collapseButtons[0]).toBeDisabled()
+    expect(table).not.toHaveTextContent("失败")
+    await user.click(screen.getByRole("button", { name: "展开渠道：test-channel" }))
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(3)
     expect(details).toHaveAttribute("aria-expanded", "false")
     await user.click(details)
     expect(details).toHaveAttribute("aria-expanded", "true")
@@ -94,6 +104,7 @@ describe("report comparison", () => {
 
   it("uses the same compact results and expanded details for visual exports and copying", async () => {
     const data = fixture(); const user = userEvent.setup()
+    if (data.comparison.reports[1].source === "run") data.comparison.reports[1].entries[0].cases[0].severity = "normal"
     const save = vi.fn(async () => true); const copy = vi.fn(async () => {})
     const documents: HTMLElement[] = []
     const visual = vi.fn<NonNullable<React.ComponentProps<typeof ReportComparisonView>["exportVisualReport"]>>(async (element, format) => {
@@ -112,7 +123,9 @@ describe("report comparison", () => {
     await waitFor(() => expect(copy).toHaveBeenCalledOnce())
     expect(visual.mock.calls.map(call => call[1])).toEqual(["html", "png", "pdf", "png"])
     for (const document of documents) {
-      expect(document).toHaveTextContent("新增失败")
+      expect(document).not.toHaveTextContent("新增失败")
+      expect(document).toHaveTextContent("必过通过")
+      expect(document).toHaveTextContent("容忍失败")
       expect(document).toHaveTextContent("Unchanged case")
       expect(document.querySelector("thead")).not.toHaveTextContent(/2026|GMT/)
       expect(document.querySelector("time")).toBeNull()
@@ -125,6 +138,12 @@ describe("report comparison", () => {
     expect(documents[4]).toHaveTextContent("E2E")
     expect(within(documents[4]).getAllByRole("table", { name: "逐条断言结果" }).length).toBeGreaterThan(0)
     expect(documents[4].querySelector("thead")).not.toHaveTextContent(/2026|GMT/)
+    await user.click(screen.getAllByRole("button", { name: "折叠渠道：test-channel" })[1])
+    await user.click(screen.getByRole("button", { name: "HTML" }))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(5))
+    expect(documents[5].querySelector("table")?.querySelectorAll(":scope > thead > tr > th")).toHaveLength(2)
+    expect(documents[5]).toHaveTextContent("必过通过")
+    expect(documents[5]).not.toHaveTextContent("容忍失败")
   })
 
   it("accepts the closed DTO and rejects substituted identities or invalid changes", () => {
