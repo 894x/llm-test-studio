@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import GitCompareArrowsIcon from "lucide-react/dist/esm/icons/git-compare-arrows.mjs"
+import ListXIcon from "lucide-react/dist/esm/icons/list-x.mjs"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
 import { CatalogSearch, CatalogSearchEmpty } from "@/features/catalog/catalog-search"
@@ -299,7 +300,28 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
       actions={isComparing || isViewingReport ? <div className="flex items-center gap-2">
         {isViewingReport && !isComparing && selected && compareReports ? <Button variant="secondary" size="sm" onClick={() => { setCheckedReportIDs(current => [...new Set([selected.id, ...current])].slice(0, MAX_COMPARISON_REPORTS)); setViewingReportID("") }}><GitCompareArrowsIcon />{t("compare.add")}</Button> : null}
         <Button variant="outline" size="sm" onClick={() => { setViewingReportID(""); setComparingReportIDs([]); requestAnimationFrame(() => compareTrigger.current?.focus()) }}><ArrowLeftIcon />{t("back")}</Button></div> : (
-        <div className="flex items-center gap-2">{comparisonControl}{benchmarks.next ? <Button size="sm" variant="ghost" disabled={benchmarks.pending} onClick={() => void benchmarks.loadMore()}>{t("benchmarks:more")}</Button> : null}<CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={hasFilters ? t("filters.shown", { count: search.matches, total: items.length }) : t("count", { count: items.length })} /></div>
+        <div className="flex items-center gap-2">
+          {comparisonControl}{benchmarks.next ? <Button size="sm" variant="ghost" disabled={benchmarks.pending} onClick={() => void benchmarks.loadMore()}>{t("benchmarks:more")}</Button> : null}
+          <CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={hasFilters ? t("filters.shown", { count: search.matches, total: items.length }) : t("count", { count: items.length })} />
+          {compareReports ? <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild><span className="inline-flex" tabIndex={availableCheckedIDs.length < 2 ? 0 : undefined}>
+                <Button ref={compareTrigger} variant="ghost" size="icon-sm" className="relative" aria-label={t("compare.action", { count: availableCheckedIDs.length })}
+                  disabled={availableCheckedIDs.length < 2} onClick={() => setComparingReportIDs(availableCheckedIDs)}>
+                  <GitCompareArrowsIcon aria-hidden="true" />
+                  <span aria-hidden="true" className="absolute -top-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-secondary text-[9px] tabular-nums text-secondary-foreground">{availableCheckedIDs.length}</span>
+                </Button>
+              </span></TooltipTrigger>
+              <TooltipContent className="flex-col items-start"><span>{t("compare.action", { count: availableCheckedIDs.length })}</span><span>{t("compare.selectionHint", { max: MAX_COMPARISON_REPORTS })}</span></TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild><span className="inline-flex" tabIndex={!availableCheckedIDs.length ? 0 : undefined}>
+                <Button variant="ghost" size="icon-sm" aria-label={t("compare.clear")} disabled={!availableCheckedIDs.length} onClick={() => setCheckedReportIDs([])}><ListXIcon aria-hidden="true" /></Button>
+              </span></TooltipTrigger>
+              <TooltipContent>{t("compare.clear")}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider> : null}
+        </div>
       )}
       inspector={isComparing ? undefined : selectedBenchmark ? <BenchmarkReportInspector run={selectedBenchmark.run} result={selectedBenchmark.result} onOpen={!isViewingReport ? () => setViewingReportID(selectedBenchmark.id) : undefined} /> : selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={{ schema_version: 1, reports: visibleReports }}
         onOpen={!isViewingReport ? () => openBatchReports(selectedComparison) : undefined} exportControls={comparisonReport.controls} recycleAction={recycleAction} /> : selected ? (
@@ -324,11 +346,6 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
           <span>{t("filters.hint")}</span>
           {hasFilters || textSearch.query.trim() ? <Button size="sm" variant="ghost" onClick={clearFilters}>{t("filters.clear")}</Button> : null}
         </div>
-      </div> : null}
-      {!isViewingReport && !isComparing && compareReports ? <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pb-2 text-xs">
-        <Button ref={compareTrigger} size="sm" disabled={availableCheckedIDs.length < 2} onClick={() => setComparingReportIDs(availableCheckedIDs)}><GitCompareArrowsIcon />{t("compare.action", { count: availableCheckedIDs.length })}</Button>
-        <Button size="sm" variant="ghost" disabled={!availableCheckedIDs.length} onClick={() => setCheckedReportIDs([])}>{t("compare.clear")}</Button>
-        <span className="text-muted-foreground">{t("compare.selectionHint", { max: MAX_COMPARISON_REPORTS })}</span>
       </div> : null}
       {isComparing && compareReports ? <ReportComparisonView key={comparingReportIDs.join(",")} reportIDs={comparingReportIDs} compareReports={compareReports}
         saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport} /> : search.empty && !isViewingReport ? <CatalogSearchEmpty onClear={clearFilters} /> : items.length === 0 ? (

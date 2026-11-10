@@ -3,12 +3,13 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactN
 import { useTranslation } from "react-i18next"
 import PanelRightIcon from "lucide-react/dist/esm/icons/panel-right.mjs"
 import FileTextIcon from "lucide-react/dist/esm/icons/file-text.mjs"
+import FilterXIcon from "lucide-react/dist/esm/icons/filter-x.mjs"
+import RefreshCwIcon from "lucide-react/dist/esm/icons/refresh-cw.mjs"
 import { publicDesktopErrorMessage } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
-import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchableSelect } from "@/components/ui/searchable-select"
@@ -16,6 +17,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { CatalogSearch } from "@/features/catalog/catalog-search"
 import { JobDetails } from "@/features/jobs/job-details"
 import type { JobStatus, JobView, SubmissionView } from "@/features/jobs/data"
 import type { JobClient } from "@/features/jobs/execution"
@@ -111,6 +113,7 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
   const [selectedChildID, setSelectedChildID] = useState(preferredRunID ?? "")
   const [detailTab, setDetailTab] = useState("summary")
   const [query, setQuery] = useState("")
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [kind, setKind] = useState("all")
   const [location, setLocation] = useState("all")
   const [status, setStatus] = useState("all")
@@ -182,23 +185,34 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
   }
   return <main className="flex min-h-0 min-w-0 flex-1 gap-4 pl-4">
     <section aria-labelledby="workspace-heading" className="flex min-h-0 min-w-0 flex-1 flex-col max-[1179px]:pr-4">
-      <div className="flex shrink-0 items-center justify-between gap-3 py-3">
+      <div className="flex shrink-0 items-end justify-between gap-3 py-3">
         <div className="min-w-0"><h1 id="workspace-heading" className="text-lg font-semibold tracking-tight">{t("title")}</h1>
           <p className="mt-1 text-[11px] text-muted-foreground">{t("description")}</p></div>
         <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
-          <span>{t("executions.shown", { count: visible.length })}</span>
-          {filtered ? <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setDefinition("all") }}>{t("executions.clear")}</Button> : null}
-          <Button size="sm" variant="ghost" disabled={history.pending || benchmarks.pending} onClick={() => { history.retry(); void runHistory.refresh(); void benchmarks.refresh() }}>{history.pending ? <Spinner /> : null}{t("executions.refresh")}</Button>
           {!desktop && selected ? <Sheet><SheetTrigger asChild><Button variant="outline" size="sm"><PanelRightIcon />{t("mobile.details")}</Button></SheetTrigger>
           <SheetContent className="data-[side=right]:w-[340px] max-w-full gap-0 p-0 pt-8">
             <SheetHeader className="sr-only"><SheetTitle>{t("inspector.details")}</SheetTitle><SheetDescription>{selected.title}</SheetDescription></SheetHeader>
             {details}
           </SheetContent></Sheet> : null}
+          <CatalogSearch search={{ query, setQuery, inputRef: searchInputRef, total: rows.executions.length, matches: visible.length,
+            clear: () => { setQuery(""); searchInputRef.current?.focus() } }} label={t("executions.search")} placeholder={t("executions.search")}
+            totalLabel={t("executions.shown", { count: visible.length })} />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild><Button size="icon-sm" variant="ghost" aria-label={t("executions.refresh")} disabled={history.pending || benchmarks.pending}
+                onClick={() => { history.retry(); void runHistory.refresh(); void benchmarks.refresh() }}>{history.pending ? <Spinner /> : <RefreshCwIcon aria-hidden="true" />}</Button></TooltipTrigger>
+              <TooltipContent>{t("executions.refresh")}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild><Button size="icon-sm" variant="ghost" aria-label={t("executions.clear")} disabled={!filtered}
+                onClick={() => { setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setDefinition("all") }}><FilterXIcon aria-hidden="true" /></Button></TooltipTrigger>
+              <TooltipContent>{t("executions.clear")}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
       {readStatus ? <div className="shrink-0">{readStatus}</div> : null}
-      <div className="grid shrink-0 grid-cols-[minmax(180px,1.6fr)_104px_104px_116px_minmax(124px,1fr)] gap-2 pb-3">
-        <Input aria-label={t("executions.search")} placeholder={t("executions.search")} value={query} onChange={event => setQuery(event.target.value)} />
+      <div className="grid shrink-0 grid-cols-[112px_112px_128px_minmax(0,1fr)] gap-2 pb-3">
         <SearchableSelect aria-label={t("executions.kind")} value={kind} onValueChange={setKind} options={[
           { value: "all", label: t("executions.allKinds") }, ...["run", "performance", "comparison"].map(value => ({ value, label: tj(`kinds.${value}`) })),
           { value: "benchmark", label: t("benchmarks:kind") },

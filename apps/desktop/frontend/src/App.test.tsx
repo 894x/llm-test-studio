@@ -212,7 +212,7 @@ describe("desktop run workspace", () => {
     viewport.scrollTop = 260
     const selected = within(table).getAllByRole("row")[2]
     await user.click(selected)
-    const filter = screen.getByRole("textbox", { name: "搜索名称、模型、渠道或编号" })
+    const filter = screen.getByRole("searchbox", { name: "搜索名称、模型、渠道或编号" })
     fireEvent.change(filter, { target: { value: "1111" } })
     await user.click(screen.getByRole("button", { name: "计划" }))
     await screen.findByRole("heading", { name: "测试计划" })
@@ -2076,7 +2076,7 @@ describe("desktop run workspace", () => {
     const client = desktopClient()
     render(<App client={client} />)
 
-    fireEvent.change(await screen.findByRole("textbox", { name: "搜索名称、模型、渠道或编号" }), { target: { value: "no-matching-execution" } })
+    fireEvent.change(await screen.findByRole("searchbox", { name: "搜索名称、模型、渠道或编号" }), { target: { value: "no-matching-execution" } })
 
     expect(screen.getByText("没有匹配的运行记录")).toBeInTheDocument()
     const inspector = screen.getByRole("complementary", { name: "运行详情" })
