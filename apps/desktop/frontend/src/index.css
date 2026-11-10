@@ -405,6 +405,21 @@
   background: var(--surface-hover);
 }
 
+[data-window-drag="true"] {
+  --wails-draggable: drag;
+  user-select: none;
+}
+
+[data-window-drag="false"] {
+  --wails-draggable: no-drag;
+}
+
+.desktop-header-actions button > svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.65;
+}
+
 .desktop-nav-button[aria-current="page"] {
   background: var(--surface-active);
 }
@@ -419,6 +434,11 @@
 
 .desktop-header-actions button[data-variant="ghost"][aria-expanded="true"] {
   background: var(--surface-active);
+}
+
+.desktop-header-actions button[data-window-close]:not(:disabled):hover {
+  background: var(--destructive-soft);
+  color: var(--destructive);
 }
 
 .desktop-header-actions button[data-variant="default"]:not(:disabled):hover {

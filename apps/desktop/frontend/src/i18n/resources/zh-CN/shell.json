@@ -13,6 +13,13 @@
     "subtitle": "本地测试工作台"
   },
   "navigationAria": "主导航",
+  "window": {
+    "controls": "窗口操作",
+    "minimise": "最小化",
+    "maximise": "最大化",
+    "restore": "还原窗口",
+    "close": "关闭窗口"
+  },
   "zoom": {
     "current": "界面缩放 {{percent}}%",
     "increase": "放大",

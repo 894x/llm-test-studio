@@ -13,6 +13,13 @@
     "subtitle": "Local testing workspace"
   },
   "navigationAria": "Main navigation",
+  "window": {
+    "controls": "Window controls",
+    "minimise": "Minimise",
+    "maximise": "Maximise",
+    "restore": "Restore window",
+    "close": "Close window"
+  },
   "zoom": {
     "current": "Interface zoom {{percent}}%",
     "increase": "Zoom in",

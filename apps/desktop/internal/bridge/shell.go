@@ -20,6 +20,7 @@ func WailsOptions(app *DesktopApp, assets fs.FS, report func(error)) *options.Ap
 		Height:           820,
 		MinWidth:         960,
 		MinHeight:        640,
+		Frameless:        true,
 		BackgroundColour: options.NewRGB(26, 26, 26),
 		Logger:           desktopWailsLogger{report: report, fallback: log.Default()},
 		AssetServer: &assetserver.Options{
