@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"path"
 	"time"
@@ -15,19 +14,28 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-// builtinDefinitionV1 is the existing data/definitions/models file boundary.
-// Its string identity maps deterministically to a desktop UUID, without
-// rewriting the source or any user-authored models.json.
-type builtinDefinitionV1 struct {
+// Built-in string identities map deterministically to desktop UUIDs, without
+// rewriting the source or any user-authored models.json. Version 1 retains its
+// single protocol; version 2 uses the current model's protocols array.
+type builtinDefinition struct {
 	SchemaVersion int      `json:"schema_version"`
 	ID            string   `json:"id"`
 	DisplayName   string   `json:"display_name"`
 	Model         string   `json:"model"`
-	Protocol      string   `json:"protocol"`
 	Endpoint      string   `json:"endpoint"`
 	Suites        []string `json:"suites"`
 	Capabilities  []string `json:"capabilities"`
 	Enabled       bool     `json:"enabled"`
+}
+
+type builtinDefinitionV1 struct {
+	builtinDefinition
+	Protocol domain.Protocol `json:"protocol"`
+}
+
+type builtinDefinitionV2 struct {
+	builtinDefinition
+	Protocols []domain.Protocol `json:"protocols"`
 }
 
 func WithBuiltin(bundle fs.FS) Option {
@@ -63,19 +71,32 @@ func WithBuiltin(bundle fs.FS) Option {
 }
 
 func decodeBuiltinDefinition(raw []byte) (domain.Model, bool, error) {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	var definition builtinDefinitionV1
-	if err := decoder.Decode(&definition); err != nil {
+	var definition builtinDefinition
+	if err := json.Unmarshal(raw, &definition); err != nil {
 		return domain.Model{}, false, err
 	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return domain.Model{}, false, errors.New("model definition must contain one object")
+	protocols := []domain.Protocol{}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	switch definition.SchemaVersion {
+	case 1:
+		var legacy builtinDefinitionV1
+		if err := decoder.Decode(&legacy); err != nil {
+			return domain.Model{}, false, err
+		}
+		protocols = append(protocols, legacy.Protocol)
+	case 2:
+		var current builtinDefinitionV2
+		if err := decoder.Decode(&current); err != nil {
+			return domain.Model{}, false, err
+		}
+		protocols = append(protocols, current.Protocols...)
+	default:
+		return domain.Model{}, false, errors.New("unsupported built-in model definition version")
 	}
-	validVersion := definition.SchemaVersion == 1
 	validIdentity := definition.ID != "" && definition.Model != "" && definition.DisplayName != ""
-	if !validVersion || !validIdentity {
-		return domain.Model{}, false, errors.New("unsupported or incomplete built-in model definition")
+	if !validIdentity {
+		return domain.Model{}, false, errors.New("incomplete built-in model definition")
 	}
 	id := uuid.NewSHA1(uuid.NameSpaceURL, []byte("llm-test-studio/builtin/model/"+definition.ID)).String()
 	epoch := time.Unix(0, 0).UTC()
@@ -84,7 +105,7 @@ func decodeBuiltinDefinition(raw []byte) (domain.Model, bool, error) {
 			ID: id, Revision: 1, CreatedAt: epoch, UpdatedAt: epoch,
 			SchemaVersion: domain.CurrentEntitySchemaVersion,
 		},
-		Builtin: true, Name: definition.Model, Protocols: []domain.Protocol{domain.Protocol(definition.Protocol)},
+		Builtin: true, Name: definition.Model, Protocols: protocols,
 		Capabilities: append([]string{}, definition.Capabilities...),
 	}
 	return model, definition.Enabled, model.Validate()

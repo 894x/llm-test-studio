@@ -1,0 +1,19 @@
+{
+  "schema_version": 2,
+  "id": "kimi-k3.1-pro-highspeed",
+  "display_name": "Kimi K3.1 Pro Highspeed",
+  "model": "kimi-k3.1-pro-highspeed",
+  "protocols": [
+    "openai-chat",
+    "openai-responses",
+    "anthropic-messages"
+  ],
+  "endpoint": "",
+  "suites": [
+    "openai-chat",
+    "openai-responses",
+    "anthropic-messages"
+  ],
+  "capabilities": [],
+  "enabled": true
+}

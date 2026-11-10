@@ -5,12 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"testing/fstest"
 	"time"
 
+	builtinbundle "github.com/894x/llm-test-studio/data"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -149,5 +152,105 @@ func TestBuiltinModelsRejectInvalidDefinitionsWithoutTouchingUserData(t *testing
 		if err != nil || !bytes.Equal(after, original) {
 			t.Fatalf("invalid definition modified user data: %v", err)
 		}
+	}
+}
+
+func TestBuiltinModelDefinitionVersionsPreserveIdentity(t *testing.T) {
+	fields := `"id":"first","display_name":"First","model":"first-model","capabilities":["text"],"enabled":true`
+	legacy, _, err := decodeBuiltinDefinition([]byte(`{"schema_version":1,` + fields + `,"protocol":"openai-chat"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, _, err := decodeBuiltinDefinition([]byte(`{"schema_version":2,` + fields +
+		`,"protocols":["openai-chat","openai-responses","anthropic-messages"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.EntityMeta != current.EntityMeta || legacy.Name != current.Name || !current.Builtin {
+		t.Fatalf("definition version changed model identity: %#v, %#v", legacy, current)
+	}
+	if !slices.Equal(legacy.Protocols, []domain.Protocol{domain.ProtocolOpenAIChat}) ||
+		!slices.Equal(legacy.Capabilities, current.Capabilities) {
+		t.Fatalf("legacy model semantics changed: %#v, %#v", legacy, current)
+	}
+	if len(current.Protocols) != 3 {
+		t.Fatalf("multi-protocol definition lost protocols: %#v", current)
+	}
+}
+
+func TestBuiltinModelProtocolDefinitionsRejectInvalidShapesWithoutTouchingUserData(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "models.json")
+	original := []byte("[]\n")
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fields := `"id":"invalid","display_name":"Invalid","model":"invalid-model","enabled":true`
+	for _, versionFields := range []string{
+		`"schema_version":1,"protocols":["openai-chat"]`,
+		`"schema_version":1,"protocol":"openai-chat","protocols":null`,
+		`"schema_version":2,"protocol":"openai-chat","protocols":["openai-chat"]`,
+		`"schema_version":2,"protocol":null,"protocols":["openai-chat"]`,
+		`"schema_version":2`,
+		`"schema_version":2,"protocols":[]`,
+		`"schema_version":2,"protocols":null`,
+		`"schema_version":2,"protocols":"openai-chat"`,
+		`"schema_version":2,"protocols":[1]`,
+		`"schema_version":2,"protocols":["openai-chat","openai-chat"]`,
+		`"schema_version":2,"protocols":["unknown"]`,
+		`"schema_version":2,"protocols":["openai-chat"],"unexpected":true`,
+		`"schema_version":3,"protocols":["openai-chat"]`,
+	} {
+		raw := []byte(`{` + fields + `,` + versionFields + `}`)
+		if _, err := New(path, WithBuiltin(fstest.MapFS{"invalid.json": {Data: raw}})); err == nil {
+			t.Fatalf("accepted invalid definition: %s", raw)
+		}
+		after, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(after, original) {
+			t.Fatalf("invalid definition modified user data: %v", err)
+		}
+	}
+}
+
+func TestBuiltinKimiProModelsSupportAllThreeProtocols(t *testing.T) {
+	bundle, err := fs.Sub(builtinbundle.Bundle, "definitions/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "models.json")
+	identities := map[string]string{}
+	protocols := []domain.Protocol{
+		domain.ProtocolOpenAIChat, domain.ProtocolOpenAIResponses, domain.ProtocolAnthropicMessages,
+	}
+	for range 2 {
+		service, err := New(path, WithBuiltin(bundle))
+		if err != nil {
+			t.Fatal(err)
+		}
+		models, err := service.List(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"kimi-k3.1-pro", "kimi-k3.1-pro-highspeed"} {
+			count := 0
+			for _, model := range models {
+				if model.Name != name {
+					continue
+				}
+				count++
+				if !model.Builtin || !slices.Equal(model.Protocols, protocols) {
+					t.Fatalf("built-in model lost protocols: %#v", model)
+				}
+				if previous, found := identities[name]; found && previous != model.ID {
+					t.Fatalf("reopening changed model identity: %s", name)
+				}
+				identities[name] = model.ID
+			}
+			if count != 1 {
+				t.Fatalf("expected one built-in model for %s, got %d", name, count)
+			}
+		}
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("reading built-in Kimi models wrote user data: %v", err)
 	}
 }
