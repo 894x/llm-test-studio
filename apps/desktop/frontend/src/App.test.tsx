@@ -491,7 +491,7 @@ describe("desktop run workspace", () => {
       "运行",
     )
     expect(
-      screen.getByRole("combobox", { name: "测试计划" }),
+      screen.getByRole("combobox", { name: "套件或计划" }),
     ).toBeInTheDocument()
     await screen.findByRole("button", { name: "查看 营销文案基准" })
     expect(screen.getByRole("table", { name: "运行记录" })).toBeInTheDocument()

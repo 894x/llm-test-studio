@@ -1,4 +1,19 @@
 {
+  "filters": {
+    "label": "Report filters",
+    "kind": "Report type",
+    "allKinds": "All types",
+    "kinds": { "run": "Test reports", "quick_performance": "Performance reports", "comparison": "Channel comparisons", "benchmark": "Dataset evaluations" },
+    "status": "Run status",
+    "allStatuses": "All statuses",
+    "model": "Model",
+    "channel": "Channel",
+    "definition": "Suite or plan",
+    "all": { "model": "All models", "channel": "All channels", "definition": "All suites / plans" },
+    "shown": "{{count}} / {{total}} shown",
+    "hint": "Filters apply to loaded records; suites and plans use their names saved in reports.",
+    "clear": "Clear filters"
+  },
   "dimensions": {
     "names": {
       "artifact": "Artifacts",

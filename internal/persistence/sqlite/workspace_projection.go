@@ -252,6 +252,8 @@ SELECT json_object(
     'Channel',json_object('id',json_extract(run.snapshot,'$.channel.id'),'revision',json_extract(run.snapshot,'$.channel.revision'),
       'Name',json_extract(run.snapshot,'$.channel.name')),
     'Status',run.status,'Source',CASE WHEN json_type(run.snapshot,'$.quick_task') = 'object' THEN 'quick_task' ELSE '' END,
+    'SuiteID',CASE WHEN json_type(run.snapshot,'$.quick_task') = 'object'
+      THEN json_extract(run.snapshot,'$.entries[0].target_id') ELSE '' END,
     'Failure',json_extract(run.header,'$[8]'),
     'Entries',json(COALESCE(entry_stats.entries,'[]')),'EntryResults',json(COALESCE(entry_stats.results,'[]')),
     'ReportID',COALESCE(report_stats.report_id,''),

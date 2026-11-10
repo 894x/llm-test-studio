@@ -367,6 +367,17 @@ describe("Wails desktop client", () => {
     await expect(createDesktopClient().getWorkspace()).resolves.toEqual(payload)
   })
 
+  it("preserves the frozen suite identity in quick run summaries", async () => {
+    const payload = structuredClone(FIXTURE_WORKSPACE)
+    const suiteID = "88888888-8888-4888-8888-888888888881"
+    Object.assign(payload.runs[0], { source: "quick_task", suite_id: suiteID, load_mode: "single",
+      planned: payload.runs[0].case_count, duration_ms: 0, completed: 0, passed: 0, failed: 0, observed: 0, indeterminate: 0 })
+    installBinding(payload)
+    expect((await createDesktopClient().getWorkspace()).runs[0].suite_id).toBe(suiteID)
+    payload.runs[0].suite_id = "invalid"
+    await expect(createDesktopClient().getWorkspace()).rejects.toThrow("运行记录")
+  })
+
   it("loads snapshot-backed authored Run history after the current plan is deleted", async () => {
     const payload = structuredClone(FIXTURE_WORKSPACE)
     payload.plans = []

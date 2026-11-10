@@ -8,6 +8,21 @@ export type ReportListItem =
   | { id: string; kind: "comparison"; comparison: ComparisonSummary }
   | { id: string; kind: "benchmark"; run: BenchmarkRun; result: BenchmarkDatasetRun }
 
+export function reportFilterValues(item: ReportListItem) {
+  if (item.kind === "benchmark") return {
+    kind: "benchmark", status: item.result.status, model: item.run.target.model,
+    channels: [item.run.target.channel_name], definition: "",
+  }
+  if (item.kind === "comparison") return {
+    kind: "comparison", status: item.comparison.status, model: item.comparison.model_name,
+    channels: item.comparison.channels.map(channel => channel.channel_name), definition: item.comparison.plan_name,
+  }
+  return {
+    kind: item.report.source, status: item.report.run_status, model: item.report.model_name,
+    channels: [item.report.channel_name], definition: item.report.source === "run" ? item.report.plan_name : "",
+  }
+}
+
 // Batch records retain their history identity; every report remains selectable.
 export function reportListItems(reports: ReportSummary[], comparisons: ComparisonSummary[], benchmarks: BenchmarkRun[] = []): ReportListItem[] {
   const items: ReportListItem[] = [

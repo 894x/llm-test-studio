@@ -80,6 +80,7 @@ export type WorkspaceRun = {
   observed_case_count: number
   entry_progress: EntryProgress[]
   source?: "quick_task"
+  suite_id?: string
   id: string
   revision: number
   plan_id: string
@@ -142,6 +143,7 @@ export type RunRecord = {
   observedCaseCount: number
   entryProgress: EntryProgress[]
   quickTask?: boolean
+  suiteId?: string
   id: string
   title: string
   planId: string
@@ -204,6 +206,7 @@ export function presentWorkspace(
       observedCaseCount: item.observed_case_count,
       entryProgress: item.entry_progress,
       quickTask: item.source === "quick_task",
+      suiteId: item.suite_id,
       id: item.id,
       title: item.plan_name,
       planId: item.plan_id,

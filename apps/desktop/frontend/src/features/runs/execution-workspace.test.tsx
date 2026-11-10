@@ -17,6 +17,34 @@ beforeEach(() => {
 })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
+it("filters repeated quick runs by suite identity while keeping a same-name plan separate", async () => {
+  const user = userEvent.setup()
+  const seed = FIXTURE_WORKSPACE.runs[0]
+  const suiteID = "88888888-8888-4888-8888-888888888881"
+  const snapshot: WorkspaceSnapshot = { schema_version: 1, plans: [], runs: [
+    { ...seed, id: "10000000-0000-4000-8000-000000000001", source: "quick_task", suite_id: suiteID,
+      plan_id: "10000000-0000-4000-8000-000000000001", plan_name: "Shared definition", started_at: "2026-11-11T02:00:00Z" },
+    { ...seed, id: "10000000-0000-4000-8000-000000000002", source: "quick_task", suite_id: suiteID,
+      plan_id: "10000000-0000-4000-8000-000000000002", plan_name: "Older suite name", started_at: "2026-11-11T01:00:00Z" },
+    { ...seed, id: "10000000-0000-4000-8000-000000000003", plan_name: "Shared definition" },
+  ] }
+  render(<RunWorkspace client={executionClient()} snapshot={snapshot} reports={EMPTY_REPORTS} preferredJob={null} commandError="" onOpenReport={vi.fn()} />)
+  const filter = screen.getByRole("combobox", { name: "套件或计划" })
+  await user.click(filter)
+  expect(screen.getAllByRole("option", { name: "套件 · Shared definition" })).toHaveLength(1)
+  expect(screen.queryByRole("option", { name: "套件 · Older suite name" })).not.toBeInTheDocument()
+  await user.click(screen.getByRole("option", { name: "套件 · Shared definition" }))
+  const table = screen.getByRole("table", { name: "运行记录" })
+  expect(within(table).getAllByRole("row")).toHaveLength(3)
+  expect(within(table).getByText("Older suite name")).toBeVisible()
+  await user.click(filter)
+  await user.click(screen.getByRole("option", { name: "计划 · Shared definition" }))
+  expect(within(table).getAllByRole("row")).toHaveLength(2)
+  expect(within(table).queryByText("Older suite name")).not.toBeInTheDocument()
+  await user.click(screen.getByRole("button", { name: "清除筛选" }))
+  expect(within(table).getAllByRole("row")).toHaveLength(4)
+})
+
 it("opens a benchmark beyond the first history page using its run identity", async () => {
   const run = benchmarkRun()
   const client = { ...executionClient(),

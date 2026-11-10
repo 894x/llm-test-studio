@@ -16,6 +16,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { CatalogSearch, CatalogSearchEmpty } from "@/features/catalog/catalog-search"
 import { useCatalogSearch } from "@/features/catalog/use-catalog-search"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -40,7 +41,7 @@ import { MAX_COMPARISON_REPORTS, type CompareReports } from "./report-comparison
 import { ReportComparisonView } from "./report-comparison-view"
 import { ComparisonReportInspector } from "./comparison-report-inspector"
 import { ReportExportControls } from "./report-export-controls"
-import { channelVerdict, reportListItems } from "./report-list-items"
+import { channelVerdict, reportFilterValues, reportListItems } from "./report-list-items"
 import { blobToBase64 } from "./report-export-encoding"
 import { copyReportPNGToClipboard } from "./report-clipboard"
 import { ExecutionOriginDetails } from "./execution-origin-details"
@@ -63,6 +64,7 @@ const ReportSectionVisibility = createContext<{
 }>({ expanded: new Set(), setExpanded: () => {} })
 const ReportExportMode = createContext(false)
 const EMPTY_BENCHMARK_CLIENT = {}
+const EMPTY_FILTERS = { kind: "all", status: "all", model: "all", channel: "all", definition: "all" }
 
 export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, comparisonControl, preferredReportID, reportOpenSequence = 0, getDetail, exportReport, saveReportExport, copyReportPNG, renderRunShortcuts, exportVisualReport = createVisualReportExport,
   recycleClient, onHistoryChanged, historyChanges = [], benchmarkClient = EMPTY_BENCHMARK_CLIENT, compareReports }: {
@@ -133,12 +135,32 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   const detailCache = useRef<{ reportID: string; reader: typeof getDetail; detail: ReportDetail } | null>(null)
   const detailRequest = useRef<{ reportID: string; reader: typeof getDetail; promise: Promise<ReportDetail> } | null>(null)
   const items = useMemo(() => reportListItems(visibleReports, visibleComparisons, benchmarks.runs), [visibleReports, visibleComparisons, benchmarks.runs])
+  const [filters, setFilters] = useState(EMPTY_FILTERS)
+  const filterValues = useMemo(() => new Map(items.map(item => [item.id, reportFilterValues(item)])), [items])
+  const filterChoices = useMemo(() => {
+    const values = [...filterValues.values()]
+    const choices = (entries: string[]) => [...new Set(entries.filter(Boolean))].sort((a, b) => a.localeCompare(b, i18n.resolvedLanguage ?? i18n.language))
+      .map(value => ({ value: `name:${value}`, label: value }))
+    return { model: choices(values.map(value => value.model)), channel: choices(values.flatMap(value => value.channels)),
+      definition: choices(values.map(value => value.definition)) }
+  }, [filterValues, i18n.resolvedLanguage, i18n.language])
+  const hasFilters = Object.values(filters).some(value => value !== "all")
   const reportsByRun = useMemo(() => new Map(visibleReports.flatMap(report => report.run_id ? [[report.run_id, report] as const] : [])), [visibleReports])
-  const search = useCatalogSearch(items, (item) => item.kind === "benchmark" ? [item.id, item.result.dataset.name, item.run.target.model, item.run.target.channel_name, t("benchmarks:kind")] : item.kind === "comparison" ? [
+  const textSearch = useCatalogSearch(items, (item) => item.kind === "benchmark" ? [item.id, item.result.dataset.name, item.run.target.model, item.run.target.channel_name, t("benchmarks:kind")] : item.kind === "comparison" ? [
     item.id, t("comparison.title"), item.comparison.plan_name, item.comparison.model_name,
     ...item.comparison.channels.flatMap(channel => [channel.channel_name, channelVerdict(channel, t, reportsByRun.get(channel.run_id))]),
   ] : [item.report.id, item.report.run_id ?? "", displayReportVerdict(item.report, t), displayReportPlan(item.report, t),
     item.report.model_name, item.report.channel_name])
+  const filteredRows = textSearch.rows.filter(item => {
+    const value = filterValues.get(item.id)!
+    return (filters.kind === "all" || value.kind === filters.kind) &&
+      (filters.status === "all" || value.status === filters.status) &&
+      (filters.model === "all" || `name:${value.model}` === filters.model) &&
+      (filters.channel === "all" || value.channels.some(channel => `name:${channel}` === filters.channel)) &&
+      (filters.definition === "all" || `name:${value.definition}` === filters.definition)
+  })
+  const search = { ...textSearch, rows: filteredRows, matches: filteredRows.length, empty: items.length > 0 && filteredRows.length === 0 }
+  const clearFilters = () => { setFilters(EMPTY_FILTERS); textSearch.clear() }
   const selectableReportIDs = search.rows.flatMap(item => item.kind === "report" ? [item.id] : [])
   const allVisibleChecked = selectableReportIDs.length > 0 && selectableReportIDs.every(id => availableCheckedIDs.includes(id))
   const toggleReport = (id: string, checked: boolean) => setCheckedReportIDs(current => checked ? [...current.filter(item => item !== id), id].slice(0, MAX_COMPARISON_REPORTS) : current.filter(item => item !== id))
@@ -277,7 +299,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
       actions={isComparing || isViewingReport ? <div className="flex items-center gap-2">
         {isViewingReport && !isComparing && selected && compareReports ? <Button variant="secondary" size="sm" onClick={() => { setCheckedReportIDs(current => [...new Set([selected.id, ...current])].slice(0, MAX_COMPARISON_REPORTS)); setViewingReportID("") }}><GitCompareArrowsIcon />{t("compare.add")}</Button> : null}
         <Button variant="outline" size="sm" onClick={() => { setViewingReportID(""); setComparingReportIDs([]); requestAnimationFrame(() => compareTrigger.current?.focus()) }}><ArrowLeftIcon />{t("back")}</Button></div> : (
-        <div className="flex items-center gap-2">{comparisonControl}{benchmarks.next ? <Button size="sm" variant="ghost" disabled={benchmarks.pending} onClick={() => void benchmarks.loadMore()}>{t("benchmarks:more")}</Button> : null}<CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={t("count", { count: items.length })} /></div>
+        <div className="flex items-center gap-2">{comparisonControl}{benchmarks.next ? <Button size="sm" variant="ghost" disabled={benchmarks.pending} onClick={() => void benchmarks.loadMore()}>{t("benchmarks:more")}</Button> : null}<CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={hasFilters ? t("filters.shown", { count: search.matches, total: items.length }) : t("count", { count: items.length })} /></div>
       )}
       inspector={isComparing ? undefined : selectedBenchmark ? <BenchmarkReportInspector run={selectedBenchmark.run} result={selectedBenchmark.result} onOpen={!isViewingReport ? () => setViewingReportID(selectedBenchmark.id) : undefined} /> : selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={{ schema_version: 1, reports: visibleReports }}
         onOpen={!isViewingReport ? () => openBatchReports(selectedComparison) : undefined} exportControls={comparisonReport.controls} recycleAction={recycleAction} /> : selected ? (
@@ -287,13 +309,29 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
       inspectorLabel={t("detailTitle")}
     >
       {benchmarks.error ? <p role="alert" className="px-4 py-2 text-xs text-destructive">{t("benchmarks:loadError")}<Button size="sm" variant="ghost" onClick={() => void benchmarks.refresh()}>{t("benchmarks:retry")}</Button></p> : null}
+      {!isViewingReport && !isComparing ? <div className="shrink-0 px-4 pb-3" role="group" aria-label={t("filters.label")}>
+        <div className="grid grid-cols-[112px_112px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)] gap-2">
+          <SearchableSelect aria-label={t("filters.kind")} value={filters.kind} onValueChange={kind => setFilters(current => ({ ...current, kind }))}
+            options={[{ value: "all", label: t("filters.allKinds") }, ...["run", "quick_performance", "comparison", "benchmark"].map(value => ({ value, label: t(`filters.kinds.${value}`) }))]} />
+          <SearchableSelect aria-label={t("filters.status")} value={filters.status} onValueChange={status => setFilters(current => ({ ...current, status }))}
+            options={[{ value: "all", label: t("filters.allStatuses") }, ...["running", "completed", "failed", "cancelled"].map(value => ({ value, label: t(`status.${value}`) })),
+              { value: "interrupted", label: t("benchmarks:statuses.interrupted") }]} />
+          {(["model", "channel", "definition"] as const).map(field => <SearchableSelect key={field} aria-label={t(`filters.${field}`)} value={filters[field]}
+            onValueChange={value => setFilters(current => ({ ...current, [field]: value }))}
+            options={[{ value: "all", label: t(`filters.all.${field}`) }, ...filterChoices[field]]} />)}
+        </div>
+        <div className="mt-2 flex min-h-7 items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <span>{t("filters.hint")}</span>
+          {hasFilters || textSearch.query.trim() ? <Button size="sm" variant="ghost" onClick={clearFilters}>{t("filters.clear")}</Button> : null}
+        </div>
+      </div> : null}
       {!isViewingReport && !isComparing && compareReports ? <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pb-2 text-xs">
         <Button ref={compareTrigger} size="sm" disabled={availableCheckedIDs.length < 2} onClick={() => setComparingReportIDs(availableCheckedIDs)}><GitCompareArrowsIcon />{t("compare.action", { count: availableCheckedIDs.length })}</Button>
         <Button size="sm" variant="ghost" disabled={!availableCheckedIDs.length} onClick={() => setCheckedReportIDs([])}>{t("compare.clear")}</Button>
         <span className="text-muted-foreground">{t("compare.selectionHint", { max: MAX_COMPARISON_REPORTS })}</span>
       </div> : null}
       {isComparing && compareReports ? <ReportComparisonView key={comparingReportIDs.join(",")} reportIDs={comparingReportIDs} compareReports={compareReports}
-        saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport} /> : search.empty && !isViewingReport ? <CatalogSearchEmpty onClear={search.clear} /> : items.length === 0 ? (
+        saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport} /> : search.empty && !isViewingReport ? <CatalogSearchEmpty onClear={clearFilters} /> : items.length === 0 ? (
         <ScrollArea className="min-h-0 flex-1 border-t">
           <Empty><EmptyTitle>{t("empty")}</EmptyTitle><EmptyDescription>{t("emptyHint")}</EmptyDescription></Empty>
         </ScrollArea>

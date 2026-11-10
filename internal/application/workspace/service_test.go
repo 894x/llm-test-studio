@@ -263,6 +263,9 @@ func TestSnapshotUsesCurrentEntriesForQuickTask(t *testing.T) {
 	if len(got.Runs) != 1 || got.Runs[0].PlanName != plan.Name || got.Runs[0].Planned != 1 || got.Runs[0].Source != "quick_task" {
 		t.Fatalf("quick projection = %#v", got.Runs)
 	}
+	if got.Runs[0].SuiteID != snapshot.Entries[0].TargetID {
+		t.Fatalf("quick suite identity = %q, want %q", got.Runs[0].SuiteID, snapshot.Entries[0].TargetID)
+	}
 }
 
 func TestSnapshotRejectsIncompleteSuiteMembership(t *testing.T) {
@@ -514,6 +517,7 @@ func projectionFixture(run domain.Run, plan domain.Plan, projection RunProjectio
 	projection.Failure = run.Failure()
 	if snapshot.QuickTask != nil {
 		projection.Source = "quick_task"
+		projection.SuiteID = snapshot.Entries[0].TargetID
 	}
 	projection.Entries = []RunEntryProjection{}
 	for _, entry := range snapshot.Entries {

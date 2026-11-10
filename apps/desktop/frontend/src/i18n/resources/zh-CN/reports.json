@@ -1,4 +1,19 @@
 {
+  "filters": {
+    "label": "报告筛选",
+    "kind": "报告类型",
+    "allKinds": "全部类型",
+    "kinds": { "run": "测试报告", "quick_performance": "性能报告", "comparison": "渠道对比", "benchmark": "数据集评测" },
+    "status": "运行状态",
+    "allStatuses": "全部状态",
+    "model": "模型",
+    "channel": "渠道",
+    "definition": "套件或计划",
+    "all": { "model": "全部模型", "channel": "全部渠道", "definition": "全部套件 / 计划" },
+    "shown": "显示 {{count}} / {{total}} 条",
+    "hint": "筛选作用于已加载记录；套件和计划按报告中的名称筛选。",
+    "clear": "清除筛选"
+  },
   "dimensions": {
     "names": {
       "artifact": "产物",

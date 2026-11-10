@@ -37,6 +37,7 @@ import { useBenchmarks } from "@/features/benchmarks/use-benchmarks"
 import type { BenchmarkClient, BenchmarkRun } from "@/features/benchmarks/data"
 
 type ExecutionRow = { id: string; job?: JobView; benchmark?: BenchmarkRun; runs: RunRecord[]; title: string; time: string }
+const definitionKey = (run: RunRecord) => run.quickTask ? run.suiteId && `suite:${run.suiteId}` : `plan:${run.planId}`
 const STATUS_CLASS: Record<JobStatus | SubmissionView["delivery"] | RunStatus, string> = {
   prepared: "text-muted-foreground",
   pending: "text-warning-strong",
@@ -113,17 +114,26 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
   const [kind, setKind] = useState("all")
   const [location, setLocation] = useState("all")
   const [status, setStatus] = useState("all")
-  const [plan, setPlan] = useState("all")
+  const [definition, setDefinition] = useState("all")
   const [standaloneLimit, setStandaloneLimit] = useState(25)
   const [shownPreferred, setShownPreferred] = useState("")
   const preferred = preferredJob?.job_id ?? (preferredRunID ? snapshot.runs.find(run => run.id === preferredRunID)?.job_id ?? preferredRunID : "")
   if (preferred && preferred !== shownPreferred) {
     setShownPreferred(preferred); setSelectedID(preferred)
-    setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setPlan("all")
+    setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setDefinition("all")
   }
   const presentation = useMemo(() => presentWorkspace(snapshot, {
     locale: i18n.resolvedLanguage ?? i18n.language, t: (key, values) => t(key, values),
   }), [snapshot, i18n.resolvedLanguage, i18n.language, t])
+  const definitionOptions = useMemo(() => {
+    const options = new Map(presentation.plans.map(plan => [`plan:${plan.id}`, t("executions.plan", { name: plan.name })]))
+    const runs = [...snapshot.runs].sort((a, b) => b.started_at.localeCompare(a.started_at) || b.id.localeCompare(a.id))
+    for (const run of runs) {
+      const key = run.source === "quick_task" ? run.suite_id && `suite:${run.suite_id}` : `plan:${run.plan_id}`
+      if (key && !options.has(key)) options.set(key, t(run.source === "quick_task" ? "executions.suite" : "executions.plan", { name: run.plan_name }))
+    }
+    return [{ value: "all", label: t("executions.allDefinitions") }, ...Array.from(options, ([value, label]) => ({ value, label }))]
+  }, [presentation.plans, snapshot.runs, t])
   const rows = useMemo(() => {
     const runs = new Map(presentation.runs.map(run => [run.id, run]))
     const sources = new Map(snapshot.runs.map(run => [run.id, run]))
@@ -148,13 +158,13 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
     (kind === "all" || (row.benchmark ? "benchmark" : row.job?.kind ?? "run") === kind) &&
     (location === "all" || (row.benchmark ? "local" : row.job?.location.kind) === location) &&
     (status === "all" || (row.benchmark?.status ?? (row.job ? row.job.execution?.status ?? `delivery_${row.job.submission?.delivery}` : row.runs[0]?.coreStatus)) === status) &&
-    (plan === "all" || row.runs.some(run => run.planId === plan)) &&
+    (definition === "all" || row.runs.some(run => definitionKey(run) === definition)) &&
     (!needle || [row.title, row.id, row.job?.executor.node_id, row.benchmark?.target.model, row.benchmark?.target.channel_name, ...row.runs.flatMap(run => [run.id, run.model, run.channel])]
       .some(value => value?.toLocaleLowerCase().includes(needle))))
   const selected = visible.find(row => row.id === selectedID) ?? visible[0]
   const selectedJob = selected?.job
   useEffect(() => { if (selectedJob) onJobChange?.(selectedJob) }, [selectedJob, onJobChange])
-  const filtered = !!needle || [kind, location, status, plan].some(value => value !== "all")
+  const filtered = !!needle || [kind, location, status, definition].some(value => value !== "all")
   const recycleAction = selected && !selected.benchmark && client.previewHistoryRecycle && client.recycleHistory ? <RecycleHistoryButton compact
     key={selected.id} client={client as HistoryRecycleClient} target={{ kind: selected.job ? "job" : "run", id: selected.id }}
     onHistoryChanged={onHistoryChanged} onRecycled={(entry, action) => { setLocalHistoryChanges(current => [...current, { entry, action }]); void applyJobHistory(entry, action); void applyRunHistory(entry, action); setSelectedID(""); setSelectedChildID("") }} /> : null
@@ -177,7 +187,7 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
           <p className="mt-1 text-[11px] text-muted-foreground">{t("description")}</p></div>
         <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
           <span>{t("executions.shown", { count: visible.length })}</span>
-          {filtered ? <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setPlan("all") }}>{t("executions.clear")}</Button> : null}
+          {filtered ? <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setDefinition("all") }}>{t("executions.clear")}</Button> : null}
           <Button size="sm" variant="ghost" disabled={history.pending || benchmarks.pending} onClick={() => { history.retry(); void runHistory.refresh(); void benchmarks.refresh() }}>{history.pending ? <Spinner /> : null}{t("executions.refresh")}</Button>
           {!desktop && selected ? <Sheet><SheetTrigger asChild><Button variant="outline" size="sm"><PanelRightIcon />{t("mobile.details")}</Button></SheetTrigger>
           <SheetContent className="data-[side=right]:w-[340px] max-w-full gap-0 p-0 pt-8">
@@ -200,9 +210,7 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
           { value: "all", label: t("executions.allStatuses") }, ...["queued", "starting", "running", "draining", "completed", "failed", "cancelled"].map(value => ({ value, label: tj(`statuses.${value}`) })),
           ...["prepared", "pending", "accepted"].map(value => ({ value: `delivery_${value}`, label: tj(`deliveryStates.${value}`) })),
         ]} />
-        <SearchableSelect aria-label={t("plans.aria")} value={plan} onValueChange={setPlan} options={[
-          { value: "all", label: t("plans.all") }, ...Array.from(new Map([...presentation.plans.map(item => [item.id, item.name] as const), ...snapshot.runs.map(run => [run.plan_id, run.plan_name] as const)])).map(([value, label]) => ({ value, label })),
-        ]} />
+        <SearchableSelect aria-label={t("executions.definition")} value={definition} onValueChange={setDefinition} options={definitionOptions} />
       </div>
       {(history.error || runHistory.error) ? <Alert className="mb-2"><AlertDescription>{publicDesktopErrorMessage(history.error || runHistory.error, tj("readFailed"))}</AlertDescription></Alert> : null}
       {benchmarks.error ? <Alert className="mb-2"><AlertDescription>{publicDesktopErrorMessage(benchmarks.error, t("benchmarks:loadError"))}</AlertDescription></Alert> : null}
@@ -226,7 +234,7 @@ export function RunWorkspace({ client, snapshot: suppliedSnapshot, reports, pref
             <TableCell><ExecutionProgress row={row} /></TableCell>
             <TableCell className="text-[11px] tabular-nums">{row.time ? new Date(row.time).toLocaleString(i18n.resolvedLanguage ?? i18n.language) : "—"}</TableCell>
           </TableRow>)}</TableBody>
-        </Table> : <Empty><EmptyTitle>{history.pending ? t("executions.loading") : t(filtered ? plan !== "all" ? "table.emptyFiltered" : "executions.emptyFiltered" : "table.empty")}</EmptyTitle>
+        </Table> : <Empty><EmptyTitle>{history.pending ? t("executions.loading") : t(filtered ? "executions.emptyFiltered" : "table.empty")}</EmptyTitle>
           <EmptyDescription>{filtered ? t("executions.noMatches") : t("table.emptyDescription")}</EmptyDescription></Empty>}
       </ScrollArea>
       <div className="flex shrink-0 items-center justify-between gap-2 py-2">

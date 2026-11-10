@@ -1387,6 +1387,7 @@ function isWorkspaceRun(value: unknown): boolean {
     isRecord(value) &&
     (value.job_id === undefined || isUUID(value.job_id)) &&
     (value.report_id === undefined || isUUID(value.report_id)) &&
+    (value.suite_id === undefined || (value.source === "quick_task" && isUUID(value.suite_id))) &&
     isCaseProgress(value) &&
     isUUID(value.id) &&
     isPositiveSafeInteger(value.revision) &&
@@ -1438,6 +1439,7 @@ function parseRun(value: unknown) {
       status: suite.status as "not_started" | "queued" | "running" | "completed" | "failed" | "cancelled",
     })),
     ...(record.source === "quick_task" ? { source: "quick_task" as const } : {}),
+    ...(record.suite_id === undefined ? {} : { suite_id: record.suite_id as string }),
     id: record.id as string,
     ...(record.job_id === undefined ? {} : { job_id: record.job_id as string }),
     ...(record.report_id === undefined ? {} : { report_id: record.report_id as string }),

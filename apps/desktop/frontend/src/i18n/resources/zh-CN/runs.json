@@ -143,6 +143,10 @@
     "empty": "暂无渠道对比记录"
   },
   "executions": {
+    "definition": "套件或计划",
+    "allDefinitions": "全部套件 / 计划",
+    "suite": "套件 · {{name}}",
+    "plan": "计划 · {{name}}",
     "search": "搜索名称、模型、渠道或编号",
     "kind": "测试类型",
     "allKinds": "全部类型",
