@@ -1,4 +1,5 @@
 import { protocolReportFixture } from "@/test/protocol-report-fixture"
+import { reportComparisonFixture } from "@/test/report-comparison-fixture"
 import { benchmarkPreviewClient } from "@/features/benchmarks/preview-client"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -728,6 +729,17 @@ describe("Wails desktop client", () => {
     expect(binding.GetJob).not.toHaveBeenCalled()
   })
 
+  it("reads report comparisons through the parsed binding boundary", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const payload = reportComparisonFixture()
+    const ids = payload.reports.map(detail => detail.source === "run" ? detail.report.id : detail.performance.report_id!)
+    binding.CompareReports.mockResolvedValueOnce(payload as never)
+    const result = await createDesktopClient().compareReports(ids, ids[0])
+    expect(result.reports).toHaveLength(2)
+    expect(binding.CompareReports).toHaveBeenCalledWith(ids, ids[0])
+    binding.CompareReports.mockResolvedValueOnce({ ...payload, schema_version: 9 } as never)
+    await expect(createDesktopClient().compareReports(ids, ids[0])).rejects.toThrow()
+  })
 	it("reads complete report details and forwards all export formats", async () => {
 		const binding = installBinding(FIXTURE_WORKSPACE)
 		const client = createDesktopClient()
@@ -1272,6 +1284,7 @@ function installBinding(
 		OpenDiagnosticsDirectory: vi.fn(async () => undefined),
 		ReportFrontendDiagnostic: vi.fn(async () => undefined),
 		GetReportDetail: vi.fn(async (reportID: string) => structuredClone(reportDetailFixture(reportID))),
+    CompareReports: vi.fn(),
 			ExportReport: vi.fn(async (reportID: string, format: string, _watermark: string) => ({
 			filename: `llm-test-studio-report-${reportID}.${format}`,
 			media_type: format === "json" ? "application/json" : "application/octet-stream",

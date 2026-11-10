@@ -5,6 +5,7 @@ import { benchmarkPreviewClient } from "@/features/benchmarks/preview-client"
 import { parseStartupProgress, READY_STARTUP, type StartupProgress } from "./startup-progress"
 import { parseDatabaseRecoveryResult, type DatabaseRecoveryResult } from "./database-recovery-data"
 import { DesktopDataError } from "@/app/data-error"
+import { parseReportComparison, type ReportComparison } from "@/features/reports/report-comparison-data"
 import { EMPTY_REMOTE_NODES, parseRemoteNodes, parseRemoteNodeUpgrade, parseNullableRemoteNodeUpgrade,
   type StartRemoteNodeUpgradeCommand, type RemoteNodeUpgradeAction, type RemoteNodeUpgradeView, type RemoteNodesSnapshot, type RemoteNodeDraft,
   type RemoteNodeAction, type RemoteNodeTaskConcurrencyCommand, type HostKeyConfirmation, type DefaultExecutionCommand } from "@/features/remote-nodes/data"
@@ -208,6 +209,7 @@ export interface DesktopClient extends CatalogActions, BenchmarkClient {
   subscribeReportGeneration(onProgress: (progress: ReportGenerationProgress) => void): () => void
   subscribeRemoteResults(onChange: () => void): () => void
   getReportDetail(reportId: string): Promise<ReportDetail>
+  compareReports(reportIDs: string[], baselineID: string): Promise<ReportComparison>
   exportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<ExportedReport>
   saveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<boolean>
   copyReportPNG(dataBase64: string): Promise<void>
@@ -308,6 +310,7 @@ type WailsDesktopBinding = {
   GetReports(): Promise<unknown>
   GetReportGeneration(): Promise<unknown>
   GetReportDetail(reportId: string): Promise<unknown>
+  CompareReports(reportIDs: string[], baselineID: string): Promise<unknown>
   ExportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<unknown>
   SaveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<unknown>
   CopyReportPNG(dataBase64: string): Promise<unknown>
@@ -362,7 +365,7 @@ const REQUIRED_WAILS_BINDING_METHODS = [
   "StartRemoteNodeUpgrade", "GetRemoteNodeUpgrade", "RetryRemoteNodeUpgrade", "RecoverRemoteNodeUpgrade",
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
   "GetStartupProgress", "BackupAndCreateDatabase", "OpenDatabaseRecoveryDirectory", "GetOverview", "GetAvailableReports", "GetRunHistory", "GetRunSummaries", "GetQuickTestHistory", "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
-  "SaveReportExport", "CopyReportPNG", "GetComparisons", "GetComparisonHistory", "LaunchJob", "GetJobs", "GetJob", "GetJobPerformanceResult", "ControlJob", "GetJobControls", "RetryJobControl", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
+  "CompareReports", "SaveReportExport", "CopyReportPNG", "GetComparisons", "GetComparisonHistory", "LaunchJob", "GetJobs", "GetJob", "GetJobPerformanceResult", "ControlJob", "GetJobControls", "RetryJobControl", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
   "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel", "SaveQuickTestTarget",
   "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
   "DeleteChannelModel", "CreateTestCase", "UpdateTestCase", "DeleteTestCase", "CreateSuite",
@@ -464,6 +467,7 @@ export function createFixtureClient(
     async getReports() {
       return structuredClone(reports)
     },
+		async compareReports() { throw new DesktopClientError("reports_unavailable") },
 		async getReportDetail(reportId) {
 			const summary = reports.reports.find((report) => report.id === reportId)
 			if (!summary) throw new DesktopClientError("invalid_identifier")
@@ -700,6 +704,7 @@ function createLazyFixtureClient(): DesktopClient {
       return () => { active = false; unsubscribe() }
     },
 		getReportDetail: async (reportId) => (await client).getReportDetail(reportId),
+    compareReports: async (reportIDs, baselineID) => (await client).compareReports(reportIDs, baselineID),
 		exportReport: async (reportId, format, watermark, locale) => (await client).exportReport(reportId, format, watermark, locale),
 		saveReportExport: async (filename, mediaType, dataBase64, locale) => (await client).saveReportExport(filename, mediaType, dataBase64, locale),
 		copyReportPNG: async (dataBase64) => (await client).copyReportPNG(dataBase64),
@@ -911,6 +916,7 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       )),
 		getReportDetail: async (reportId) =>
 			callBinding(() => binding.GetReportDetail(reportId), parseReportDetail),
+    compareReports: async (reportIDs, baselineID) => callBinding(() => binding.CompareReports(reportIDs, baselineID), parseReportComparison),
 		exportReport: async (reportId, format, watermark, locale) =>
 			callBinding(() => binding.ExportReport(reportId, format, watermark, locale), parseExportedReport),
 		saveReportExport: async (filename, mediaType, dataBase64, locale) =>

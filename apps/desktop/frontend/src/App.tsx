@@ -701,6 +701,7 @@ function AppWorkspace({
           preferredReportID={preferredReportID}
           reportOpenSequence={reportOpenSequence}
           getDetail={client.getReportDetail}
+          compareReports={client.compareReports}
           exportReport={client.exportReport}
           saveReportExport={client.saveReportExport}
           copyReportPNG={client.copyReportPNG}

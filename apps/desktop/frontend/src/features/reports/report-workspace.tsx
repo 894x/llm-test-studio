@@ -9,6 +9,8 @@ import { useTranslation } from "react-i18next"
 import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import GitCompareArrowsIcon from "lucide-react/dist/esm/icons/git-compare-arrows.mjs"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
 import { CatalogSearch, CatalogSearchEmpty } from "@/features/catalog/catalog-search"
@@ -33,6 +35,8 @@ import { exportVisualReport as createVisualReportExport } from "./visual-report-
 import type { RunShortcutRenderer } from "@/features/runs/use-run-shortcuts"
 import { EMPTY_COMPARISONS, type ComparisonSnapshot } from "@/features/comparisons/data"
 import { useComparisonReport } from "./use-comparison-report"
+import { MAX_COMPARISON_REPORTS, type CompareReports } from "./report-comparison-data"
+import { ReportComparisonView } from "./report-comparison-view"
 import { ComparisonReportInspector } from "./comparison-report-inspector"
 import { ReportExportControls } from "./report-export-controls"
 import { channelVerdict, reportListItems } from "./report-list-items"
@@ -60,7 +64,8 @@ const ReportExportMode = createContext(false)
 const EMPTY_BENCHMARK_CLIENT = {}
 
 export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, comparisonControl, preferredReportID, reportOpenSequence = 0, getDetail, exportReport, saveReportExport, copyReportPNG, renderRunShortcuts, exportVisualReport = createVisualReportExport,
-  recycleClient, onHistoryChanged, historyChanges = [], benchmarkClient = EMPTY_BENCHMARK_CLIENT }: {
+  recycleClient, onHistoryChanged, historyChanges = [], benchmarkClient = EMPTY_BENCHMARK_CLIENT, compareReports }: {
+  compareReports?: CompareReports
   benchmarkClient?: Partial<BenchmarkClient>
   comparisonControl?: ReactNode
   snapshot: ReportSnapshot
@@ -86,6 +91,14 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   const visibleComparisons = useMemo(() => comparisons.comparisons.filter(comparison => !hidden.comparisons.has(comparison.id)), [comparisons.comparisons, hidden])
   const [selectedID, setSelectedID] = useState(preferredReportID ?? "")
   const [viewingReportID, setViewingReportID] = useState(preferredReportID ?? "")
+  const [checkedReportIDs, setCheckedReportIDs] = useState<string[]>([])
+  const [comparingReportIDs, setComparingReportIDs] = useState<string[]>([])
+  const compareTrigger = useRef<HTMLButtonElement>(null)
+  const availableCheckedIDs = checkedReportIDs.filter(id => visibleReports.some(report => report.id === id))
+  const isComparing = comparingReportIDs.length >= 2
+  if (comparingReportIDs.some(id => hidden.reports.has(id) || hidden.runs.has(snapshot.reports.find(report => report.id === id)?.run_id ?? ""))) {
+    setComparingReportIDs([])
+  }
   const reportRequest = `${reportOpenSequence}:${preferredReportID ?? ""}`
   const [lastReportRequest, setLastReportRequest] = useState(reportRequest)
   if (lastReportRequest !== reportRequest) {
@@ -93,6 +106,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
     if (preferredReportID) {
       setSelectedID(preferredReportID)
       setViewingReportID(preferredReportID)
+      setComparingReportIDs([])
     }
   }
   const [detailState, setDetailState] = useState<{ reportID: string; detail?: ReportDetail; error?: boolean }>({ reportID: "" })
@@ -124,6 +138,9 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
     ...item.comparison.channels.flatMap(channel => [channel.channel_name, channelVerdict(channel, t, reportsByRun.get(channel.run_id))]),
   ] : [item.report.id, item.report.run_id ?? "", displayReportVerdict(item.report, t), displayReportPlan(item.report, t),
     item.report.model_name, item.report.channel_name])
+  const selectableReportIDs = search.rows.flatMap(item => item.kind === "report" ? [item.id] : [])
+  const allVisibleChecked = selectableReportIDs.length > 0 && selectableReportIDs.every(id => availableCheckedIDs.includes(id))
+  const toggleReport = (id: string, checked: boolean) => setCheckedReportIDs(current => checked ? [...current.filter(item => item !== id), id].slice(0, MAX_COMPARISON_REPORTS) : current.filter(item => item !== id))
   // A run shortcut can still open its individual report after the list groups it.
   const selectableItems = viewingReportID ? [...items, ...visibleReports.map(report => ({ id: report.id, kind: "report" as const, report }))] : search.rows
   const selectedItem = selectableItems.find(item => item.id === selectedID) ?? selectableItems[0]
@@ -137,6 +154,13 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   const selectedVerdict = selectedBenchmark ? selectedBenchmark.result.dataset.name : selectedComparison ? t("comparison.title") : selected ? displayReportVerdict(selected, t) : t("generic")
   const comparisonReport = useComparisonReport({ comparison: selectedComparison, snapshot: { schema_version: 1, reports: visibleReports }, getDetail,
     saveReportExport, copyReportPNG, exportVisualReport, active: isViewingReport })
+  const openBatchReports = (comparison: ComparisonSnapshot["comparisons"][number]) => {
+    setSelectedID(comparison.id)
+    const ids = comparison.channels.flatMap(channel => { const report = reportsByRun.get(channel.run_id); return report ? [report.id] : [] })
+    if (compareReports && ids.length === comparison.channels.length && ids.length >= 2 && ids.length <= MAX_COMPARISON_REPORTS) {
+      setComparingReportIDs(ids)
+    } else setViewingReportID(comparison.id)
+  }
   const recycleAction = selectedItem && selectedItem.kind !== "benchmark" && recycleClient ? <RecycleHistoryButton compact key={selectedItem.id} client={recycleClient}
     target={{ kind: selectedItem.kind === "comparison" ? "comparison" : "report", id: selectedItem.id }}
     disabled={!!exporting} onHistoryChanged={onHistoryChanged}
@@ -247,20 +271,28 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
 
   return <ReportSectionVisibility value={sectionVisibility}>
     <PageFrame
-      title={t(isViewingReport ? "detailTitle" : "title")}
-      description={isViewingReport ? t("detailDescription", { name: selectedVerdict }) : t("description")}
-      actions={isViewingReport ? <Button variant="outline" size="sm" onClick={() => setViewingReportID("")}><ArrowLeftIcon />{t("back")}</Button> : (
+      title={t(isComparing ? "compare.title" : isViewingReport ? "detailTitle" : "title")}
+      description={isComparing ? t("compare.description") : isViewingReport ? t("detailDescription", { name: selectedVerdict }) : t("description")}
+      actions={isComparing || isViewingReport ? <div className="flex items-center gap-2">
+        {isViewingReport && !isComparing && selected && compareReports ? <Button variant="secondary" size="sm" onClick={() => { setCheckedReportIDs(current => [...new Set([selected.id, ...current])].slice(0, MAX_COMPARISON_REPORTS)); setViewingReportID("") }}><GitCompareArrowsIcon />{t("compare.add")}</Button> : null}
+        <Button variant="outline" size="sm" onClick={() => { setViewingReportID(""); setComparingReportIDs([]); requestAnimationFrame(() => compareTrigger.current?.focus()) }}><ArrowLeftIcon />{t("back")}</Button></div> : (
         <div className="flex items-center gap-2">{comparisonControl}{benchmarks.next ? <Button size="sm" variant="ghost" disabled={benchmarks.pending} onClick={() => void benchmarks.loadMore()}>{t("benchmarks:more")}</Button> : null}<CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={t("count", { count: items.length })} /></div>
       )}
-      inspector={selectedBenchmark ? <BenchmarkReportInspector run={selectedBenchmark.run} result={selectedBenchmark.result} onOpen={!isViewingReport ? () => setViewingReportID(selectedBenchmark.id) : undefined} /> : selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={{ schema_version: 1, reports: visibleReports }}
-        onOpen={!isViewingReport ? () => setViewingReportID(selectedComparison.id) : undefined} exportControls={comparisonReport.controls} recycleAction={recycleAction} /> : selected ? (
+      inspector={isComparing ? undefined : selectedBenchmark ? <BenchmarkReportInspector run={selectedBenchmark.run} result={selectedBenchmark.result} onOpen={!isViewingReport ? () => setViewingReportID(selectedBenchmark.id) : undefined} /> : selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={{ schema_version: 1, reports: visibleReports }}
+        onOpen={!isViewingReport ? () => openBatchReports(selectedComparison) : undefined} exportControls={comparisonReport.controls} recycleAction={recycleAction} /> : selected ? (
         <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={() => handleExport("copy")}
           shortcuts={selected.source === "run" && selected.run_id ? renderRunShortcuts?.(selected.run_id, !isViewingReport) : null} recycleAction={recycleAction} />
       ) : <EmptyInspector label={t("noneSelected")} />}
       inspectorLabel={t("detailTitle")}
     >
       {benchmarks.error ? <p role="alert" className="px-4 py-2 text-xs text-destructive">{t("benchmarks:loadError")}<Button size="sm" variant="ghost" onClick={() => void benchmarks.refresh()}>{t("benchmarks:retry")}</Button></p> : null}
-      {search.empty && !isViewingReport ? <CatalogSearchEmpty onClear={search.clear} /> : items.length === 0 ? (
+      {!isViewingReport && !isComparing && compareReports ? <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pb-2 text-xs">
+        <Button ref={compareTrigger} size="sm" disabled={availableCheckedIDs.length < 2} onClick={() => setComparingReportIDs(availableCheckedIDs)}><GitCompareArrowsIcon />{t("compare.action", { count: availableCheckedIDs.length })}</Button>
+        <Button size="sm" variant="ghost" disabled={!availableCheckedIDs.length} onClick={() => setCheckedReportIDs([])}>{t("compare.clear")}</Button>
+        <span className="text-muted-foreground">{t("compare.selectionHint", { max: MAX_COMPARISON_REPORTS })}</span>
+      </div> : null}
+      {isComparing && compareReports ? <ReportComparisonView key={comparingReportIDs.join(",")} reportIDs={comparingReportIDs} compareReports={compareReports}
+        saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport} /> : search.empty && !isViewingReport ? <CatalogSearchEmpty onClear={search.clear} /> : items.length === 0 ? (
         <ScrollArea className="min-h-0 flex-1 border-t">
           <Empty><EmptyTitle>{t("empty")}</EmptyTitle><EmptyDescription>{t("emptyHint")}</EmptyDescription></Empty>
         </ScrollArea>
@@ -274,10 +306,14 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
           <ScrollArea className="min-h-0 flex-1 px-4">
             <Table aria-label={t("catalogAria")} className="min-w-[840px]">
               <TableHeader className="sticky top-0 z-10 bg-background"><TableRow className="hover:bg-transparent">
+                {compareReports ? <TableHead className="w-9"><Checkbox aria-label={t("compare.selectVisible")} checked={allVisibleChecked ? true : selectableReportIDs.some(id => availableCheckedIDs.includes(id)) ? "indeterminate" : false}
+                  disabled={!selectableReportIDs.length || (!allVisibleChecked && new Set([...availableCheckedIDs, ...selectableReportIDs]).size > MAX_COMPARISON_REPORTS)}
+                  onCheckedChange={checked => setCheckedReportIDs(checked === true ? [...new Set([...availableCheckedIDs, ...selectableReportIDs])] : availableCheckedIDs.filter(id => !selectableReportIDs.includes(id)))} /></TableHead> : null}
                 <TableHead className="h-8 w-[88px] pl-2 text-[11px]">{t("columns.verdict")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.reportPlan")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.target")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.cases")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.generated")}</TableHead><TableHead className="h-8 w-[96px] pr-2 text-right text-[11px]">{t("columns.view")}</TableHead>
               </TableRow></TableHeader>
               <TableBody>{search.rows.map((item) => {
                 if (item.kind === "benchmark") return <TableRow key={item.id} data-state={item.id === selectedItem?.id ? "selected" : undefined} aria-selected={item.id === selectedItem?.id} onClick={() => setSelectedID(item.id)}>
+                  {compareReports ? <TableCell><span className="sr-only">{t("compare.benchmarkUnavailable")}</span></TableCell> : null}
                   <TableCell><BenchmarkStatus status={item.result.status} /></TableCell>
                   <TableCell className="whitespace-normal"><p className="text-xs font-medium">{item.result.dataset.name}</p><p className="mt-1 text-[10px] text-muted-foreground">{t("benchmarks:kind")}</p></TableCell>
                   <TableCell className="whitespace-normal text-xs"><p>{item.run.target.model}</p><p className="mt-1 text-[10px] text-muted-foreground">{item.run.target.channel_name}</p></TableCell>
@@ -289,6 +325,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
                   const comparison = item.comparison
                   return <TableRow key={item.id} data-state={item.id === selectedItem?.id ? "selected" : undefined} aria-selected={item.id === selectedItem?.id}
                     className="h-11" onClick={() => setSelectedID(item.id)}>
+                    {compareReports ? <TableCell /> : null}
                     <TableCell className="py-1 pl-2 text-xs">{t(`common:status.${comparison.status}`)}</TableCell>
                     <TableCell className="py-1 text-xs"><div className="font-medium">{t("comparison.title")}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.plan_name}</div></TableCell>
                     <TableCell className="py-1 text-xs"><div>{comparison.model_name}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.channels.map(channel => channel.channel_name).join(" / ")}</div></TableCell>
@@ -298,12 +335,16 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
                     })}</TableCell>
                     <TableCell className="py-1 text-xs tabular-nums">{formatTimestamp(comparison.created_at, i18n.resolvedLanguage ?? i18n.language)}</TableCell>
                     <TableCell className="py-1 pr-2 text-right"><Button variant="outline" size="xs" aria-label={t("comparison.viewAria", { model: comparison.model_name })}
-                      onClick={event => { event.stopPropagation(); setSelectedID(item.id); setViewingReportID(item.id) }}>{t("comparison.view")}</Button></TableCell>
+                      onClick={event => { event.stopPropagation(); openBatchReports(comparison) }}>{t("comparison.view")}</Button></TableCell>
                   </TableRow>
                 }
                 const report = item.report
                 return (
-                <TableRow key={report.id} data-state={report.id === selected?.id ? "selected" : undefined} aria-selected={report.id === selected?.id} onClick={() => setSelectedID(report.id)} className="h-11">
+                <TableRow key={report.id} data-state={report.id === selected?.id || availableCheckedIDs.includes(report.id) ? "selected" : undefined} aria-selected={report.id === selected?.id || availableCheckedIDs.includes(report.id)} onClick={() => setSelectedID(report.id)} className="h-11">
+                  {compareReports ? <TableCell onClick={event => event.stopPropagation()}><Checkbox checked={availableCheckedIDs.includes(report.id)}
+                    aria-label={t("compare.select", { channel: report.channel_name, model: report.model_name, time: formatTimestamp(report.generated_at, i18n.resolvedLanguage ?? i18n.language) })}
+                    disabled={!availableCheckedIDs.includes(report.id) && availableCheckedIDs.length >= MAX_COMPARISON_REPORTS}
+                    onCheckedChange={checked => toggleReport(report.id, checked === true)} /></TableCell> : null}
                   <TableCell className="py-1 pl-2"><ConclusionBadge passed={report.passed} verdict={report.verdict} status={report.run_status} /></TableCell>
                   <TableCell className="py-1"><div className="max-w-[240px] truncate text-xs font-medium">{displayReportVerdict(report, t)}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{displayReportPlan(report, t)}</div></TableCell>
                   <TableCell className="py-1"><div className="truncate text-xs">{report.model_name}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{report.channel_name}</div></TableCell>

@@ -11,6 +11,7 @@ func TestDesktopBindingMethodSetSurvivesPackageMove(t *testing.T) {
 	want := []string{
 		"BackupAndCreateDatabase",
 		"CancelBenchmark",
+		"CompareReports",
 		"ConfirmRemoteNodeHostKey",
 		"ControlJob",
 		"CopyReportPNG",

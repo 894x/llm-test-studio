@@ -41,7 +41,7 @@ async function openComparison(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("channel comparison reports", () => {
-  it("interleaves comparisons and ordinary reports by time without repeating channel reports", () => {
+  it("interleaves batch history and independently selectable reports by time", () => {
     const data = fixture()
     const newer = { ...data.snapshot.reports[0], id: reportID(50), run_id: reportID(51),
       generated_at: "2026-10-12T00:00:00Z", model_name: "newest ordinary report" }
@@ -51,10 +51,12 @@ describe("channel comparison reports", () => {
     const original = structuredClone(data.snapshot)
     mount(data)
     const rows = within(screen.getByRole("table", { name: "测试报告目录" })).getAllByRole("row").slice(1)
-    expect(rows).toHaveLength(3)
+    expect(rows).toHaveLength(5)
     expect(rows[0]).toHaveTextContent(newer.model_name)
     expect(rows[1]).toHaveTextContent("渠道对比")
     expect(rows[2]).toHaveTextContent(older.model_name)
+    expect(rows[3]).toHaveTextContent("渠道 B")
+    expect(rows[4]).toHaveTextContent("渠道 A")
     expect(data.snapshot).toEqual(original)
     expect(data.getDetail).not.toHaveBeenCalled()
   })
@@ -63,7 +65,7 @@ describe("channel comparison reports", () => {
     const data = fixture(); const user = userEvent.setup()
     mount(data)
     const list = screen.getByRole("table", { name: "测试报告目录" })
-    expect(within(list).getAllByRole("row")).toHaveLength(2)
+    expect(within(list).getAllByRole("row")).toHaveLength(4)
     expect(list).toHaveTextContent("渠道 A · 通过 · 1/1")
     expect(list).toHaveTextContent("渠道 B · 未通过 · 0/1")
     expect(data.getDetail).not.toHaveBeenCalled()

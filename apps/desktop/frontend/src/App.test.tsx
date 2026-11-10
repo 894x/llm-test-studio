@@ -1,5 +1,6 @@
 import { executionClient, jobFixture, submissionFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID } from "@/test/jobs-fixture"
 import { protocolReportFixture, protocolReportSnapshot, reportID } from "@/test/protocol-report-fixture"
+import { reportComparisonFixture } from "@/test/report-comparison-fixture"
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -68,6 +69,7 @@ function desktopClient(): DesktopClient & {
 		})),
 		openDiagnosticsDirectory: vi.fn(async () => undefined),
 		getReportDetail: vi.fn(async () => { throw new Error("report detail unavailable in shell fixture") }),
+    compareReports: vi.fn(),
 		exportReport: vi.fn(async () => { throw new Error("report export unavailable in shell fixture") }),
 		saveReportExport: vi.fn(async () => true),
 		copyReportPNG: vi.fn(async () => undefined),
@@ -424,6 +426,7 @@ describe("desktop run workspace", () => {
       .mockResolvedValueOnce(EMPTY_COMPARISONS).mockResolvedValue(comparison)
     vi.mocked(client.getReports).mockResolvedValue(reports)
     vi.mocked(client.getReportDetail).mockImplementation(async id => id === left.report.id ? left : right)
+    vi.mocked(client.compareReports).mockResolvedValue(reportComparisonFixture(left, right))
 
     render(<App client={client} />)
     await act(async () => { await vi.dynamicImportSettled() })
@@ -443,12 +446,11 @@ describe("desktop run workspace", () => {
     expect(open).toBeEnabled()
     fireEvent.click(open)
     await act(async () => {})
-    const table = screen.getByRole("table", { name: "渠道对比用例结果" })
+    const table = screen.getByRole("table", { name: "报告对比结果" })
     expect(table).toHaveTextContent("Reject invalid parameter")
     expect(table).toHaveTextContent("共享渠道 A")
     expect(table).toHaveTextContent("共享渠道 B")
-    expect(client.getReportDetail).toHaveBeenCalledWith(left.report.id)
-    expect(client.getReportDetail).toHaveBeenCalledWith(right.report.id)
+    expect(client.compareReports).toHaveBeenCalledWith([left.report.id, right.report.id], left.report.id)
     expect(client.launchJob).not.toHaveBeenCalled()
     expect(client.controlJob).not.toHaveBeenCalled()
     await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
@@ -541,10 +543,10 @@ describe("desktop run workspace", () => {
 		vi.mocked(client.getCatalog).mockResolvedValue(catalog)
 
 		render(<App client={client} />)
-		await user.click(await screen.findByRole("button", { name: "渠道对比" }))
+		await user.click(await screen.findByRole("button", { name: "渠道批量测试" }))
 		await user.click(screen.getByRole("checkbox", { name: /OpenAI 主渠道/ }))
 		await user.click(screen.getByRole("checkbox", { name: /阿里云备用渠道/ }))
-		await user.click(screen.getByRole("button", { name: "对比 2 个渠道" }))
+		await user.click(screen.getByRole("button", { name: "测试 2 个渠道" }))
 
 		await waitFor(() => expect(client.launchJob).toHaveBeenCalledWith(launchEnvelope("comparison", {
 			plan_id: plan.id, model_id: model.id, channel_ids: [catalog.channels[0].id, secondChannel.id],
@@ -569,11 +571,11 @@ describe("desktop run workspace", () => {
 		)
 
 		render(<App client={client} />)
-		await user.click(await screen.findByRole("button", { name: "渠道对比" }))
-		const dialog = screen.getByRole("dialog", { name: "同模型渠道对比" })
+		await user.click(await screen.findByRole("button", { name: "渠道批量测试" }))
+		const dialog = screen.getByRole("dialog", { name: "同模型渠道批量测试" })
 		await user.click(within(dialog).getByRole("checkbox", { name: /OpenAI 主渠道/ }))
 		await user.click(within(dialog).getByRole("checkbox", { name: /阿里云备用渠道/ }))
-		await user.click(within(dialog).getByRole("button", { name: "对比 2 个渠道" }))
+		await user.click(within(dialog).getByRole("button", { name: "测试 2 个渠道" }))
 
 		expect(await within(dialog).findByRole("alert")).toHaveTextContent(
 			"启动渠道对比（计划：营销文案基准，模型：gpt-5.2，渠道：2 个）失败：所选渠道无法用同一个模型版本公平对比，请检查模型映射后重试",
@@ -1662,6 +1664,7 @@ describe("desktop run workspace", () => {
       subscribeReportGeneration: vi.fn(() => () => {}),
       subscribeRemoteResults: vi.fn(() => () => {}),
 			getReportDetail: vi.fn(),
+      compareReports: vi.fn(),
 			exportReport: vi.fn(),
 			saveReportExport: vi.fn(),
 			copyReportPNG: vi.fn(),

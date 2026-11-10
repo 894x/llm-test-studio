@@ -140,6 +140,33 @@
     "retry": "Retry",
     "unassigned": "Requests without a case"
   },
+  "compare": {
+    "title": "Report comparison",
+    "description": "Compare archived results, including the same channel at different times.",
+    "action": "Compare reports ({{count}})",
+    "clear": "Clear selection",
+    "add": "Compare with other reports",
+    "select": "Select report: {{channel}} · {{model}} · {{time}}",
+    "selectVisible": "Select visible reports",
+    "selectionHint": "Select 2–{{max}} reports; selections persist across filters.",
+    "benchmarkUnavailable": "Dataset evaluation reports are not supported in this comparison yet",
+    "baseline": "Baseline report",
+    "onlyDifferences": "Differences only",
+    "table": "Report comparison results",
+    "hint": "Preserves archived conclusions. Changed definitions, parameters or load are marked without deltas; missing coverage is not a failure.",
+    "loading": "Loading and aligning reports…",
+    "error": "Unable to read comparison reports. Please retry.",
+    "noDifferences": "There are no differences in these test items.",
+    "evidence": "View evidence",
+    "change": {
+      "regressed": "New failure",
+      "recovered": "Recovered",
+      "changed": "Result changed",
+      "conditions_changed": "Test conditions changed",
+      "added": "Not covered by baseline",
+      "missing": "Not covered by this report"
+    }
+  },
   "title": "Test Reports",
   "detailTitle": "Report details",
   "description": "Review conclusions, metrics, request details, and same-source exports archived by Go Core",
