@@ -6,13 +6,21 @@
 
 ## 范围
 
+2026-11-05 官方 API 全量核验：`kimi-k3.1-pro` 的全部 93 个 `k31.*` Chat
+用例均已执行。`reasoning_effort=medium`、`max_completion_tokens=1048577` 分别
+重复 3 次返回 HTTP 200，相关用例改为验证请求接受及非空 `choices`；这不证明
+`medium` 档位有效，也不证明可实际生成 1048577 个 Token。任意未知推理强度字符串
+的对照请求同样返回 200，不能将宽松接收当作新增推理档位支持。
+`n=0` 虽也重复 3 次返回 200，但按产品选择继续遵循 [MODELS](https://platform.kimi.com/docs/api/models-overview)
+的固定 `n=1` 约束，保留拒绝断言并记录官方实现差异。此次未实测 Highspeed。
+
 - Provider / endpoint：Moonshot Kimi，`POST /v1/chat/completions`。
 - 模型：`kimi-k3.1-pro` 与 `kimi-k3.1-pro-highspeed`；运行时绑定模型，Case 请求体不硬编码模型。
 - 模式：非流式、SSE、文本、图片、base64 视频、结构化输出、Partial Mode、自定义/动态工具、隐式上下文缓存。
 - 文档检索日期：2026-10-25。以附件中的 K3.1 Pro 指南及当日在线官方文档为准。
 - 不包含 Responses / Anthropic 协议、Formula 官方工具和文件上传生命周期；`ms://` 仅保留为依赖真实账户文件的 deferred 场景，不伪造 file ID。
 - 精确 1M 上下文、缓存到期/跨组织隔离、签名响应头、认证及速率限制属于设计内场景，但受成本、执行器或测试账户条件限制，分别标记 deferred / blocked。
-- 本矩阵中的“covered”表示请求与稳定断言已实现，不表示已向付费 Provider 发请求。本次执行证据统一为 T0 static / live not run。
+- 本矩阵中的“covered”表示请求与稳定断言已实现。原设计基线的执行证据为 T0 static；2026-11-05 已完成上述 Pro 官方实测，未单独更新的表格行保留原设计基线，Highspeed 仍未实测。
 
 来源简称：`CHAT` = https://platform.kimi.com/docs/api/chat；`OPENAPI` = https://platform.kimi.com/docs/openapi.json；`MODELS` = https://platform.kimi.com/docs/api/models-overview；`REASON` = https://platform.kimi.com/docs/guide/use-reasoning-effort；`VISION` = https://platform.kimi.com/docs/guide/use-kimi-vision-model；`FORMAT` = https://platform.kimi.com/docs/guide/response_format；`PARTIAL` = https://platform.kimi.com/docs/guide/use-partial-mode-feature-of-kimi-api；`TOOLS` = https://platform.kimi.com/docs/guide/use-tool-choice；`DYNAMIC` = https://platform.kimi.com/docs/guide/use-dynamic-tool-loading；`CACHE` = https://platform.kimi.com/docs/guide/context-caching；`ERRORS` = https://platform.kimi.com/docs/api/errors。均检索于 2026-10-25。
 
@@ -23,13 +31,13 @@
 | `model` | OPENAPI | required enum | pro、highspeed | 未知模型 404 | 响应模型与绑定目标一致 | both / T1 | 两模型分别运行同一 Suite | 全部 Case；Run 注入 | 完整 | T0 static | covered |
 | `messages` | OPENAPI | required array | 标准/动态工具消息 | missing、empty、空标准 content | 非法请求 400 + error | both / T2 | 缺字段、空数组、空 content | `k31.messages_required`、`k31.messages_empty`、`k31.message_empty_content` | 完整 | T0 static | covered |
 | `messages[].role/content/name/partial` | OPENAPI, PARTIAL | role enum；content string/array；name optional；partial=false | system/user/assistant/tool；尾部 assistant partial | 非法 role/type；partial 必须在尾部 assistant | 合法 200；非法 400 | both / T1/T2 | 普通文本、partial、name、工具结果、非法形态 | `k31.must.*`、`k31.partial_mode`；完整多轮重放受执行器限制 | 基础完整；完整重放 partial | T0 static | partial |
-| `reasoning_effort` | REASON, MODELS | optional enum；default max；始终思考 | low/high/max | medium、wrong type | 三档 200；非法 400 | both / T1/T2 | omitted、low、high、max、medium | `k31.must.thinking_default`、`k31.reasoning_effort_*` | 完整 | T0 static | covered |
+| `reasoning_effort` | REASON, MODELS；官方 API 2026-11-05 实测 | 文档 low/high/max；default max；始终思考 | low/high/max；medium 仅验证请求接受 | medium 与文档有差异；不将接受视为档位生效 | 三档 200；medium 200 + 非空 choices | both / T1/T2；Highspeed 未实测 | omitted、low、high、max、medium 接受 | `k31.must.thinking_default`、`k31.reasoning_effort_*` | 请求接受已核验；不证明 medium 档位 | Pro 官方 T1，medium 重复 3 次；Highspeed T0 | documentation conflict |
 | `temperature` | MODELS | optional fixed 1.0 | omitted、1.0 | 0.99、1.01 | 固定值 200；其他 400 | both / T1/T2 | omitted/exact/below/above | `k31.param_omit_sampling`、`k31.param_fixed_temperature`、`k31.temperature_*` | 完整 | T0 static | covered |
 | `top_p` | MODELS | optional fixed 0.95 | omitted、0.95 | 0.94、0.96 | 同上 | both / T1/T2 | omitted/exact/below/above | `k31.param_fixed_top_p`、`k31.top_p_*` | 完整 | T0 static | covered |
-| `n` | MODELS | optional fixed 1 | omitted、1 | 0、2 | 同上 | both / T1/T2 | omitted/exact/below/above | `k31.param_fixed_n`、`k31.n_*` | 完整 | T0 static | covered |
+| `n` | MODELS；官方 API 2026-11-05 实测 | optional fixed 1 | omitted、1 | 0、2；保留文档固定值契约 | 固定值 200；其他应 400 | both / T1/T2；Highspeed 未实测 | omitted/exact/below/above | `k31.param_fixed_n`、`k31.n_*` | 拒绝断言保持；记录官方实现差异 | Pro 官方 T1：n=0 重复 3 次返回 200，n=2 返回 400 | documentation conflict |
 | `presence_penalty` | MODELS | optional fixed 0 | omitted、0 | -0.1、0.1 | 同上 | both / T1/T2 | omitted/exact/below/above | `k31.param_fixed_presence_penalty`、`k31.presence_penalty_*` | 完整 | T0 static | covered |
 | `frequency_penalty` | MODELS | optional fixed 0 | omitted、0 | -0.1、0.1 | 同上 | both / T1/T2 | omitted/exact/below/above | `k31.param_fixed_frequency_penalty`、`k31.frequency_penalty_*` | 完整 | T0 static | covered |
-| `max_completion_tokens` | CHAT, OPENAPI | optional integer；default 131072；max 1048576 | 小值、最大值；超总窗口自动调低 | 1048577；输入自身必须 <1M | 合法 200；超限参数 400；达到预算 finish=length | both / T1/T2/T3 | 1、1048576、1048577、运行时截断、近 1M 输入 | `k31.max_completion_*`；精确近 1M deferred | 除近 1M 外完整 | T0 static | deferred |
+| `max_completion_tokens` | CHAT, OPENAPI；官方 API 2026-11-05 实测 | 文档 max 1048576；default 131072 | 小值、最大值；1048577 仅验证请求接受 | 1048577 与文档有差异；输入自身必须 <1M | 短请求 1048576/1048577 返回 200 + 非空 choices；达到小预算 finish=length | both / T1/T2/T3；Highspeed 未实测 | 1、1048576、1048577 接受、运行时截断、近 1M 输入 | `k31.max_completion_*`；精确近 1M deferred | 接受不证明实际输出上限；近 1M 仍 deferred | Pro 官方 T1，1048577 重复 3 次；Highspeed T0 | documentation conflict；近 1M deferred |
 | deprecated `max_tokens` | OPENAPI, PARTIAL | optional deprecated integer | 兼容旧字段 | 小预算可先耗尽思考 | 成功或 length，不断言新字段等价 | both / T1 | 旧字段 smoke、截断后续写 | `k31.must.*` 旧有用例、`k31.partial_mode` | 兼容覆盖，非推荐基线 | T0 static | covered |
 | `logprobs` / `top_logprobs` | OPENAPI | bool default false；integer [0,20]，依赖 logprobs=true | false/true；0、20 | -1、21、缺依赖 | 合法 200 且 `choices[].logprobs.content` 非空（官方 2026-11-05 实测不在 message 内）；非法 400 | both / T1/T2 | omitted、true、0、20、-1、21、缺依赖 | `k31.logprobs_enabled`、`k31.top_logprobs_*` | 完整 | T0 static | covered |
 | `stop` | OPENAPI | string 或 array；max 5；每项 max 32 bytes | 单字符串、5 项、32 bytes | 6 项、33 bytes；匹配词不返回 | 合法 200；非法 400；运行时截断 | both / T1/T2 | 1、5、6、32B、33B、运行时 | `k31.stop_*`、`k31.stop_runtime_truncation` | 完整 | T0 static | covered |
