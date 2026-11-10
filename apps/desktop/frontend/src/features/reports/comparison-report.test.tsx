@@ -67,7 +67,7 @@ describe("channel comparison reports", () => {
     const list = screen.getByRole("table", { name: "测试报告目录" })
     expect(within(list).getAllByRole("row")).toHaveLength(4)
     expect(list).toHaveTextContent("渠道 A · 通过 · 1/1")
-    expect(list).toHaveTextContent("渠道 B · 未通过 · 0/1")
+    expect(list).toHaveTextContent("渠道 B · 失败 · 0/1")
     expect(data.getDetail).not.toHaveBeenCalled()
     await user.type(screen.getByRole("searchbox"), "渠道 B")
     const table = await openComparison(user)
@@ -93,7 +93,7 @@ describe("channel comparison reports", () => {
     await user.click(screen.getByRole("button", { name: "展开渠道：渠道 B" }))
     await user.click(screen.getByRole("button", { name: "折叠渠道：渠道 A" }))
     table = screen.getByRole("table", { name: "执行项用例结果" })
-    expect(within(table).getByText("未通过")).toBeInTheDocument()
+    expect(within(table).getByText("失败")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "折叠渠道：渠道 B" })).toBeDisabled()
     await user.click(screen.getByRole("button", { name: "展开渠道：渠道 A" }))
     expect(screen.getByRole("table", { name: "渠道对比用例结果" })).toBeInTheDocument()
@@ -112,10 +112,10 @@ describe("channel comparison reports", () => {
     const first = screen.getAllByRole("table", { name: "渠道对比用例结果" })[0]
     const rows = within(first).getAllByRole("row").slice(1)
     expect(within(rows[0]).getAllByText("通过")).toHaveLength(1)
-    expect(within(rows[0]).getByText("未通过")).toBeInTheDocument()
+    expect(within(rows[0]).getByText("失败")).toBeInTheDocument()
     expect(within(rows[1]).getAllByText("通过")).toHaveLength(2)
     const repeatedTable = screen.getAllByRole("table", { name: "渠道对比用例结果" })[1]
-    expect(repeatedTable).toHaveTextContent("未执行")
+    expect(repeatedTable).toHaveTextContent("未测")
   })
 
   it("preserves one side while the other report is pending or fails, and retries", async () => {
@@ -141,7 +141,7 @@ describe("channel comparison reports", () => {
     rendered.rerender(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace snapshot={data.snapshot} comparisons={data.comparisons}
       getDetail={data.getDetail} exportReport={vi.fn()} saveReportExport={vi.fn()} copyReportPNG={vi.fn()} /></I18nextProvider>)
     await waitFor(() => expect(screen.getByRole("button", { name: "HTML" })).toBeEnabled())
-    expect(screen.getByRole("table", { name: "渠道对比用例结果" })).toHaveTextContent("未通过")
+    expect(screen.getByRole("table", { name: "渠道对比用例结果" })).toHaveTextContent("失败")
   })
 
   it("exports every case and reflects the folded view", async () => {
@@ -279,7 +279,7 @@ describe("channel comparison reports", () => {
     finishRight(data.right)
     await waitFor(() => expect(screen.getByRole("button", { name: "HTML" })).toBeEnabled())
     expect(reader).toHaveBeenCalledTimes(2)
-    expect(screen.getByRole("table", { name: "渠道对比用例结果" })).toHaveTextContent("未通过")
+    expect(screen.getByRole("table", { name: "渠道对比用例结果" })).toHaveTextContent("失败")
   })
 
   it("rejects a report from the wrong channel without displaying its result", async () => {
@@ -295,6 +295,6 @@ describe("channel comparison reports", () => {
     await user.click(screen.getByRole("button", { name: "重新读取" }))
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument())
     expect(screen.getByRole("button", { name: "HTML" })).toBeEnabled()
-    expect(screen.getByRole("table", { name: "渠道对比用例结果" })).toHaveTextContent("未通过")
+    expect(screen.getByRole("table", { name: "渠道对比用例结果" })).toHaveTextContent("失败")
   })
 })

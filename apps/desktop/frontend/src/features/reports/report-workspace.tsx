@@ -18,6 +18,7 @@ import { useCatalogSearch } from "@/features/catalog/use-catalog-search"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { EmptyInspector, InspectorHeader, InspectorRow, PageFrame } from "@/features/shell/page-frame"
 import {
   performanceCompletion,
@@ -326,7 +327,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
                   return <TableRow key={item.id} data-state={item.id === selectedItem?.id ? "selected" : undefined} aria-selected={item.id === selectedItem?.id}
                     className="h-11" onClick={() => setSelectedID(item.id)}>
                     {compareReports ? <TableCell /> : null}
-                    <TableCell className="py-1 pl-2 text-xs">{t(`common:status.${comparison.status}`)}</TableCell>
+                    <TableCell className="py-1 pl-2 text-xs">{t(`status.${comparison.status}`)}</TableCell>
                     <TableCell className="py-1 text-xs"><div className="font-medium">{t("comparison.title")}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.plan_name}</div></TableCell>
                     <TableCell className="py-1 text-xs"><div>{comparison.model_name}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.channels.map(channel => channel.channel_name).join(" / ")}</div></TableCell>
                     <TableCell className="py-1 text-[11px] tabular-nums">{comparison.channels.map(channel => {
@@ -741,9 +742,7 @@ function PerformanceReportHeadline({ report }: { report: QuickPerformanceReport 
     <header className="flex flex-wrap items-center justify-between gap-2">
       <h3 className="text-sm font-semibold">{t("headline.performance")}</h3>
       <div className="flex flex-wrap gap-1.5">
-        <Badge variant="outline" className={report.success ? "border-success/25 bg-success-soft text-success-strong" : "border-destructive/25 bg-destructive-soft text-destructive"}>
-          {tx("desktop:quick-test_transport_and_protocol")}{report.success ? tx("desktop:quick-test_passed") : tx("desktop:quick-test_failed_301")}
-        </Badge>
+        <PerformanceAssessmentBadge status={report.success ? "passed" : "failed"} label={`${tx("desktop:quick-test_transport_and_protocol")}${report.success ? tx("desktop:quick-test_passed") : tx("desktop:quick-test_failed_301")}`} />
         {report.slo_assessment ? <PerformanceAssessmentBadge status={report.slo_assessment.status} label={performanceSLOStatusLabel(report.slo_assessment.status)} /> : null}
         {report.capacity_result ? <PerformanceAssessmentBadge status={report.capacity_result.status} label={t(`headline.capacityStatus.${report.capacity_result.status}`)} /> : null}
       </div>
@@ -771,10 +770,13 @@ function SummaryValue({ label, value }: { label: string; value: string }) {
 }
 
 function PerformanceAssessmentBadge({ status, label }: { status: NonNullable<QuickPerformanceReport["slo_assessment"]>["status"]; label: string }) {
-  return <Badge
+  const { t } = useTranslation("reports")
+  return <TooltipProvider><Tooltip><TooltipTrigger asChild><Badge
+    tabIndex={0}
+    aria-label={label}
     variant={status === "failed" ? "destructive" : "outline"}
-    className={status === "passed" ? "border-success/25 bg-success-soft text-success-strong" : status === "not_evaluated" ? "border-warning/25 bg-warning-soft text-warning" : undefined}
-  >{label}</Badge>
+    className={`outline-none focus-visible:ring-2 focus-visible:ring-ring ${status === "passed" ? "border-success/25 bg-success-soft text-success-strong" : status === "not_evaluated" ? "border-warning/25 bg-warning-soft text-warning" : ""}`}
+  >{t(`assessmentStatus.${status}`)}</Badge></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip></TooltipProvider>
 }
 
 function ContextValue({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
@@ -809,7 +811,7 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
     {shortcuts}
     <Separator />
     <dl className="space-y-1 px-4 py-2">
-      <InspectorRow label={t("inspector.source")} value={t(report.source === "quick_performance" ? "inspector.quickPerformance" : "inspector.planExecution")} />{report.run_id ? <InspectorRow label={t("inspector.run")} value={`${t(`common:status.${report.run_status}`)} · ${report.run_id}`} /> : null}<InspectorRow label={t("inspector.plan")} value={displayReportPlan(report, t)} /><InspectorRow label={t("inspector.modelChannel")} value={`${report.model_name} · ${report.channel_name}`} /><InspectorRow label={t(report.source === "quick_performance" ? "inspector.requestConclusion" : "inspector.caseConclusion")} value={t("inspector.conclusionValue", { passed: report.passed_case_count, total: report.verified_case_count, failed: report.failed_case_count, observed: report.observed_case_count, indeterminate: report.indeterminate_case_count })} /><InspectorRow label={t("inspector.issues")} value={t("inspector.items", { count: report.issue_count })} /><InspectorRow label={t("inspector.generated")} value={formatTimestamp(report.generated_at, locale)} />
+      <InspectorRow label={t("inspector.source")} value={t(report.source === "quick_performance" ? "inspector.quickPerformance" : "inspector.planExecution")} />{report.run_id ? <InspectorRow label={t("inspector.run")} value={`${t(`status.${report.run_status}`)} · ${report.run_id}`} /> : null}<InspectorRow label={t("inspector.plan")} value={displayReportPlan(report, t)} /><InspectorRow label={t("inspector.modelChannel")} value={`${report.model_name} · ${report.channel_name}`} /><InspectorRow label={t(report.source === "quick_performance" ? "inspector.requestConclusion" : "inspector.caseConclusion")} value={t("inspector.conclusionValue", { passed: report.passed_case_count, total: report.verified_case_count, failed: report.failed_case_count, observed: report.observed_case_count, indeterminate: report.indeterminate_case_count })} /><InspectorRow label={t("inspector.issues")} value={t("inspector.items", { count: report.issue_count })} /><InspectorRow label={t("inspector.generated")} value={formatTimestamp(report.generated_at, locale)} />
     </dl>
     <Separator />
     <ReportExportControls watermark={watermark} onWatermarkChange={onWatermarkChange} exporting={exporting} error={exportError} onExport={onExport} onCopyPNG={onCopyPNG} />

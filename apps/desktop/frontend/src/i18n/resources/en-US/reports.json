@@ -329,6 +329,20 @@
     "passed": "Passed",
     "failed": "Failed"
   },
+  "status": {
+    "running": "Running",
+    "draining": "Draining",
+    "passed": "Passed",
+    "completed": "Completed",
+    "failed": "Failed",
+    "queued": "Queued",
+    "cancelled": "Cancelled"
+  },
+  "assessmentStatus": {
+    "passed": "Passed",
+    "failed": "Failed",
+    "not_evaluated": "Not evaluated"
+  },
   "system": {
     "quickPerformance": "Performance test",
     "quickPassed": "All requests passed",

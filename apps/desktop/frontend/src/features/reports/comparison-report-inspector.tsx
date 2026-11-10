@@ -19,7 +19,7 @@ export function ComparisonReportInspector({ comparison, snapshot, onOpen, export
   return <>
     <InspectorHeader title={t("comparison.title")} subtitle={comparison.model_name} trailing={
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <Badge variant="secondary">{t(`common:status.${comparison.status}`)}</Badge>
+        <Badge variant="secondary">{t(`status.${comparison.status}`)}</Badge>
         {recycleAction}
       </div>
     } />

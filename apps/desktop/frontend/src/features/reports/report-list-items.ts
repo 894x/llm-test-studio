@@ -23,7 +23,7 @@ export function reportListItems(reports: ReportSummary[], comparisons: Compariso
 }
 
 export function channelVerdict(channel: ComparisonChannelResult, t: TFunction<"reports">, report?: ReportSummary) {
-  if (!report && !channel.report_ready) return t(`common:status.${channel.run_status === "starting" ? "queued" : channel.run_status}`)
+  if (!report && !channel.report_ready) return t(`status.${channel.run_status === "starting" ? "queued" : channel.run_status}`)
   const conclusion = report ?? channel
   if (conclusion.passed) return t("protocolDesign.verdict.passed")
   if (conclusion.verdict === "observed" || conclusion.verdict === "not_applicable") return t("protocolDesign.verdict.not_applicable")

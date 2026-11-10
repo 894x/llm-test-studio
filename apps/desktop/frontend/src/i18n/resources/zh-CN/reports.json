@@ -102,9 +102,9 @@
     "total": "用例数",
     "passed": "通过",
     "failed": "失败",
-    "observed": "仅观察",
-    "indeterminate": "待判定",
-    "notRun": "未执行",
+    "observed": "观测",
+    "indeterminate": "待定",
+    "notRun": "未测",
     "rateAria": "{{dimension}} 通过率",
     "scope": "每个执行项中的用例计一次，不按请求数加权。通过率 = 通过 /（通过 + 失败）；仅观察、待判定和未执行单列，不含预热与性能项。维度取自运行快照。"
   },
@@ -135,7 +135,7 @@
     "expandLabel": "展开",
     "caseDetails": "查看{{channel}}的用例详情：{{name}}",
     "pending": "等待报告生成",
-    "noResult": "未执行",
+    "noResult": "未测",
     "unavailable": "无法读取",
     "retry": "重新读取",
     "unassigned": "未归属用例的请求"
@@ -222,17 +222,17 @@
     "noTarget": "未设置目标",
     "scope": "仅统计稳态阶段。参考目标：成功率 ≥99%、TTFT P95 <15 秒、TPOT P95 <40 毫秒、E2E P95 <30 秒、成功吞吐 ≥2 req/s；已保存的 E2E 上限优先。SLO 沿用封存配置，未配置只观测。参考目标需结合负载理解，不改写原报告的运行、逐请求 SLO 与容量结论。",
     "overviewStatus": {
-      "passed": "已评估指标达标",
-      "failed": "部分指标未达标",
-      "observed": "仅观测",
-      "not_evaluated": "部分指标未评估"
+      "passed": "达标",
+      "failed": "未达",
+      "observed": "观测",
+      "not_evaluated": "未评"
     },
     "metricStatus": {
       "passed": "达标",
-      "failed": "未达标",
-      "observed": "仅观测",
-      "not_evaluated": "未评估",
-      "unavailable": "无有效观测"
+      "failed": "未达",
+      "observed": "观测",
+      "not_evaluated": "未评",
+      "unavailable": "缺测"
     },
     "metrics": {
       "success_rate": "请求成功率",
@@ -306,7 +306,7 @@
     "modelChannel": "模型与渠道",
     "requestConclusion": "请求结论",
     "caseConclusion": "用例结论",
-    "conclusionValue": "{{passed}}/{{total}} 通过 · {{failed}} 失败 · {{observed}} 仅观测 · {{indeterminate}} 无法判定",
+    "conclusionValue": "{{passed}}/{{total}} 通过 · {{failed}} 失败 · {{observed}} 观测 · {{indeterminate}} 待定",
     "issues": "问题",
     "items": "{{count}} 项",
     "generated": "生成时间",
@@ -327,15 +327,29 @@
   },
   "conclusion": {
     "passed": "通过",
-    "failed": "未通过"
+    "failed": "失败"
+  },
+  "status": {
+    "running": "运行",
+    "draining": "排空",
+    "passed": "通过",
+    "completed": "完成",
+    "failed": "失败",
+    "queued": "排队",
+    "cancelled": "取消"
+  },
+  "assessmentStatus": {
+    "passed": "通过",
+    "failed": "失败",
+    "not_evaluated": "未评"
   },
   "system": {
     "quickPerformance": "性能测试",
     "quickPassed": "全部请求成功",
     "quickFailed": "性能测试未通过",
     "passed": "通过",
-    "failed": "未通过",
-    "cancelled": "已取消"
+    "failed": "失败",
+    "cancelled": "取消"
   },
   "hierarchy": {
     "planReport": "计划报告",
@@ -347,10 +361,10 @@
     "rendererUnavailable": "此用例无法渲染，报告中的其他内容仍可查看"
   },
   "suiteStatus": {
-    "completed": "已完成",
+    "completed": "完成",
     "failed": "失败",
-    "cancelled": "已取消",
-    "notStarted": "未开始"
+    "cancelled": "取消",
+    "notStarted": "未测"
   },
   "suiteIssue": {
     "failed": "套件执行失败",
@@ -410,16 +424,16 @@
     "summaryColumn": "汇总",
     "verdict": {
       "passed": "通过",
-      "failed": "未通过",
-      "not_applicable": "仅观测",
-      "indeterminate": "无法判定"
+      "failed": "失败",
+      "not_applicable": "观测",
+      "indeterminate": "待定"
     },
-    "counts": "通过 {{passed}} · 未通过 {{failed}} · 仅观测 {{observed}} · 无法判定 {{indeterminate}}",
+    "counts": "通过 {{passed}} · 失败 {{failed}} · 观测 {{observed}} · 待定 {{indeterminate}}",
     "executionNumber": "第 {{count}} 次执行",
     "execution": {
-      "completed": "执行完成",
-      "failed": "执行异常",
-      "cancelled": "已取消"
+      "completed": "完成",
+      "failed": "异常",
+      "cancelled": "取消"
     },
     "observedHint": "未配置断言，仅记录实际观测数据，不产生通过或未通过结论。",
     "task": "任务 ID",

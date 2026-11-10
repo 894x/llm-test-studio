@@ -22,10 +22,11 @@ describe("PerformanceOverviewPanel", () => {
     expect(panel.querySelector('[data-performance-metric="ttft_p95"]')).toHaveTextContent("参考目标 < 15.00 s")
     expect(panel.querySelector('[data-performance-metric="e2e_p95"]')).toHaveTextContent("参考目标 < 30.00 s")
     expect(panel.querySelector('[data-performance-metric="successful_qps"]')).toHaveTextContent("参考目标 ≥ 2.00 req/s")
-    expect(within(tpot).getByText("未达标")).toHaveClass("text-outcome-fail")
+    expect(within(tpot).getByText("未达")).toHaveClass("text-outcome-fail")
     expect(within(panel).getByText("0.65")).toBeInTheDocument()
     expect(screen.getByRole("img", { name: "渠道评分 4.38 / 5，6 项参与" })).toBeInTheDocument()
-    const status = within(panel).getByText("部分指标未达标")
+    const status = panel.querySelector('[data-performance-status="failed"]')!
+    expect(status).toHaveTextContent("未达")
     expect(status.lastElementChild).toHaveClass("lucide-x")
     expect(overview).toEqual(before)
   })
@@ -49,7 +50,7 @@ describe("PerformanceOverviewPanel", () => {
     overview.metrics.forEach(metric => { if (metric.status === "failed") metric.status = "passed" })
     overview.rating = { method: "target_ratio_v1", score: 5, max_score: 5, metric_count: 6 }
     render(<I18nextProvider i18n={createAppI18n("zh-CN")}><PerformanceOverviewPanel overview={overview} /></I18nextProvider>, { wrapper: TooltipProvider })
-    expect(screen.getByText("已评估指标达标").lastElementChild).toHaveClass("lucide-check")
+    expect(screen.getByRole("region", { name: "关键性能指标" }).querySelector('[data-performance-status="passed"]')!.lastElementChild).toHaveClass("lucide-check")
     await userEvent.tab()
     expect(screen.getByRole("img", { name: "渠道评分 5.00 / 5，6 项参与" })).toHaveFocus()
     expect(await screen.findByRole("tooltip")).toHaveTextContent("评分不替代达标结论")
