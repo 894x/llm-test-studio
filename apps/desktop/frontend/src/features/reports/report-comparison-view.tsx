@@ -3,8 +3,11 @@ import { useTranslation } from "react-i18next"
 import ChevronLeftIcon from "lucide-react/dist/esm/icons/chevron-left.mjs"
 import ChevronDownIcon from "lucide-react/dist/esm/icons/chevron-down.mjs"
 import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right.mjs"
+import DownloadIcon from "lucide-react/dist/esm/icons/download.mjs"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Spinner } from "@/components/ui/spinner"
@@ -17,7 +20,7 @@ import { copyReportPNGToClipboard } from "./report-clipboard"
 import { ReportExportControls } from "./report-export-controls"
 import { CaseSeverityBadge } from "./case-severity-badge"
 import { ComparisonChannelHeader, ComparisonTableColumns } from "./comparison-channel-header"
-import { comparisonReportID, type CompareReports, type ReportComparison, type ReportComparisonCell } from "./report-comparison-data"
+import { comparisonReportID, type CompareReports, type ReportComparison, type ReportComparisonCell, type ReportComparisonRow } from "./report-comparison-data"
 import type { ReportDetail, ReportExportFormat } from "./data"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
 
@@ -93,6 +96,16 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
           options={(data?.reports ?? []).map(detail => ({ value: comparisonReportID(detail), label: reportLabel(detail) }))} />
       </div>
       <label className="flex items-center gap-2 text-xs"><Checkbox checked={onlyDifferences} disabled={Boolean(exporting)} onCheckedChange={checked => setOnlyDifferences(checked === true)} />{t("compare.onlyDifferences")}</label>
+      <div className="ml-auto">
+        <Popover>
+          <PopoverTrigger asChild><Button variant="secondary" size="sm" disabled={!data}><DownloadIcon data-icon="inline-start" />{t("inspector.exportAria")}</Button></PopoverTrigger>
+          <PopoverContent align="end" aria-label={t("inspector.exportAria")} className="w-80 max-w-[calc(100vw/var(--interface-zoom,1)-32px)]">
+            <h2 className="px-4 pt-3 text-sm font-semibold">{t("inspector.exportAria")}</h2>
+            <ReportExportControls watermark={watermark} onWatermarkChange={setWatermark} exporting={exporting} error={exportError}
+              onExport={handleExport} onCopyPNG={() => handleExport("copy")} />
+          </PopoverContent>
+        </Popover>
+      </div>
     </div>
     {data ? <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2" aria-label={t("comparison.channelControls")}>
       {data.reports.map((detail, index) => {
@@ -115,14 +128,10 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
         <div id={resultsID} className="min-w-0 space-y-3 p-4">
           <ReportComparisonBody key={comparisonKey} data={data} hiddenReports={hiddenReports} onlyDifferences={onlyDifferences} expanded={expanded}
             onExpandedChange={row => setExpandedRow({ comparison: comparisonKey, row })} disabled={Boolean(exporting)} />
-          <details className="max-w-sm text-xs"><summary className="cursor-pointer py-2">{t("inspector.exportAria")}</summary>
-            <ReportExportControls watermark={watermark} onWatermarkChange={setWatermark} exporting={exporting} error={exportError}
-              onExport={handleExport} onCopyPNG={() => handleExport("copy")} />
-          </details>
         </div>}
     </ScrollArea>
     {exportData ? <div aria-hidden="true" className="pointer-events-none fixed left-[-10000px] top-0" style={{ width: exportData.width }}>
-      <article data-report-export-document ref={element => { if (element && exportReady.current) { exportReady.current(element); exportReady.current = null } }} className="relative bg-background p-4 text-foreground">
+      <article data-report-export-document ref={element => { if (element && exportReady.current) { exportReady.current(element); exportReady.current = null } }} className="relative bg-background p-4 text-foreground" style={{ width: exportData.width }}>
         <ReportComparisonBody data={exportData.comparison} hiddenReports={hiddenReports} onlyDifferences={onlyDifferences} expanded={expanded} exporting />
         <div data-report-watermark className="pointer-events-none absolute inset-0 grid grid-cols-2 content-around overflow-hidden">
           {Array.from({ length: 8 }, (_, index) => <span key={index} className="-rotate-12 text-center text-4xl font-semibold text-muted-foreground/15">{watermark.trim() || "rhzs"}</span>)}
@@ -142,14 +151,36 @@ function ReportComparisonBody({ data, hiddenReports, onlyDifferences, expanded, 
   disabled?: boolean
 }) {
   const { t } = useTranslation("reports")
-  const detailsID = useId()
   const reports = data.reports.filter(detail => !hiddenReports.includes(comparisonReportID(detail)))
+  const sections = comparisonSections(data.rows).map(section => ({ ...section,
+    rows: onlyDifferences ? section.rows.filter(row => row.different) : section.rows,
+  })).filter(section => section.rows.length > 0)
+  return <TooltipProvider delayDuration={250}><section aria-label={t("compare.title")} className="min-w-0 space-y-6">
+    {sections.map(section => <section key={section.key} aria-label={section.name || t("system.quickPerformance")} className="min-w-0 space-y-2">
+      <h2 className="text-xs font-semibold [overflow-wrap:anywhere]">{section.name || t("system.quickPerformance")}</h2>
+      <ComparisonSuiteTable data={data} reports={reports} rows={section.rows} expanded={expanded} onExpandedChange={onExpandedChange}
+        exporting={exporting} disabled={disabled} />
+    </section>)}
+    {!sections.length ? <p className="py-4 text-xs text-muted-foreground">{t(onlyDifferences ? "compare.noDifferences" : "hierarchy.noRecordedCases")}</p> : null}
+  </section></TooltipProvider>
+}
+
+function ComparisonSuiteTable({ data, reports, rows, expanded, onExpandedChange, exporting, disabled }: {
+  data: ReportComparison
+  reports: ReportDetail[]
+  rows: ReportComparisonRow[]
+  expanded: string
+  onExpandedChange?: (row: string) => void
+  exporting: boolean
+  disabled: boolean
+}) {
+  const { t } = useTranslation("reports")
+  const detailsID = useId()
   const [page, setPage] = useState(0)
-  const rows = onlyDifferences ? data.rows.filter(row => row.different) : data.rows
   const lastPage = Math.max(0, Math.ceil(rows.length / 40) - 1)
   const currentPage = Math.min(page, lastPage)
   const visible = exporting ? rows : rows.slice(currentPage * 40, (currentPage + 1) * 40)
-  return <TooltipProvider delayDuration={250}><section aria-label={t("compare.title")} className="min-w-0 space-y-3">
+  return <div className="min-w-0 space-y-3">
     <Table aria-label={t("compare.table")} className="table-fixed text-xs">
       <ComparisonTableColumns channels={reports.length} />
       <TableHeader><TableRow>
@@ -169,7 +200,6 @@ function ReportComparisonBody({ data, hiddenReports, onlyDifferences, expanded, 
                 {expanded === row.key ? <ChevronDownIcon aria-hidden="true" /> : <ChevronRightIcon aria-hidden="true" />}
                 <span className="min-w-0 [overflow-wrap:anywhere]">{row.name || t("system.quickPerformance")}</span>
               </Button>}
-            <div className="mt-1 text-muted-foreground">{row.entry_name}</div>
           </TableCell>
           {row.cells.flatMap(cell => {
             const detail = reports.find(detail => comparisonReportID(detail) === cell.report_id)
@@ -178,8 +208,8 @@ function ReportComparisonBody({ data, hiddenReports, onlyDifferences, expanded, 
             return <TableCell key={cell.report_id} className="whitespace-normal align-top [overflow-wrap:anywhere]">
               <div className="flex min-h-7 flex-wrap items-center gap-2 py-1">
                 {caseItem ? <CaseSeverityBadge severity={caseItem.severity} /> : null}
-                {cell.change === "missing" ? <span className="text-muted-foreground">{t("compare.change.missing")}</span> :
-                  cell.status === "not_run" ? <span>{t("comparison.noResult")}</span> : <VerificationBadge status={cell.status as "passed" | "failed" | "not_applicable" | "indeterminate"} />}
+                {cell.change === "missing" || cell.status === "not_run" ? <Badge variant="outline" className="h-auto min-h-5 max-w-full whitespace-normal text-center text-muted-foreground [overflow-wrap:anywhere]">{t(cell.change === "missing" ? "compare.change.missing" : "comparison.noResult")}</Badge> :
+                  <VerificationBadge status={cell.status as "passed" | "failed" | "not_applicable" | "indeterminate"} />}
               </div>
             </TableCell>
           })}
@@ -197,12 +227,41 @@ function ReportComparisonBody({ data, hiddenReports, onlyDifferences, expanded, 
         </TableCell></TableRow> : null}
       </Fragment>)}</TableBody>
     </Table>
-    {!rows.length ? <p className="py-4 text-xs text-muted-foreground">{t(onlyDifferences ? "compare.noDifferences" : "hierarchy.noRecordedCases")}</p> : null}
     {!exporting && lastPage > 0 ? <div className="flex items-center justify-end gap-2 text-xs"><span>{currentPage + 1} / {lastPage + 1}</span>
       <Button size="xs" variant="outline" disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>{t("protocolDesign.previous")}</Button>
       <Button size="xs" variant="outline" disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>{t("protocolDesign.next")}</Button>
     </div> : null}
-  </section></TooltipProvider>
+  </div>
+}
+
+function comparisonSections(rows: ReportComparisonRow[]) {
+  // Use Core-aligned entry identities so repeated names and missing cases keep their own sections.
+  const parents = new Map<string, string>()
+  const root = (key: string): string => {
+    const parent = parents.get(key)
+    if (!parent) return key
+    const result = root(parent)
+    parents.set(key, result)
+    return result
+  }
+  const identities = rows.map(row => row.cells.filter(cell => cell.change !== "missing")
+    .map(cell => JSON.stringify([cell.report_id, cell.entry_id])))
+  for (const keys of identities) {
+    if (!keys.length) continue
+    for (const key of keys.slice(1)) {
+      const left = root(keys[0])
+      const right = root(key)
+      if (left !== right) parents.set(right, left)
+    }
+  }
+  const sections = new Map<string, { key: string; name: string; rows: ReportComparisonRow[] }>()
+  rows.forEach((row, index) => {
+    const key = root(identities[index][0] ?? JSON.stringify(["row", row.key]))
+    let section = sections.get(key)
+    if (!section) { section = { key, name: row.entry_name, rows: [] }; sections.set(key, section) }
+    section.rows.push(row)
+  })
+  return [...sections.values()]
 }
 
 function ComparisonMetrics({ cell, baselineID }: { cell: ReportComparisonCell; baselineID: string }) {

@@ -16,7 +16,8 @@ export function ComparisonTableColumns({ channels }: { channels: number }) {
     observer.observe(table)
     return () => observer.disconnect()
   }, [channels])
-  return <colgroup ref={columns}><col style={{ width: caseWidth }} /><col span={channels} /></colgroup>
+  // Image export copies computed widths; a spanning col reports all of its columns combined.
+  return <colgroup ref={columns}><col style={{ width: caseWidth }} />{Array.from({ length: channels }, (_, index) => <col key={index} />)}</colgroup>
 }
 
 export function ComparisonChannelHeader({ channel, model, baseline = false, exporting = false }: {
