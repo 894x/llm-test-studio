@@ -104,7 +104,8 @@ func TestCLILoadsAllCurrentProtocolsAndRejectsOldDataWithoutWriting(t *testing.T
 			}
 		}
 	}
-	if total != 1156 {
+	// Count each protocol definition, including the shared Kimi protocol cases.
+	if total != 1198 {
 		t.Fatalf("catalog count = %d", total)
 	}
 	root := t.TempDir()

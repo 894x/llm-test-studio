@@ -18,6 +18,8 @@
 > [!NOTE]
 > LLM Test Studio 已采用 Apache-2.0 许可证公开开源。修改已发布契约或升级存量数据前，请阅读[兼容性与数据升级政策](doc/compatibility-policy.md)。
 
+[v0.2.0](doc/releases/v0.2.0.md) 新增：数据集评测、数据集下载与缓存管理，以及历史报告对比。
+
 ## 产品实证
 
 <p align="center">
@@ -104,7 +106,7 @@ go build -o llm-test-studio ./cmd/llm-test-studio
 
 CLI `audit run --seed 42 --inputs '{"prompt":"Hello"}'` 只接受所选 Case 声明的输入；省略 `--inputs` 时使用已声明默认值。`--all-cases` 选择已启用的自动 Case，手动或停用项会明确报错。`--dry-run` 仅准备请求，不联网，也不声称断言已通过。等待行为由 `workflow.mode` 定义，替代 `--no-wait`。
 
-内置目录包含 925 个 Case、53 个 Suite 和 18 个性能 Plan。K3 Responses 基础套件包含 230 个已启用自动 Case；适用范围和覆盖缺口见 [Kimi 目录](data/cases/kimi-k3/README.zh-CN.md)。模型和凭据属于 Run 绑定。空断言仅产生观察结果，不计入断言通过率。格式变化和历史数据影响见[多协议 Case 与原生文本接口](doc/design/multi-protocol-cases.md)。
+内置目录包含 1,099 个 Case、84 个 Suite 和 32 个 Plan。K3 Responses 基础套件包含 230 个已启用自动 Case；适用范围和覆盖缺口见 [Kimi 目录](data/cases/kimi-k3/README.zh-CN.md)。模型和凭据属于 Run 绑定。空断言仅产生观察结果，不计入断言通过率。格式变化和历史数据影响见[多协议 Case 与原生文本接口](doc/design/multi-protocol-cases.md)。
 
 <details>
 <summary><strong>CLI 示例</strong></summary>
@@ -159,24 +161,28 @@ go run ./cmd/llm-test-studio load run \
 - 使用单次请求、固定并发或开放环负载运行测试，并配置请求超时与 SLA 阈值。
 - 通过原生 Go 执行引擎运行 OpenAI Chat、OpenAI Responses、Anthropic Messages、Kimi、GLM、Seedance、Wan 和 MiniMax 兼容性 Case。
 - 对同一个逻辑模型选择两个或更多渠道进行比较。
+- 使用 Inspect AI 运行本机数据集评测，管理下载与缓存，查看逐样本评分及报告。详见[数据测试指南](doc/benchmark-testing.md)。
+- 选择 2–8 份已归档功能或性能报告，切换基准、筛选差异并导出。详见[报告对比](doc/design/report-comparison.md)。
 - 查看运行历史、请求级结果、延迟与 Token 指标、失败维度、SLA 结论和环境快照。
 - 将同一份报告导出为 JSON、独立 HTML、PNG 或 PDF。
 - 通过 CLI 执行兼容性审计和负载测试，并获得稳定的 JSON、JSONL 或人类可读输出。
 
 ## 内置 Case 库
 
-仓库目前包含 925 个可移植 Case，按编写目录和唯一 Case ID 统计：
+仓库目前包含 1,099 个可移植 Case，按编写目录和唯一 Case ID 统计：
 
 | Case 目录 | 数量 | 重点 |
 | --- | ---: | --- |
-| `openai-chat` | 349 | Chat 兼容性、Kimi 和 GLM 契约、流式响应、工具调用、推理、多模态输入和用量 |
+| `openai-chat` | 499 | Chat 兼容性、Kimi 和 GLM 契约、流式响应、工具调用、推理、多模态输入和用量 |
 | `openai-responses` | 208 | K3 原生 Responses 参数、工具、推理、结构化输出、缓存和拒绝边界 |
+| `kimi-cache-usage` | 20 | 三种文本协议的缓存 Token 用量与响应头契约独立检查 |
+| `kimi-protocol` | 4 | 响应结构、流式完整性、推理输出和用量一致性 |
 | `seedance` | 6 | 文本、图片、视频和混合参考视频请求 |
 | `wan-video` | 213 | Wan 视频创建、任务轮询、各模型参数边界和媒体素材模板 |
 | `minimax-video` | 149 | MiniMax H3 创建、轮询、参数拒绝和依赖媒体的场景 |
-| **合计** | **925** | **610 个已启用自动 Case、107 个已启用手动 Case、208 个已停用 Case** |
+| **合计** | **1,099** | **784 个已启用自动 Case、107 个已启用手动 Case、208 个已停用 Case** |
 
-Kimi Chat Case 已计入 `openai-chat`。该目录中的部分 Case 还在相同 ID 下定义了原生 `openai-responses` 或 `anthropic-messages` 行为，这些协议定义不重复计数。53 个 Suite 覆盖全部六种运行时协议。18 个内置性能 Plan 为三种文本协议（`openai-chat`、`openai-responses`、`anthropic-messages`）各提供六种预设：快速检查、基准测试、持续负载、容量阶梯、无缓存输入和缓存后缀。
+Kimi Chat Case 已计入 `openai-chat`。该目录中的部分 Case 还在相同 ID 下定义了原生 `openai-responses` 或 `anthropic-messages` 行为，这些协议定义不重复计数。84 个 Suite 覆盖全部六种运行时协议。32 个内置 Plan 包括 18 个性能预设（三种文本协议各六种：快速检查、基准测试、持续负载、容量阶梯、无缓存输入和缓存后缀）、3 个输入 Token 阶梯计划，以及 11 个功能或混合计划。
 
 内置 Case 是测试起点，不代表每个 Case 都适用于每个模型。统计包含手动场景和停用模板；自动执行仅允许选择已启用的自动 Case。Plan 执行前会验证协议兼容性。
 
@@ -251,7 +257,8 @@ llm-test-studio CLI ────┘                         ├── SQLite rep
 
 - LLM Test Studio 会直接调用并验证配置的 Endpoint；它不是生产流量网关、路由器或服务商 SDK。
 - 产品聚焦 Endpoint 验收和对比证据，不负责维护公共模型排行榜，也不分析 API 边界以下的推理硬件性能。
-- 专用 Comparison 工作流用于比较同一个逻辑模型的多个渠道；任意模型与渠道的完整矩阵目前还不是一级工作流。
+- 历史报告对比支持 2–8 份功能或性能报告。数据集评测使用独立报告阅读器，暂不加入此矩阵。
+- 数据测试在本机执行，需要 `uv` 并准备锁定版本的 Python 环境。24 个评测条目包含不同年份与变体，不是 24 个互不相关的基准家族。
 - Case 复用遵守协议兼容性，不能把 Case 绑定到不兼容的 Model 或 Channel。
 - 已配置的桌面发行目标是 Windows amd64 和 macOS universal。Wails 支持的其他平台可以尝试从源码构建。
 

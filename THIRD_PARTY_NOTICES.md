@@ -2,7 +2,7 @@
 
 LLM Test Studio is licensed under Apache-2.0. That license does not replace the licenses of third-party packages, fonts, frameworks, or operating-system components used by the project.
 
-Exact dependency versions are recorded in `go.mod`, `go.sum`, `apps/desktop/frontend/package.json`, and `apps/desktop/frontend/pnpm-lock.yaml`. The lists below are an initial inventory of direct dependencies and redistributed assets; transitive dependencies remain governed by their own license files and package metadata.
+Exact dependency versions are recorded in `go.mod`, `go.sum`, `apps/desktop/frontend/package.json`, `apps/desktop/frontend/pnpm-lock.yaml`, and `internal/benchmarkruntime/uv.lock`. The lists below are an initial inventory of direct dependencies and redistributed assets; transitive dependencies remain governed by their own license files and package metadata.
 
 ## Go dependencies
 
@@ -12,6 +12,17 @@ Exact dependency versions are recorded in `go.mod`, `go.sum`, `apps/desktop/fron
 | zalando/go-keyring | MIT | <https://github.com/zalando/go-keyring> |
 | golang.org/x/sys | BSD-3-Clause | <https://pkg.go.dev/golang.org/x/sys> |
 | modernc.org/sqlite | BSD-3-Clause | <https://pkg.go.dev/modernc.org/sqlite> |
+
+## Optional dataset evaluation runtime
+
+The application ships a Python worker and a dependency lockfile. Preparing the evaluation environment downloads these packages; it does not change their licenses or the licenses and access conditions of individual datasets.
+
+| Dependency | License | Source |
+| --- | --- | --- |
+| Inspect AI | MIT | <https://github.com/UKGovernmentBEIS/inspect_ai> |
+| Inspect Evals | MIT | <https://github.com/UKGovernmentBEIS/inspect_evals> |
+| OpenAI Python SDK | Apache-2.0 | <https://github.com/openai/openai-python> |
+| Anthropic Python SDK | Apache-2.0 | <https://github.com/anthropics/anthropic-sdk-python> |
 
 ## Frontend dependencies and assets
 

@@ -18,6 +18,8 @@
 > [!NOTE]
 > LLM Test Studio is publicly available under Apache-2.0. See the [compatibility and data-upgrade policy](doc/compatibility-policy.md) before changing released contracts or upgrading stored data.
 
+New in [v0.2.0](doc/releases/v0.2.0.md): dataset evaluation, dataset download/cache management, and historical report comparison.
+
 ## Product proof
 
 <p align="center">
@@ -104,7 +106,7 @@ Desktop and CLI audit execution share the protocol runtime for `openai-chat`, `o
 
 CLI `audit run --seed 42 --inputs '{"prompt":"Hello"}'` accepts only inputs declared by selected Cases. Omit `--inputs` to use their declared defaults. `--all-cases` selects enabled automatic Cases; manual/disabled selections fail explicitly. `--dry-run` prepares requests without network calls or verification claims. Waiting is authored as `workflow.mode`, replacing `--no-wait`.
 
-The built-in catalog contains 925 Cases, 53 Suites and 18 performance Plans. The K3 Responses foundation Suite contains 230 enabled automatic Cases; see the [Kimi catalog](data/cases/kimi-k3/README.md) for applicability and coverage gaps. Models and credentials belong to Run binding. Empty assertions produce observation-only results and do not inflate verification pass rates. See [multi-protocol Cases and native text APIs](doc/design/multi-protocol-cases.md) for format changes and historical-data impact.
+The built-in catalog contains 1,099 Cases, 84 Suites and 32 Plans. The K3 Responses foundation Suite contains 230 enabled automatic Cases; see the [Kimi catalog](data/cases/kimi-k3/README.md) for applicability and coverage gaps. Models and credentials belong to Run binding. Empty assertions produce observation-only results and do not inflate verification pass rates. See [multi-protocol Cases and native text APIs](doc/design/multi-protocol-cases.md) for format changes and historical-data impact.
 
 <details>
 <summary><strong>CLI examples</strong></summary>
@@ -159,24 +161,28 @@ Avoid passing credentials directly as command arguments because shells may retai
 - Run single-request, fixed-concurrency, or open-loop tests with request timeouts and SLA thresholds.
 - Exercise OpenAI Chat, OpenAI Responses, Anthropic Messages, Kimi, GLM, Seedance, Wan, and MiniMax compatibility cases with native Go execution engines.
 - Compare one logical model across two or more configured channels.
+- Run local dataset evaluations with Inspect AI, manage downloads and caches, and inspect per-sample scores and reports. See the [data testing guide](doc/benchmark-testing.md).
+- Compare 2–8 archived functional or performance reports with a selectable baseline, difference filtering, and visual exports. See [report comparison](doc/design/report-comparison.md).
 - Inspect run history, request-level results, latency and token metrics, failure dimensions, SLA conclusions, and environment snapshots.
 - Export the same report as JSON, standalone HTML, PNG, or PDF.
 - Run compatibility audits and load tests from the CLI with stable JSON, JSONL, or human-readable output.
 
 ## Built-in case library
 
-The repository currently includes 925 portable Cases, counted by authoring directory and unique Case ID:
+The repository currently includes 1,099 portable Cases, counted by authoring directory and unique Case ID:
 
 | Case directory | Cases | Focus |
 | --- | ---: | --- |
-| `openai-chat` | 349 | Chat compatibility, Kimi and GLM contracts, streaming, tools, reasoning, multimodal inputs, and usage |
+| `openai-chat` | 499 | Chat compatibility, Kimi and GLM contracts, streaming, tools, reasoning, multimodal inputs, and usage |
 | `openai-responses` | 208 | K3 native Responses parameters, tools, reasoning, structured output, caching, and rejection boundaries |
+| `kimi-cache-usage` | 20 | Separate cache token-usage and response-header conformance checks across three text protocols |
+| `kimi-protocol` | 4 | Response structure, streaming integrity, reasoning output, and usage consistency |
 | `seedance` | 6 | Text, image, video, and mixed-reference video requests |
 | `wan-video` | 213 | Wan video creation, task polling, model-specific boundaries, and media fixture templates |
 | `minimax-video` | 149 | MiniMax H3 creation, polling, parameter rejection, and media-dependent scenarios |
-| **Total** | **925** | **610 enabled automatic Cases, 107 enabled manual Cases, and 208 disabled Cases** |
+| **Total** | **1,099** | **784 enabled automatic Cases, 107 enabled manual Cases, and 208 disabled Cases** |
 
-Kimi Chat Cases are included in `openai-chat`. Some Cases in that directory also define native `openai-responses` or `anthropic-messages` behavior under the same ID; these definitions are not counted again. The 53 Suites cover all six runtime protocols. The 18 built-in performance Plans provide six presets for each text protocol (`openai-chat`, `openai-responses`, and `anthropic-messages`): quick check, baseline, sustained load, capacity steps, uncached input, and cached suffix.
+Kimi Chat Cases are included in `openai-chat`. Some Cases in that directory also define native `openai-responses` or `anthropic-messages` behavior under the same ID; these definitions are not counted again. The 84 Suites cover all six runtime protocols. The 32 built-in Plans include 18 performance presets (six per text protocol: quick check, baseline, sustained load, capacity steps, uncached input, and cached suffix), three input-token staircase Plans, and 11 functional or mixed Plans.
 
 Built-in Cases are starting points, not a claim that every Case applies to every model. Counts include manual scenarios and disabled templates; only enabled automatic Cases can be selected for automated execution. Protocol compatibility is validated before a Plan can run.
 
@@ -251,7 +257,8 @@ The desktop and CLI share the same application services and domain rules. There 
 
 - LLM Test Studio calls configured endpoints to validate them; it is not a production traffic gateway, router, or provider SDK.
 - The product focuses on endpoint acceptance and comparative evidence, not on maintaining a public model leaderboard or profiling inference hardware below the API boundary.
-- The dedicated comparison workflow compares one logical model across multiple channels; a full arbitrary model-by-channel matrix is not yet a first-class workflow.
+- Historical report comparison accepts 2–8 functional or performance reports. Dataset evaluations use their own report reader and are not included in that matrix.
+- Dataset evaluation runs locally and requires `uv` plus preparation of the pinned Python environment. Its 24 entries include years and variants; they are not 24 unrelated benchmark families.
 - Case reuse is protocol-aware. A case cannot be attached to an incompatible model or channel.
 - Windows amd64 and macOS universal are the configured packaged desktop targets. Other platforms can build from source where Wails supports them.
 
