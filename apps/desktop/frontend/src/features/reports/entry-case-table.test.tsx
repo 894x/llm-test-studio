@@ -75,8 +75,8 @@ describe("protocol execution details", () => {
     }
     render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ExecutionDetails results={[result]} /></I18nextProvider>)
     const metrics = screen.getAllByRole("definition")[0].closest("dl")!
-    expect(within(metrics).getByText("123.25 ms")).toBeInTheDocument()
-    expect(within(metrics).getByText("4.5 ms/token")).toBeInTheDocument()
+    expect(within(metrics).getByText("123.25").closest("dd")).toHaveTextContent("123.25 ms")
+    expect(within(metrics).getByText("4.5").closest("dd")).toHaveTextContent("4.5 ms/token")
     expect(within(metrics).getByText("8")).toBeInTheDocument()
     expect(within(metrics).getByText("20")).toBeInTheDocument()
     expect(within(metrics).getByText("3")).toBeInTheDocument()
