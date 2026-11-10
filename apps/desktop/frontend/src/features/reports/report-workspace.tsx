@@ -282,7 +282,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
       inspector={isComparing ? undefined : selectedBenchmark ? <BenchmarkReportInspector run={selectedBenchmark.run} result={selectedBenchmark.result} onOpen={!isViewingReport ? () => setViewingReportID(selectedBenchmark.id) : undefined} /> : selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={{ schema_version: 1, reports: visibleReports }}
         onOpen={!isViewingReport ? () => openBatchReports(selectedComparison) : undefined} exportControls={comparisonReport.controls} recycleAction={recycleAction} /> : selected ? (
         <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={() => handleExport("copy")}
-          shortcuts={selected.source === "run" && selected.run_id ? renderRunShortcuts?.(selected.run_id, !isViewingReport) : null} recycleAction={recycleAction} />
+          shortcuts={selected.source === "run" && selected.run_id ? renderRunShortcuts?.(selected.run_id, !isViewingReport, { extraAction: recycleAction }) : null} recycleAction={recycleAction} />
       ) : <EmptyInspector label={t("noneSelected")} />}
       inspectorLabel={t("detailTitle")}
     >
@@ -802,13 +802,9 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
   const metrics = useMemo(() => detail?.source === "run" ? Object.entries(detail.report.metrics).slice(0, 8) : [], [detail])
   const quick = detail?.source === "quick_performance" ? detail.performance : null
   return <>
-    <InspectorHeader title={displayReportVerdict(report, t)} subtitle={report.id} trailing={
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <ConclusionBadge passed={report.passed} verdict={report.verdict} status={report.run_status} />
-        {recycleAction}
-      </div>
-    } />
-    {shortcuts}
+    <InspectorHeader title={displayReportVerdict(report, t)} subtitle={report.id}
+      trailing={<ConclusionBadge passed={report.passed} verdict={report.verdict} status={report.run_status} />} />
+    {shortcuts || (recycleAction ? <div className="border-t border-divider px-4 py-3">{recycleAction}</div> : null)}
     <Separator />
     <dl className="space-y-1 px-4 py-2">
       <InspectorRow label={t("inspector.source")} value={t(report.source === "quick_performance" ? "inspector.quickPerformance" : "inspector.planExecution")} />{report.run_id ? <InspectorRow label={t("inspector.run")} value={`${t(`status.${report.run_status}`)} · ${report.run_id}`} /> : null}<InspectorRow label={t("inspector.plan")} value={displayReportPlan(report, t)} /><InspectorRow label={t("inspector.modelChannel")} value={`${report.model_name} · ${report.channel_name}`} /><InspectorRow label={t(report.source === "quick_performance" ? "inspector.requestConclusion" : "inspector.caseConclusion")} value={t("inspector.conclusionValue", { passed: report.passed_case_count, total: report.verified_case_count, failed: report.failed_case_count, observed: report.observed_case_count, indeterminate: report.indeterminate_case_count })} /><InspectorRow label={t("inspector.issues")} value={t("inspector.items", { count: report.issue_count })} /><InspectorRow label={t("inspector.generated")} value={formatTimestamp(report.generated_at, locale)} />
