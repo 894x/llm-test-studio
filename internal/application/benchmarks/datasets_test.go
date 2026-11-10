@@ -64,6 +64,27 @@ func waitDataset(t *testing.T, service *Service, state string) DatasetDownload {
 	return DatasetDownload{}
 }
 
+func logDatasetCacheFailure(t *testing.T, service *Service) {
+	t.Helper()
+	inventory, inventoryErr := service.DatasetInventory()
+	_, cachePath, pathErr := service.datasetPaths("one")
+	resolved, resolveErr := filepath.EvalSymlinks(cachePath)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	size, files, _, inspectErr := inspectDatasetCache(ctx, cachePath, true)
+	t.Logf("dataset inventory: %+v, error: %v", inventory, inventoryErr)
+	t.Logf(
+		"dataset cache: path=%q, resolved=%q, size=%d, files=%d, errors: path=%v, resolve=%v, inspect=%v",
+		cachePath,
+		resolved,
+		size,
+		files,
+		pathErr,
+		resolveErr,
+		inspectErr,
+	)
+}
+
 func TestDatasetAutoDownloadReuseVerifyAndCacheCleanupPreserveReports(t *testing.T) {
 	directory := t.TempDir()
 	runtime := &datasetTestRuntime{testRuntime: &testRuntime{ready: true, execute: completeRuntime}}
@@ -88,6 +109,7 @@ func TestDatasetAutoDownloadReuseVerifyAndCacheCleanupPreserveReports(t *testing
 		t.Fatal(err)
 	}
 	if result := waitRun(t, service, run.ID); result.Status != "completed" {
+		logDatasetCacheFailure(t, service)
 		t.Fatalf("automatic download failed: %+v", result)
 	}
 	ready := waitDataset(t, service, "ready")
@@ -191,6 +213,7 @@ func TestDatasetCacheCannotBeChangedWhileEvaluationUsesIt(t *testing.T) {
 	select {
 	case <-started:
 	case <-time.After(5 * time.Second):
+		logDatasetCacheFailure(t, service)
 		t.Fatal("evaluation did not start")
 	}
 	for _, action := range []string{"verify", "remove"} {
