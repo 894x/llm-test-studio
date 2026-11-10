@@ -59,7 +59,10 @@ export function standaloneReportHTML(element: HTMLElement, reportID: string): st
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LLM Test Studio Report ${escapeHTML(reportID)}</title>
-<style>${styles}</style>
+<style>${styles}
+/* Standalone reports scroll in the browser viewport instead of the app panels. */
+body { overflow: auto; }
+</style>
 </head>
 <body>${element.outerHTML}</body>
 </html>`
