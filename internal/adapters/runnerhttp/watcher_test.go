@@ -87,7 +87,7 @@ func awaitObservationFor(t *testing.T, budget time.Duration, predicate func() bo
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			t.Fatal("background observation did not become current")
+			t.Fatalf("background observation did not become current within %s", budget)
 		case <-timer.C:
 		}
 	}
@@ -200,7 +200,9 @@ func TestBackgroundWatcherDiscoversSharedJobsAndReopensWithoutControllingExecuti
 	)
 	waitHTTPSettlement(t, firstClient)
 	requests = fixture.requests.Load()
-	awaitObservationFor(t, 20*time.Second, func() bool {
+	// Tail discovery, fact synchronization, and the History document scan can
+	// occupy separate five-second production polls. Allow I/O between turns.
+	awaitObservationFor(t, 45*time.Second, func() bool {
 		documents, err := desktop.ListRemoteDocuments(t.Context(), later.Job.JobID)
 		return err == nil && len(documents) == 1 && documents[0].Imported
 	})
