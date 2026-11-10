@@ -1245,6 +1245,14 @@ function reportFrontendFailure(
   }
 }
 
+export function reportWorkspaceRenderFailure(error: unknown): void {
+  reportWailsRuntimeFailure({
+    operation: "load_workspace",
+    error_code: "frontend_operation_failed",
+    detail: `render workspace: ${frontendDiagnosticDetail(error)}`.slice(0, 2048),
+  })
+}
+
 function reportWailsRuntimeFailure(diagnostic: FrontendDiagnostic): void {
 	const runtime = (window as typeof window & {
 		runtime?: { LogError?: (message: string) => void }
