@@ -376,10 +376,14 @@ func (s *Service) ensureDataset(ctx context.Context, id string) (string, error) 
 }
 
 func inspectDatasetCache(ctx context.Context, root string, checksum bool) (int64, int, string, error) {
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return 0, 0, "", err
+	}
 	var size int64
 	files := 0
 	digest := sha256.New()
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -400,7 +404,7 @@ func inspectDatasetCache(ctx context.Context, root string, checksum bool) (int64
 		if err != nil {
 			return err
 		}
-		relative, err := filepath.Rel(root, resolved)
+		relative, err := filepath.Rel(resolvedRoot, resolved)
 		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 			return ErrFormat
 		}

@@ -85,6 +85,20 @@ func logDatasetCacheFailure(t *testing.T, service *Service) {
 	)
 }
 
+func TestDatasetCacheInspectionRejectsLinksOutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.json")
+	if err := os.WriteFile(outside, []byte("outside"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "escape.json")); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+	if _, _, _, err := inspectDatasetCache(t.Context(), root, true); !errors.Is(err, ErrFormat) {
+		t.Fatalf("outside cache file accepted: %v", err)
+	}
+}
+
 func TestDatasetAutoDownloadReuseVerifyAndCacheCleanupPreserveReports(t *testing.T) {
 	directory := t.TempDir()
 	runtime := &datasetTestRuntime{testRuntime: &testRuntime{ready: true, execute: completeRuntime}}
