@@ -32,12 +32,27 @@ describe("report comparison", () => {
     await user.click(screen.getByRole("button", { name: "对比报告（2）" }))
     const table = await screen.findByRole("table", { name: "报告对比结果" })
     expect(within(table).getAllByRole("columnheader")).toHaveLength(3)
-    expect(table.querySelectorAll("time")).toHaveLength(2)
+    expect(table.querySelectorAll("time")).toHaveLength(0)
+    expect((screen.getByRole("combobox", { name: "基准报告" }) as HTMLInputElement).value).not.toMatch(/2026|GMT/)
     expect(table).toHaveTextContent("新增失败")
     await user.click(screen.getByRole("checkbox", { name: "仅看差异" }))
     expect(screen.queryByText("Unchanged case")).not.toBeInTheDocument()
-    await user.click(screen.getAllByRole("button", { name: "查看证据" })[0])
+    expect(within(table).queryByText("E2E")).not.toBeInTheDocument()
+    expect(screen.queryByRole("table", { name: "逐条断言结果" })).not.toBeInTheDocument()
+    const details = screen.getByRole("button", { name: "Reject invalid parameter" })
+    const cells = details.closest("tr")!.querySelectorAll(":scope > td")
+    expect(within(cells[0] as HTMLElement).getAllByRole("button")).toHaveLength(1)
+    expect(within(cells[1] as HTMLElement).queryByRole("button")).not.toBeInTheDocument()
+    expect(within(cells[2] as HTMLElement).queryByRole("button")).not.toBeInTheDocument()
+    expect(details).toHaveAttribute("aria-expanded", "false")
+    await user.click(details)
+    expect(details).toHaveAttribute("aria-expanded", "true")
+    expect(within(table).getAllByText("E2E").length).toBeGreaterThan(0)
     expect(screen.getAllByRole("table", { name: "逐条断言结果" }).length).toBeGreaterThan(0)
+    await user.click(details)
+    expect(details).toHaveAttribute("aria-expanded", "false")
+    expect(within(table).queryByText("E2E")).not.toBeInTheDocument()
+    expect(screen.queryByRole("table", { name: "逐条断言结果" })).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "返回报告列表" }))
     expect(screen.getByRole("searchbox")).toHaveValue("no matching report")
     expect(screen.getByRole("button", { name: "对比报告（2）" })).toBeEnabled()
@@ -52,8 +67,9 @@ describe("report comparison", () => {
     const rendered = render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportComparisonView reportIDs={data.ids} compareReports={compare} saveReportExport={vi.fn()} copyReportPNG={vi.fn()} /></I18nextProvider>)
     await screen.findByRole("table", { name: "报告对比结果" })
     const baseline = screen.getByRole("combobox", { name: "基准报告" })
+    const label = (baseline as HTMLInputElement).value
     await user.clear(baseline)
-    await user.type(baseline, "2026")
+    await user.type(baseline, label)
     const options = await screen.findAllByRole("option")
     await user.click(options[1])
     await waitFor(() => expect(compare).toHaveBeenLastCalledWith(data.ids, data.ids[1]))
@@ -74,6 +90,41 @@ describe("report comparison", () => {
     await waitFor(() => expect(save).toHaveBeenCalledOnce())
     const exported = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(save.mock.calls[0][2]), char => char.charCodeAt(0))))
     expect(exported.baseline_id).toBe(data.ids[0]); expect(exported.reports).toHaveLength(2)
+  })
+
+  it("uses the same compact results and expanded details for visual exports and copying", async () => {
+    const data = fixture(); const user = userEvent.setup()
+    const save = vi.fn(async () => true); const copy = vi.fn(async () => {})
+    const documents: HTMLElement[] = []
+    const visual = vi.fn<NonNullable<React.ComponentProps<typeof ReportComparisonView>["exportVisualReport"]>>(async (element, format) => {
+      documents.push(element.cloneNode(true) as HTMLElement)
+      return { blob: new Blob(["report"], { type: "image/png" }), filename: `comparison.${format}`, mediaType: "image/png" }
+    })
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportComparisonView reportIDs={data.ids} compareReports={data.compareReports}
+      saveReportExport={save} copyReportPNG={copy} exportVisualReport={visual} /></I18nextProvider>)
+    const table = await screen.findByRole("table", { name: "报告对比结果" })
+    fireEvent.click(screen.getByText("报告导出"))
+    for (const [index, label] of ["HTML", "PNG", "PDF"].entries()) {
+      await user.click(screen.getByRole("button", { name: label }))
+      await waitFor(() => expect(save).toHaveBeenCalledTimes(index + 1))
+    }
+    await user.click(screen.getByRole("button", { name: "复制 PNG" }))
+    await waitFor(() => expect(copy).toHaveBeenCalledOnce())
+    expect(visual.mock.calls.map(call => call[1])).toEqual(["html", "png", "pdf", "png"])
+    for (const document of documents) {
+      expect(document).toHaveTextContent("新增失败")
+      expect(document).toHaveTextContent("Unchanged case")
+      expect(document.querySelector("thead")).not.toHaveTextContent(/2026|GMT/)
+      expect(document.querySelector("time")).toBeNull()
+      expect(document.querySelector("button")).toBeNull()
+      expect(document).not.toHaveTextContent("E2E")
+    }
+    await user.click(within(table).getByRole("button", { name: "Reject invalid parameter" }))
+    await user.click(screen.getByRole("button", { name: "HTML" }))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(4))
+    expect(documents[4]).toHaveTextContent("E2E")
+    expect(within(documents[4]).getAllByRole("table", { name: "逐条断言结果" }).length).toBeGreaterThan(0)
+    expect(documents[4].querySelector("thead")).not.toHaveTextContent(/2026|GMT/)
   })
 
   it("accepts the closed DTO and rejects substituted identities or invalid changes", () => {

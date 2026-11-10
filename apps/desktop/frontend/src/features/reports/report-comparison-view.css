@@ -1,0 +1,45 @@
+.report-comparison-channel {
+  container: report-comparison-channel / inline-size;
+  min-width: 0;
+}
+
+.report-comparison-channel-model {
+  margin-top: 4px;
+}
+
+@container report-comparison-channel (max-width: 144px) {
+  .report-comparison-channel-heading {
+    position: relative;
+    height: 152px;
+  }
+
+  .report-comparison-channel-label {
+    position: absolute;
+    bottom: 24px;
+    left: calc(50% - 19px);
+    width: 124px;
+    line-height: 14px;
+    transform: rotate(-60deg);
+    transform-origin: left bottom;
+  }
+
+  .report-comparison-channel-name,
+  .report-comparison-channel-model {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .report-comparison-channel-model {
+    margin-top: 0;
+  }
+
+  .report-comparison-channel-baseline {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    text-align: center;
+    font-size: 11px;
+  }
+}
