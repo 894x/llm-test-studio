@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/894x/llm-test-studio/apps/desktop/internal/updater"
+
 	native "github.com/894x/llm-test-studio/apps/desktop/internal/native"
 	clipboard "github.com/894x/llm-test-studio/apps/desktop/internal/native/clipboard"
 	"github.com/894x/llm-test-studio/internal/application/benchmarks"
@@ -32,6 +34,9 @@ type DesktopApp struct {
 	started                  bool
 	stopping                 bool
 	stopped                  bool
+	updatePreparing          bool
+	updater                  *updater.Service
+	quitForUpdate            func(context.Context)
 	active                   int
 	ctx                      context.Context
 	cancel                   context.CancelFunc

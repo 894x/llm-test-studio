@@ -5,6 +5,7 @@ import { benchmarkPreviewClient } from "@/features/benchmarks/preview-client"
 import { parseStartupProgress, READY_STARTUP, type StartupProgress } from "./startup-progress"
 import { parseDatabaseRecoveryResult, type DatabaseRecoveryResult } from "./database-recovery-data"
 import { DesktopDataError } from "@/app/data-error"
+import { parseDesktopUpdate, UNAVAILABLE_UPDATE, type DesktopUpdateClient } from "@/features/updates/data"
 import { parseReportComparison, type ReportComparison } from "@/features/reports/report-comparison-data"
 import { EMPTY_REMOTE_NODES, parseRemoteNodes, parseRemoteNodeUpgrade, parseNullableRemoteNodeUpgrade,
   type StartRemoteNodeUpgradeCommand, type RemoteNodeUpgradeAction, type RemoteNodeUpgradeView, type RemoteNodesSnapshot, type RemoteNodeDraft,
@@ -174,7 +175,7 @@ export function isCatalogSavedRefreshFailure(error: unknown): error is DesktopCl
   return error instanceof DesktopClientError && error.code === "catalog_saved_refresh_failed"
 }
 
-export interface DesktopClient extends CatalogActions, BenchmarkClient {
+export interface DesktopClient extends CatalogActions, BenchmarkClient, DesktopUpdateClient {
   previewHistoryRecycle(target: HistoryRecycleTarget): Promise<HistoryRecyclePreview>
   getRecycledHistory(after: string): Promise<RecycledHistoryPage>
   recycleHistory(target: HistoryRecycleTarget): Promise<RecycledHistoryEntry>
@@ -266,6 +267,13 @@ export type DesktopDiagnosticsSnapshot = {
 }
 
 type WailsDesktopBinding = {
+  GetDesktopUpdate(): Promise<unknown>
+  CheckDesktopUpdate(): Promise<unknown>
+  DownloadDesktopUpdate(): Promise<unknown>
+  CancelDesktopUpdate(): Promise<unknown>
+  SetDesktopUpdatePreferences(autoCheck: boolean, skip: boolean): Promise<unknown>
+  InstallDesktopUpdate(): Promise<unknown>
+  OpenDesktopUpdateRelease(): Promise<unknown>
   GetBenchmarkDatasets(): Promise<unknown>
   ManageBenchmarkDataset(id: string, action: string): Promise<unknown>
   GetBenchmarkCatalog(): Promise<unknown>
@@ -357,6 +365,7 @@ type FrontendDiagnostic = {
 }
 
 const REQUIRED_WAILS_BINDING_METHODS = [
+  "GetDesktopUpdate", "CheckDesktopUpdate", "DownloadDesktopUpdate", "CancelDesktopUpdate", "SetDesktopUpdatePreferences", "InstallDesktopUpdate", "OpenDesktopUpdateRelease",
   "GetBenchmarkDatasets", "ManageBenchmarkDataset",
   "GetBenchmarkCatalog", "PrepareBenchmarkRuntime", "StartBenchmark", "GetBenchmarks", "GetBenchmark", "GetBenchmarkReportOwner", "CancelBenchmark", "GetBenchmarkReport", "ExportBenchmarkReport",
   "PreviewHistoryRecycle", "GetRecycledHistory", "RecycleHistory", "RestoreHistory",
@@ -420,6 +429,13 @@ export function createFixtureClient(
     async restoreHistory() { throw new DesktopClientError("history_recycle_unavailable") },
     async createLocalFileSelection() { throw new DesktopClientError("file_input_unavailable") },
     async releaseLocalFileSelection() { throw new DesktopClientError("file_input_unavailable") },
+    async getDesktopUpdate() { return { ...UNAVAILABLE_UPDATE } },
+    async checkDesktopUpdate() { return { ...UNAVAILABLE_UPDATE } },
+    async downloadDesktopUpdate() { return { ...UNAVAILABLE_UPDATE } },
+    async cancelDesktopUpdate() { return { ...UNAVAILABLE_UPDATE } },
+    async setDesktopUpdatePreferences() { return { ...UNAVAILABLE_UPDATE } },
+    async installDesktopUpdate() { return { ...UNAVAILABLE_UPDATE } },
+    async openDesktopUpdateRelease() {},
     async getDiagnostics() {
       return fixtureDiagnosticsSnapshot()
     },
@@ -661,6 +677,13 @@ function createLazyFixtureClient(): DesktopClient {
     restoreHistory: async target => (await client).restoreHistory(target),
     createLocalFileSelection: async command => (await client).createLocalFileSelection(command),
     releaseLocalFileSelection: async id => (await client).releaseLocalFileSelection(id),
+    getDesktopUpdate: async () => (await client).getDesktopUpdate(),
+    checkDesktopUpdate: async () => (await client).checkDesktopUpdate(),
+    downloadDesktopUpdate: async () => (await client).downloadDesktopUpdate(),
+    cancelDesktopUpdate: async () => (await client).cancelDesktopUpdate(),
+    setDesktopUpdatePreferences: async (autoCheck, skip) => (await client).setDesktopUpdatePreferences(autoCheck, skip),
+    installDesktopUpdate: async () => (await client).installDesktopUpdate(),
+    openDesktopUpdateRelease: async () => (await client).openDesktopUpdateRelease(),
     getDiagnostics: async () => (await client).getDiagnostics(),
     getRemoteNodes: async () => (await client).getRemoteNodes(),
     saveRemoteNode: async command => (await client).saveRemoteNode(command),
@@ -884,6 +907,13 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
         catch { /* Reject malformed progress at the boundary. */ }
       }) ?? (() => {})
     },
+    getDesktopUpdate: () => callBinding(() => binding.GetDesktopUpdate(), parseDesktopUpdate),
+    checkDesktopUpdate: () => callBinding(() => binding.CheckDesktopUpdate(), parseDesktopUpdate),
+    downloadDesktopUpdate: () => callBinding(() => binding.DownloadDesktopUpdate(), parseDesktopUpdate),
+    cancelDesktopUpdate: () => callBinding(() => binding.CancelDesktopUpdate(), parseDesktopUpdate),
+    setDesktopUpdatePreferences: (autoCheck, skip) => callBinding(() => binding.SetDesktopUpdatePreferences(autoCheck, skip), parseDesktopUpdate),
+    installDesktopUpdate: () => callBinding(() => binding.InstallDesktopUpdate(), parseDesktopUpdate),
+    openDesktopUpdateRelease: () => callBinding(() => binding.OpenDesktopUpdateRelease(), parseVoid),
     getDiagnostics: async () =>
       callBinding(() => binding.GetDiagnostics(), parseDiagnosticsSnapshot),
     openDiagnosticsDirectory: async () =>

@@ -184,7 +184,7 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 	for app.starting && !app.stopping && !app.stopped {
 		app.startupDone.Wait()
 	}
-	if app.stopping || app.stopped {
+	if app.stopping || app.stopped || app.updatePreparing {
 		return desktopLease{}, ErrDesktopStopped
 	}
 	if !app.started {

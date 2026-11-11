@@ -1,6 +1,7 @@
 import { protocolReportFixture } from "@/test/protocol-report-fixture"
 import { reportComparisonFixture } from "@/test/report-comparison-fixture"
 import { benchmarkPreviewClient } from "@/features/benchmarks/preview-client"
+import { UNAVAILABLE_UPDATE } from "@/features/updates/data"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
@@ -1252,6 +1253,13 @@ function installBinding(
 ) {
   const benchmark = benchmarkPreviewClient()
   const binding = {
+    GetDesktopUpdate: vi.fn(async (): Promise<unknown> => ({ ...UNAVAILABLE_UPDATE })),
+    CheckDesktopUpdate: vi.fn(async (): Promise<unknown> => ({ ...UNAVAILABLE_UPDATE })),
+    DownloadDesktopUpdate: vi.fn(async (): Promise<unknown> => ({ ...UNAVAILABLE_UPDATE })),
+    CancelDesktopUpdate: vi.fn(async (): Promise<unknown> => ({ ...UNAVAILABLE_UPDATE })),
+    SetDesktopUpdatePreferences: vi.fn(async (_autoCheck: boolean, _skip: boolean): Promise<unknown> => ({ ...UNAVAILABLE_UPDATE })),
+    InstallDesktopUpdate: vi.fn(async (): Promise<unknown> => ({ ...UNAVAILABLE_UPDATE })),
+    OpenDesktopUpdateRelease: vi.fn(async () => undefined),
     GetBenchmarkCatalog: vi.fn(benchmark.getBenchmarkCatalog), PrepareBenchmarkRuntime: vi.fn(benchmark.prepareBenchmarkRuntime),
     GetBenchmarkDatasets: vi.fn(benchmark.getBenchmarkDatasets), ManageBenchmarkDataset: vi.fn(benchmark.manageBenchmarkDataset),
     GetBenchmarkReportOwner: vi.fn(benchmark.getBenchmarkReportOwner),

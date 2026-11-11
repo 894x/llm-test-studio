@@ -544,6 +544,14 @@ func (s *Service) Cancel(id string) error {
 	return nil
 }
 
+// HasBackgroundWork includes preparation and downloads, which must also finish
+// before an in-app update can safely close the desktop.
+func (s *Service) HasBackgroundWork() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.preparing || len(s.active) > 0 || len(s.downloads) > 0
+}
+
 func (s *Service) Close() error {
 	s.mu.Lock()
 	s.closed = true

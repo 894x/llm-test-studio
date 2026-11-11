@@ -34,11 +34,12 @@ import { ZoomFeedback } from "./zoom-feedback"
 import { useWindowControls } from "./use-window-controls"
 import { WindowControls } from "./window-controls"
 
-function InterfaceSettingsMenu({ zoom }: { zoom: InterfaceZoom }) {
+function InterfaceSettingsMenu({ zoom, onOpenUpdates, updateAvailable }: { zoom: InterfaceZoom; onOpenUpdates?: (trigger: HTMLElement | null) => void; updateAvailable?: boolean }) {
   const { theme, setTheme, colorTheme, setColorTheme } = useTheme()
   const { preference, setPreference } = useLanguage()
   const { t } = useTranslation("shell")
   const label = t(`theme.${theme}`)
+  const settingsTrigger = useRef<HTMLButtonElement>(null)
 
   return (
     <DropdownMenu>
@@ -46,6 +47,7 @@ function InterfaceSettingsMenu({ zoom }: { zoom: InterfaceZoom }) {
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
             <Button
+              ref={settingsTrigger}
               variant="ghost"
               size="icon-sm"
               aria-label={t("settings.trigger", { theme: label })}
@@ -57,6 +59,10 @@ function InterfaceSettingsMenu({ zoom }: { zoom: InterfaceZoom }) {
         <TooltipContent side="bottom">{t("settings.tooltip")}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="end" className="w-44">
+        {onOpenUpdates ? <>
+          <DropdownMenuItem onSelect={() => onOpenUpdates(settingsTrigger.current)}>{t("updates.title")}{updateAvailable ? <span className="ml-auto size-1.5 rounded-full bg-primary" aria-label={t("updates.available")} /> : null}</DropdownMenuItem>
+          <DropdownMenuSeparator />
+        </> : null}
         <DropdownMenuLabel>{t("settings.language")}</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={preference}
@@ -119,12 +125,16 @@ export function DesktopShell({
   activePage,
   onNavigate,
   onOpenRecycleBin,
+  onOpenUpdates,
+  updateAvailable,
   actions,
   children,
 }: {
   activePage: DesktopPage
   onNavigate: (page: DesktopPage) => void
   onOpenRecycleBin?: () => void
+  onOpenUpdates?: (trigger: HTMLElement | null) => void
+  updateAvailable?: boolean
   actions?: ReactNode
   children: ReactNode
 }) {
@@ -207,7 +217,8 @@ export function DesktopShell({
             <TooltipTrigger asChild><Button size="xs" variant="ghost" className="tabular-nums" aria-label={t("zoom.resetAria", { percent: zoom.percent })} onClick={() => zoom.change(0)}>{zoom.percent}%</Button></TooltipTrigger>
             <TooltipContent>{t("zoom.reset")}</TooltipContent>
           </Tooltip> : null}
-          <InterfaceSettingsMenu zoom={zoom} />
+          {updateAvailable && onOpenUpdates ? <Button variant="ghost" size="xs" onClick={event => onOpenUpdates(event.currentTarget)}>{t("updates.available")}</Button> : null}
+          <InterfaceSettingsMenu zoom={zoom} onOpenUpdates={onOpenUpdates} updateAvailable={updateAvailable} />
           {actions}
         </div>
         <Separator orientation="vertical" className="mx-3 h-4 data-vertical:self-center" />

@@ -262,16 +262,28 @@ jobs:
           cd release-assets
           sha256sum ./* > SHA256SUMS.txt
 
-      - name: Create or update GitHub Release
+      - name: Publish complete GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          set -euo pipefail
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            is_draft="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft')"
+            if [[ "$is_draft" != "true" ]]; then
+              echo 'A published release must not be overwritten. Publish a new version tag.' >&2
+              exit 1
+            fi
             gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
           else
             gh release create "$GITHUB_REF_NAME" release-assets/* \
+              --draft \
               --verify-tag \
               --title "$GITHUB_REF_NAME" \
               --generate-notes
+          fi
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease=false --latest
           fi

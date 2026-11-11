@@ -74,5 +74,51 @@
     "sensitiveData": "Sensitive data",
     "redaction": "Redacted before writing",
     "openFolder": "Open log folder"
+  },
+  "updates": {
+    "title": "Software updates",
+    "description": "Get stable versions from GitHub Releases.",
+    "available": "Update available",
+    "current": "Current version",
+    "latest": "Latest version",
+    "unknown": "Unknown",
+    "working": "Working…",
+    "loading": "Reading update status…",
+    "readError": "Unable to read update status. Check again to retry.",
+    "autoCheck": "Check for updates at startup",
+    "downloadProgress": "Update download progress",
+    "progress": "{{percent}}% · {{downloaded}} / {{total}} MB",
+    "releaseNotes": "Release notes",
+    "macInstall": "The installer is verified. Open it and drag the new app into Applications. Quit this app first if prompted.",
+    "installHint": "Save unsaved edits and wait for tests and background downloads to finish. Installed copies may request system permission.",
+    "confirm": "I have saved my edits and agree to quit and install.",
+    "check": "Check for updates",
+    "cancel": "Cancel download",
+    "skip": "Skip this version",
+    "download": "Download update",
+    "openInstaller": "Open installer",
+    "install": "Restart and update",
+    "states": {
+      "idle": "Updates have not been checked",
+      "checking": "Checking for updates…",
+      "available": "A new version is available",
+      "up_to_date": "You have the latest stable version",
+      "skipped": "Version skipped; manual download is still available",
+      "downloading": "Downloading update…",
+      "ready": "Download complete and verified",
+      "installing": "Quitting to install the update…",
+      "error": "Update incomplete; you can retry",
+      "unsupported": "In-app updates are unavailable for development builds or this platform"
+    },
+    "errors": {
+      "network": "Unable to fetch a complete release or package. Check your connection and retry.",
+      "integrity": "Package verification failed. Nothing was installed. Download again.",
+      "storage": "Unable to save update files or preferences. Check disk space and permissions.",
+      "install_failed": "Unable to start installation. The current app is unchanged. Retry or install manually from GitHub Releases.",
+      "tasks_active": "Tests, operations, or background downloads are still active. Wait before installing.",
+      "tasks_unknown": "Unable to confirm all tasks have ended. Try again later.",
+      "unavailable": "Updates are unavailable. Install manually from GitHub Releases."
+    },
+    "releasePage": "Release page"
   }
 }

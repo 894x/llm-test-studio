@@ -52,6 +52,8 @@ import {
   DesktopShell,
 } from "@/features/shell/desktop-shell"
 import { DiagnosticsSheet } from "@/features/shell/diagnostics-sheet"
+import { UpdateSheet } from "@/features/updates/update-sheet"
+import { useDesktopUpdates } from "@/features/updates/use-desktop-updates"
 import {
   DESKTOP_PAGES,
   desktopPageFromHash,
@@ -91,6 +93,9 @@ function AppWorkspace({
   onDatabaseRecovered: () => void
 }) {
   const startup = useStartupProgress(client)
+  const updates = useDesktopUpdates(client)
+  const [updatesOpen, setUpdatesOpen] = useState(false)
+  const updatesTrigger = useRef<HTMLElement | null>(null)
   const { t: tx } = useTranslation()
   const { t, i18n } = useTranslation(["app", "runs"])
   const [page, setPage] = useState<DesktopPage>(() =>
@@ -764,6 +769,8 @@ function AppWorkspace({
       activePage={page}
       onNavigate={navigate}
       onOpenRecycleBin={openRecycleBin}
+      onOpenUpdates={trigger => { updatesTrigger.current = trigger; setUpdatesOpen(true) }}
+      updateAvailable={updates.snapshot?.status === "available" || updates.snapshot?.status === "ready"}
       actions={
 				<div className="flex items-center gap-1">
 					<DiagnosticsSheet client={client} />
@@ -800,6 +807,7 @@ function AppWorkspace({
         )}
         onOpenLogs={() => { void openLogs() }}
       />
+      <UpdateSheet updates={updates} open={updatesOpen} onOpenChange={setUpdatesOpen} returnFocus={updatesTrigger} />
     </DesktopShell>
   )
 }

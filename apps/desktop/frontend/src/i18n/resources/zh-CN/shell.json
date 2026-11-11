@@ -74,5 +74,51 @@
     "sensitiveData": "敏感信息",
     "redaction": "写入前自动脱敏",
     "openFolder": "打开日志目录"
+  },
+  "updates": {
+    "title": "软件更新",
+    "description": "从 GitHub Releases 获取稳定版本。",
+    "available": "发现新版本",
+    "current": "当前版本",
+    "latest": "最新版本",
+    "unknown": "未知",
+    "working": "正在处理…",
+    "loading": "正在读取更新状态…",
+    "readError": "无法读取更新状态，请重试检查。",
+    "autoCheck": "启动时自动检查更新",
+    "downloadProgress": "更新下载进度",
+    "progress": "{{percent}}% · {{downloaded}} / {{total}} MB",
+    "releaseNotes": "更新说明",
+    "macInstall": "安装包已验证。打开后将新版拖到“应用程序”完成安装；如系统要求，请先退出当前程序。",
+    "installHint": "重启安装前请保存未保存的编辑，并等待测试与后台下载结束。安装版可能显示系统权限确认。",
+    "confirm": "我已保存编辑，确认退出并安装更新。",
+    "check": "检查更新",
+    "cancel": "取消下载",
+    "skip": "跳过此版本",
+    "download": "下载更新",
+    "openInstaller": "打开安装包",
+    "install": "重启并更新",
+    "states": {
+      "idle": "尚未检查更新",
+      "checking": "正在检查更新…",
+      "available": "有新版本可下载",
+      "up_to_date": "当前已是最新稳定版本",
+      "skipped": "已跳过此版本，仍可手动下载",
+      "downloading": "正在下载更新…",
+      "ready": "下载完成，校验通过",
+      "installing": "正在退出并安装更新…",
+      "error": "更新未完成，可重试",
+      "unsupported": "开发版或此平台暂不支持软件内更新"
+    },
+    "errors": {
+      "network": "无法获取完整发布信息或下载包。请检查网络后重试。",
+      "integrity": "更新包校验失败，未安装。请重新下载。",
+      "storage": "无法保存更新文件或设置，请检查磁盘空间和目录权限。",
+      "install_failed": "无法启动安装流程，当前程序保持不变。请重试或从 GitHub Release 手动安装。",
+      "tasks_active": "仍有测试、操作或后台下载进行中，请结束后再安装。",
+      "tasks_unknown": "暂时无法确认全部任务均已结束，请稍后重试。",
+      "unavailable": "更新服务暂不可用，请从 GitHub Release 手动安装。"
+    },
+    "releasePage": "发布页面"
   }
 }
