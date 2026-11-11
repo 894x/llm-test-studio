@@ -136,7 +136,7 @@ function reportCaseRowID(entryID: string, caseID: string): string {
 export function VerificationBadge({ status }: { status: VerificationStatus }) {
   const { t } = useTranslation("reports")
   const style = status === "failed" ? "border-destructive/25 bg-destructive/5 text-destructive"
-    : status === "passed" ? "border-success/25 bg-success-soft text-success-strong"
+    : status === "passed" ? "border-outcome-pass/25 bg-outcome-pass/10 text-outcome-pass"
     : status === "indeterminate" ? "border-warning/25 bg-warning-soft text-warning-strong" : "text-muted-foreground"
   return <Badge variant="outline" className={style}>{t(`protocolDesign.verdict.${status}`)}</Badge>
 }
