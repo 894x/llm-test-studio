@@ -140,7 +140,7 @@
   "comparison": {
     "title": "渠道对比报告",
     "status": "对比状态",
-    "view": "查看对比报告",
+    "view": "查看报告",
     "viewAria": "查看渠道对比报告：{{model}}",
     "caseTable": "渠道对比用例结果",
     "channelControls": "显示的对比渠道",

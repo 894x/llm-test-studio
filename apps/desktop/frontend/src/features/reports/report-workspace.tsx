@@ -306,7 +306,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
       description={isComparing ? t("compare.description") : isViewingReport ? t("detailDescription", { name: selectedVerdict }) : t("description")}
       actions={isComparing || isViewingReport ? <div className="flex items-center gap-2">
         {isViewingReport && !isComparing && selected && compareReports ? <Button variant="secondary" size="sm" onClick={() => { setCheckedReportIDs(current => [...new Set([selected.id, ...current])].slice(0, MAX_COMPARISON_REPORTS)); setViewingReportID("") }}><GitCompareArrowsIcon />{t("compare.add")}</Button> : null}
-        <Button variant="outline" size="sm" onClick={() => { setViewingReportID(""); setComparingReportIDs([]); requestAnimationFrame(() => compareTrigger.current?.focus()) }}><ArrowLeftIcon />{t("back")}</Button></div> : (
+        <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon-sm" aria-label={t("back")} onClick={() => { setViewingReportID(""); setComparingReportIDs([]); requestAnimationFrame(() => compareTrigger.current?.focus()) }}><ArrowLeftIcon aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{t("back")}</TooltipContent></Tooltip></TooltipProvider></div> : (
         <div className="flex items-center gap-2">
           {comparisonControl}{benchmarks.next ? <Button size="sm" variant="ghost" disabled={benchmarks.pending} onClick={() => void benchmarks.loadMore()}>{t("benchmarks:more")}</Button> : null}
           <CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={hasFilters ? t("filters.shown", { count: search.matches, total: items.length }) : t("count", { count: items.length })} />
@@ -389,7 +389,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
                   return <TableRow key={item.id} data-state={item.id === selectedItem?.id ? "selected" : undefined} aria-selected={item.id === selectedItem?.id}
                     className="h-11" onClick={() => setSelectedID(item.id)}>
                     {compareReports ? <TableCell /> : null}
-                    <TableCell className="py-1 pl-2 text-xs">{t(`status.${comparison.status}`)}</TableCell>
+                    <TableCell className="py-1 pl-2 text-xs"><Badge variant="secondary">{t(`status.${comparison.status}`)}</Badge></TableCell>
                     <TableCell className="py-1 text-xs"><div className="font-medium">{t("comparison.title")}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.plan_name}</div></TableCell>
                     <TableCell className="py-1 text-xs"><div>{comparison.model_name}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.channels.map(channel => channel.channel_name).join(" / ")}</div></TableCell>
                     <TableCell className="py-1 text-[11px] tabular-nums">{comparison.channels.map(channel => {

@@ -140,7 +140,7 @@
   "comparison": {
     "title": "Channel comparison report",
     "status": "Comparison status",
-    "view": "View comparison",
+    "view": "View report",
     "viewAria": "View channel comparison: {{model}}",
     "caseTable": "Channel comparison cases",
     "channelControls": "Visible comparison channels",

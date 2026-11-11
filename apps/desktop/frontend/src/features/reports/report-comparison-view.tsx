@@ -101,7 +101,7 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
       <label className="flex items-center gap-2 text-xs"><Checkbox checked={onlyDifferences} disabled={Boolean(exporting)} onCheckedChange={checked => setOnlyDifferences(checked === true)} />{t("compare.onlyDifferences")}</label>
       <div className="ml-auto">
         <Popover>
-          <PopoverTrigger asChild><Button variant="secondary" size="sm" disabled={!data}><DownloadIcon data-icon="inline-start" />{t("inspector.exportAria")}</Button></PopoverTrigger>
+          <TooltipProvider><Tooltip><TooltipTrigger asChild><PopoverTrigger asChild><Button variant="secondary" size="icon-sm" aria-label={t("inspector.exportAria")} disabled={!data}><DownloadIcon aria-hidden="true" /></Button></PopoverTrigger></TooltipTrigger><TooltipContent>{t("inspector.exportAria")}</TooltipContent></Tooltip></TooltipProvider>
           <PopoverContent align="end" aria-label={t("inspector.exportAria")} className="w-80 max-w-[calc(100vw/var(--interface-zoom,1)-32px)]">
             <h2 className="px-4 pt-3 text-sm font-semibold">{t("inspector.exportAria")}</h2>
             <ReportExportControls watermark={watermark} onWatermarkChange={setWatermark} exporting={exporting} error={exportError}

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { ChevronLeft } from "lucide-react"
+import DownloadIcon from "lucide-react/dist/esm/icons/download.mjs"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { publicDesktopErrorMessage } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -83,7 +85,7 @@ export function BenchmarkReportBody({ runID, result, client, saveExport }: {
   return <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1 px-4">
     <article className="min-w-0 space-y-5 pb-6 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-semibold">{t("reportTitle", { dataset: result.dataset.name })}</h2><p className="mt-1 text-xs text-muted-foreground">{report?.target.model} · {report?.target.channel_name}</p></div>
-        <Button size="sm" variant="secondary" disabled={exporting || isBenchmarkActive(result.status)} onClick={() => void exported()}>{exporting ? <Spinner /> : null}{t(exporting ? "exporting" : "export")}</Button></div>
+        <TooltipProvider><Tooltip><TooltipTrigger asChild><Button size="icon-sm" variant="secondary" aria-label={t(exporting ? "exporting" : "export")} disabled={exporting || isBenchmarkActive(result.status)} onClick={() => void exported()}>{exporting ? <Spinner /> : <DownloadIcon aria-hidden="true" />}</Button></TooltipTrigger><TooltipContent>{t(exporting ? "exporting" : "export")}</TooltipContent></Tooltip></TooltipProvider></div>
       {error ? <Alert variant="destructive"><AlertDescription>{error}<Button size="sm" variant="ghost" onClick={() => void read(after)}>{t("retry")}</Button></AlertDescription></Alert> : null}
       {pending ? <div role="status" className="flex items-center gap-2 text-xs"><Spinner />{t("samples")}</div> : null}
       <div className="flex flex-wrap items-center gap-4"><BenchmarkStatus status={result.status} /><BenchmarkProgress dataset={result} /></div>

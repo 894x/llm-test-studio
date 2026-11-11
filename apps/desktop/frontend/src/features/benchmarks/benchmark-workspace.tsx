@@ -4,6 +4,7 @@ import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
 import { publicDesktopErrorMessage } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
@@ -35,6 +36,7 @@ export function BenchmarkProgress({ dataset }: { dataset: BenchmarkDatasetRun })
 
 export function BenchmarkStatus({ status }: { status: BenchmarkRun["status"] }) {
   const { t } = useTranslation("benchmarks")
+  if (status === "completed") return <Badge variant="secondary">{t(`statuses.${status}`)}</Badge>
   return <span className={`text-xs ${status === "failed" ? "text-destructive" : isBenchmarkActive(status) ? "text-info-strong" : "text-muted-foreground"}`}>{t(`statuses.${status}`)}</span>
 }
 
