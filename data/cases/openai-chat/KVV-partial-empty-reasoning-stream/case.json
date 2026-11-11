@@ -2,8 +2,8 @@
   "schema_version": 3,
   "id": "93299837-4137-4ef7-887e-c04ecc0900ef",
   "key": "kvv.partial_empty_reasoning.stream",
-  "name": "KVV · Partial Token · partial 预填（空 reasoning + content） · stream",
-  "description": "目的：比较 KVV k3_partial_partial_think_empty_reasoning 原始 Partial 请求的 prompt token 基准，接受 91 至 94。来源：Moonshot KVV 66092cf cases.partial.jsonl。范围：K3 基准观察；K3.1 Pro 复用相同基准用于对比，不代表已验证的模型专属计数。只增加 stream=true，保留原始空/缺失字段；不单独验证语义续写。显式选择后运行，模型或模板差异可能导致不匹配，不能单凭差异断言计费错误或 Partial 不支持。",
+  "name": "KVV · Partial 续写 · partial 预填（空 reasoning + content） · stream",
+  "description": "目的：检查 Partial 请求能否返回后续正文，不比较 token 数目。范围：保留 KVV kvv.partial_empty_reasoning.stream 的原始请求字段组合，SSE 完整结束且无协议错误；正文必须包含非空白字符。返回正文不得再次包含非空预填前缀。不核验固定答案或推理内容。来源：Moonshot KVV 66092cf cases.partial.jsonl；本项目采用续写格式判据。",
   "dimension": "compatibility",
   "enabled": true,
   "default": false,
@@ -50,61 +50,30 @@
           "value": true
         },
         {
-          "id": "token_count",
-          "any": [
-            {
-              "id": "top",
-              "all": [
-                {
-                  "id": "top_integer",
-                  "source": "response",
-                  "pointer": "/usage/prompt_tokens",
-                  "operator": "type",
-                  "value": "integer"
-                },
-                {
-                  "id": "top_min",
-                  "source": "response",
-                  "pointer": "/usage/prompt_tokens",
-                  "operator": "gte",
-                  "value": 91
-                },
-                {
-                  "id": "top_max",
-                  "source": "response",
-                  "pointer": "/usage/prompt_tokens",
-                  "operator": "lte",
-                  "value": 94
-                }
-              ]
-            },
-            {
-              "id": "choice",
-              "all": [
-                {
-                  "id": "choice_integer",
-                  "source": "response",
-                  "pointer": "/choices/0/usage/prompt_tokens",
-                  "operator": "type",
-                  "value": "integer"
-                },
-                {
-                  "id": "choice_min",
-                  "source": "response",
-                  "pointer": "/choices/0/usage/prompt_tokens",
-                  "operator": "gte",
-                  "value": 91
-                },
-                {
-                  "id": "choice_max",
-                  "source": "response",
-                  "pointer": "/choices/0/usage/prompt_tokens",
-                  "operator": "lte",
-                  "value": 94
-                }
-              ]
-            }
-          ]
+          "id": "finish",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/choices/0/finish_reason",
+          "value": "stop"
+        },
+        {
+          "id": "content_type",
+          "source": "response",
+          "operator": "type",
+          "pointer": "/choices/0/message/content",
+          "value": "string"
+        },
+        {
+          "id": "continuation",
+          "source": "text",
+          "operator": "regex",
+          "value": "\\S"
+        },
+        {
+          "id": "no_repeated_prefix",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "incomplete"
         }
       ]
     }

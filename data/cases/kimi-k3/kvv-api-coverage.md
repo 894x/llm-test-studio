@@ -26,8 +26,9 @@ The `parameters` suites reuse the existing model-specific parameter, reasoning
 and JSON cases. `schema` isolates the strict flat-schema samples, while `token`
 is a separate K3 upstream-baseline observation. The token fixtures are attributed
 in `data/cases/PROVENANCE.md`; unlike the other new cases they are adapted from
-upstream test data. The `partial` suites add exactly eight original KVV Partial
-SSE fixtures, shared by K3 and K3.1 Pro comparison entries; see the
+upstream test data. The `partial` suites retain exactly eight original KVV Partial
+SSE requests with project-owned continuation-format assertions, shared by K3
+and K3.1 Pro entries; see the
 [bounded Partial matrix and compatibility notes](kvv-partial-coverage.md).
 
 | KVV area | Required partitions and assertions | Existing or planned cases | Tier / status |
@@ -44,7 +45,7 @@ SSE fixtures, shared by K3 and K3.1 Pro comparison entries; see the
 | Thinking | current top-level `reasoning_effort` valid and invalid values | existing K3/K3.1 reasoning cases | T1/T2 partial; legacy `thinking.effort` and model self-report are observations, not current documented contract |
 | Preserved thinking | carry complete returned assistant message across calls | existing matrix runner gap | blocked pending lossless replay |
 | Prompt token groundtruth | source request and tokenizer/template version must match; stream placement and permitted deviation must be defined | `kvv.prompt_tokens_assistant_hello.stream` | T1 KVV-observed: one upstream fixture, inclusive 99–102, checks top-level or choice-level usage; template/model drift remains possible. Other non-Partial fixtures deferred; KVV's separate 539 test is skipped upstream |
-| Partial prompt token groundtruth | all eight original content/reasoning, absent/empty-field and tool/effort partitions; SSE, integer count in `[expected, expected+3]`, top-level or first-choice usage | `kvv.partial_*.stream`, K3 / K3.1 Pro opt-in Partial Suites | Eight KVV observations implemented; K3 baselines retained for both comparison entries, not independently calibrated for K3.1 Pro. T0 only; semantic continuation and non-stream parity are outside this import |
+| Partial continuation format | eight original content/reasoning, absent/empty-field and tool/effort partitions; SSE, non-blank text without a repeated non-empty content prefix, or valid tool call with JSON object arguments | `kvv.partial_*.stream`, K3 / K3.1 Pro opt-in Partial Suites | Eight format Cases implemented; T0 fixture evidence. No token comparison, fixed-answer guarantee, hidden-reasoning proof or non-stream parity claim |
 | Benchmark, image fixtures, load and long context | scoring / datasets or expensive execution | outside this integration | deferred / separate workflow |
 
 `response_format.strict=false` promises valid JSON object, not compliance with

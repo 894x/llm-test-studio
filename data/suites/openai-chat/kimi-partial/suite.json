@@ -3,7 +3,7 @@
   "key": "kimi.partial",
   "name": "Kimi · Partial 综合回归",
   "protocol": "openai-chat",
-  "description": "共 18 条，先运行 10 条 JSON Partial 语义检查（含 sync/stream、无 partial 对照和商品提取），再运行 8 条 KVV Partial SSE token 基准观察；每条 Case 仅引用一次。适用于 K3 / K3.1 Pro，模型、渠道和凭证由运行配置绑定。JSON 检查拼接后的合法性及字段值；KVV 沿用 K3 原始 token 基准，K3.1 Pro 未独立校准，计数不匹配不等同于 Partial 不支持。需要支持 JSON 前缀断言的执行端。",
+  "description": "共 18 条：10 条 JSON 格式检查（8 条 Partial、2 条无 partial 对照）和 8 条 KVV 请求的续写格式检查，每条 Case 仅引用一次。检查非空白输出、不重复非空正文前缀、JSON 拼接格式或工具调用结构，以及协议完整性；不比较 token 数目，不核验固定答案，也不以格式通过证明语义或隐藏推理续写正确。模型、渠道和凭证由运行配置绑定。需要 json_prefix_assertions 执行端能力。",
   "cases": [
     {
       "case_id": "ecf26e5b-76f7-47e8-9b42-17e2890f99f8"

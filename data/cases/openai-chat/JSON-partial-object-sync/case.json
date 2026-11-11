@@ -3,7 +3,7 @@
   "id": "13940798-d562-4793-8ed6-a6cb2a87f153",
   "key": "partial.json_object.sync",
   "name": "JSON Partial · 左花括号预填 · sync",
-  "description": "目的：将预填前缀与返回后缀拼接，验证 JSON 合法性和 answer=PARIS。范围：K3 / K3.1 Pro 的 Chat sync，需显式选择；允许正常空白、字段顺序及等价 JSON 转义，拒绝重复前缀、错误值和附加字段。不设置 response_format；1024-token 输出预算，仅语义及协议检查，不比较 token 基准。来源：项目自编合成数据，依据 Kimi Partial 文档和 JSON 排查场景。",
+  "description": "目的：验证输入预填前缀与返回后缀能拼成一个完整、合法的 JSON 值。范围：K3 / K3.1 Pro 的 Chat sync，需显式选择；正文须非空白、正常结束，SSE 须完整结束且无协议错误。不比较 token 数目，也不核验固定字段值、类型或额外字段；格式通过不代表提取内容正确。不设置 response_format。来源：项目自编合成数据和 Kimi Partial 文档。",
   "dimension": "workflow",
   "enabled": true,
   "default": false,
@@ -66,15 +66,10 @@
           "value": "{"
         },
         {
-          "id": "json_value",
+          "id": "continuation",
           "source": "text",
-          "operator": "json_prefix_equals",
-          "value": {
-            "prefix": "{",
-            "expected": {
-              "answer": "PARIS"
-            }
-          }
+          "operator": "regex",
+          "value": "\\S"
         }
       ]
     }

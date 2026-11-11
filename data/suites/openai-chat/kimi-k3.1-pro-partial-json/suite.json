@@ -3,7 +3,7 @@
   "key": "kimi.k3.1.pro.partial.json",
   "name": "kimi-k3.1-pro · JSON Partial 续写专项",
   "protocol": "openai-chat",
-  "description": "绑定 kimi-k3.1-pro 后显式运行。10 条用例覆盖字符串内、字段边界和左花括号预填、无 partial 对照及合成商品提取，均包含 sync/stream；解析拼接后的 JSON 并比较字段值，允许正常空白差异，不以 HTTP 200 或 token 基准代替语义成功。需要 runner 支持 json_prefix_assertions。",
+  "description": "显式选择后绑定对应 K3 / K3.1 Pro 模型。10 条 JSON 格式检查，含 sync/stream、字符串/字段/对象预填、商品提取和 2 条无 partial 对照。只检查非空白后缀与前缀拼接后是完整合法 JSON，以及协议完整性；不核验字段值或 token 数目。对照只检查完整返回 JSON。需要 json_prefix_assertions 执行端能力。",
   "cases": [
     {
       "case_id": "ecf26e5b-76f7-47e8-9b42-17e2890f99f8"

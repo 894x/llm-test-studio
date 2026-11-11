@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "key": "kimi.k3.kvv.partial",
-  "name": "kimi-k3 · KVV Partial Token 基准观察",
+  "name": "kimi-k3 · KVV Partial 续写格式检查",
   "protocol": "openai-chat",
-  "description": "显式选择后将模型绑定为 kimi-k3。运行 KVV cases.partial.jsonl 的全部 8 条 SSE token 观察，保留 K3 原始计数基准和 +0～+3 容差；K3.1 Pro 未独立校准。覆盖正文/推理预填、空/缺失字段和工具组合，仅校验 token 基准及流完整性，不代表语义续写或完整 API 覆盖。",
+  "description": "显式选择后绑定对应 K3 / K3.1 Pro 模型。保留 KVV Partial 8 条 SSE 请求，检查非空白正文且不重复非空正文前缀，或检查有效工具调用及 JSON 对象参数；保留协议及完整结束检查。不比较 token、不核验固定答案；无正文前缀时不声称证明隐藏推理续写。",
   "cases": [
     {
       "case_id": "a2acd637-6aa9-4a6a-ad7e-a6b515bcd354"

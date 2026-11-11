@@ -2,8 +2,8 @@
   "schema_version": 3,
   "id": "b2992c44-8c1b-45a9-acba-e691dde25766",
   "key": "kvv.partial_tools_max.stream",
-  "name": "KVV · Partial Token · 工具 + partial 预填 · stream",
-  "description": "目的：比较 KVV k3_partial_tools_with_thinking_effort_partial 原始 Partial 请求的 prompt token 基准，接受 234 至 237。来源：Moonshot KVV 66092cf cases.partial.jsonl。范围：K3 基准观察；K3.1 Pro 复用相同基准用于对比，不代表已验证的模型专属计数。只增加 stream=true，保留原始空/缺失字段；不单独验证语义续写。显式选择后运行，模型或模板差异可能导致不匹配，不能单凭差异断言计费错误或 Partial 不支持。",
+  "name": "KVV · Partial 续写 · 工具 + partial 预填 · stream",
+  "description": "目的：检查 Partial 请求能否返回后续工具调用，不比较 token 数目。范围：保留 KVV kvv.partial_tools_max.stream 的原始请求字段组合，SSE 完整结束且无协议错误；至少一个 CodeRunner 调用，参数能解析为 JSON 对象，允许正文为空。返回正文不得再次包含非空预填前缀。不核验固定答案或推理内容。来源：Moonshot KVV 66092cf cases.partial.jsonl；本项目采用续写格式判据。",
   "dimension": "compatibility",
   "enabled": true,
   "default": false,
@@ -75,61 +75,53 @@
           "value": true
         },
         {
-          "id": "token_count",
-          "any": [
+          "id": "finish",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/choices/0/finish_reason",
+          "value": "tool_calls"
+        },
+        {
+          "id": "tool_calls",
+          "source": "response",
+          "operator": "length_gte",
+          "pointer": "/choices/0/message/tool_calls",
+          "value": 1
+        },
+        {
+          "id": "tool_shape",
+          "source": "response",
+          "pointer": "/choices/0/message/tool_calls",
+          "each": [
             {
-              "id": "top",
-              "all": [
-                {
-                  "id": "top_integer",
-                  "source": "response",
-                  "pointer": "/usage/prompt_tokens",
-                  "operator": "type",
-                  "value": "integer"
-                },
-                {
-                  "id": "top_min",
-                  "source": "response",
-                  "pointer": "/usage/prompt_tokens",
-                  "operator": "gte",
-                  "value": 234
-                },
-                {
-                  "id": "top_max",
-                  "source": "response",
-                  "pointer": "/usage/prompt_tokens",
-                  "operator": "lte",
-                  "value": 237
-                }
-              ]
+              "id": "tool_type",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/type",
+              "value": "function"
             },
             {
-              "id": "choice",
-              "all": [
-                {
-                  "id": "choice_integer",
-                  "source": "response",
-                  "pointer": "/choices/0/usage/prompt_tokens",
-                  "operator": "type",
-                  "value": "integer"
-                },
-                {
-                  "id": "choice_min",
-                  "source": "response",
-                  "pointer": "/choices/0/usage/prompt_tokens",
-                  "operator": "gte",
-                  "value": 234
-                },
-                {
-                  "id": "choice_max",
-                  "source": "response",
-                  "pointer": "/choices/0/usage/prompt_tokens",
-                  "operator": "lte",
-                  "value": 237
-                }
-              ]
+              "id": "tool_name",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/function/name",
+              "value": "CodeRunner"
+            },
+            {
+              "id": "tool_arguments",
+              "source": "item",
+              "operator": "type",
+              "pointer": "/function/arguments",
+              "value": "object",
+              "transform": "json"
             }
           ]
+        },
+        {
+          "id": "no_repeated_prefix",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "接下来我要写代码了"
         }
       ]
     }

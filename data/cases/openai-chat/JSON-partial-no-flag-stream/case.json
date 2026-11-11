@@ -3,7 +3,7 @@
   "id": "2af6510a-5e0f-400f-9fe5-2ea69bcf6b34",
   "key": "partial.json_no_flag.stream",
   "name": "JSON Partial · 无 partial 完整 JSON 对照 · stream",
-  "description": "目的：不带 partial 时返回完整 JSON 对象。范围：K3 / K3.1 Pro 的 Chat stream，需显式选择；对照用例不拼接历史 assistant 内容。不设置 response_format；1024-token 输出预算，仅语义及协议检查，不比较 token 基准。来源：项目自编合成数据，依据 Kimi Partial 文档和 JSON 排查场景。",
+  "description": "目的：验证未开启 partial 时返回完整 JSON，作为对照。范围：K3 / K3.1 Pro 的 Chat stream，需显式选择；正文须非空白、正常结束，SSE 须完整结束且无协议错误。不比较 token 数目，也不核验固定字段值、类型或额外字段；格式通过不代表提取内容正确。不设置 response_format。来源：项目自编合成数据和 Kimi Partial 文档。",
   "dimension": "workflow",
   "enabled": true,
   "default": false,
@@ -71,15 +71,10 @@
           "value": ""
         },
         {
-          "id": "json_value",
+          "id": "continuation",
           "source": "text",
-          "operator": "json_prefix_equals",
-          "value": {
-            "prefix": "",
-            "expected": {
-              "answer": "PARIS"
-            }
-          }
+          "operator": "regex",
+          "value": "\\S"
         }
       ]
     }

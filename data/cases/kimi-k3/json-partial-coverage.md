@@ -3,17 +3,18 @@
 Scope: Chat Completions JSON prefix continuation for `kimi-k3` and
 `kimi-k3.1-pro`, with paired non-stream and SSE Cases. This is the JSON
 continuation portion of the local Partial investigation, distinct from the
-eight KVV prompt-token fixtures. Inputs are project-authored synthetic data;
-no provider credentials or captured reasoning are shipped.
+eight KVV-derived continuation-format Cases. Inputs are project-authored
+synthetic data; no provider credentials or captured reasoning are shipped.
 
 For one combined entry, select **Kimi · Partial 综合回归**
 ([`kimi.partial`](../../suites/openai-chat/kimi-partial/suite.json)). It contains
-the ten JSON Cases first and the eight KVV token Cases second, with no repeated
-Case ID. Its model is supplied at run time, so the same Suite can be run with
-K3 or K3.1 Pro. Interpret JSON semantic verdicts separately from KVV's
-model/template-dependent token observations. The existing dedicated Suites
-remain available. The combined Suite reuses the same Cases without request
-overrides or changes to Case defaults; its opt-in Plan is described below.
+the ten JSON Cases first and the eight KVV-derived format Cases second, with no
+repeated Case ID. Its model is supplied at run time, so the same Suite can be run
+with K3 or K3.1 Pro. Two JSON members are no-Partial controls; overall counts are
+not a semantic Partial-support rate. No Partial member compares token counts.
+The existing dedicated Suites remain available. The combined Suite reuses the
+same Cases without request overrides or changes to Case defaults; its opt-in
+Plan is described below.
 It requires the same JSON-prefix runner capability.
 
 The [official Partial guide](https://platform.kimi.ai/docs/api/partial),
@@ -33,7 +34,7 @@ differs only in `stream`; no temperature or token baseline is assumed.
 Core scenarios set `thinking.type=disabled`; extraction omits thinking controls
 as in the guide. No request combines thinking and reasoning-effort controls.
 
-| Scenario | Final assistant prefix | Expected concatenated JSON | Modes / count |
+| Scenario | Final assistant prefix | Requested example (not a value assertion) | Modes / count |
 |---|---|---|---|
 | string boundary | `{"answer":"PA` with `partial=true` | `{"answer":"PARIS"}` | sync + stream / 2 |
 | field boundary | `{"answer":` with `partial=true` | `{"answer":"PARIS"}` | sync + stream / 2 |
@@ -41,17 +42,20 @@ as in the guide. No request combines thinking and reasoning-effort controls.
 | no-Partial control | `{"answer":` without `partial` | complete response `{"answer":"PARIS"}` | sync + stream / 2 |
 | documented extraction workflow | `{` with `partial=true` | product object with explicit string/number/array values | sync + stream / 2 |
 
-Each Case requires HTTP 200, no protocol issues, and `finish_reason=stop`.
-SSE also requires `[DONE]`. Empty/truncated content, a repeated complete object,
-Markdown fences, invalid JSON, trailing values, wrong values/types, missing
-fields, and extra fields fail the appropriate syntax or value assertion.
-Whitespace, object-key ordering, and equivalent JSON string escapes do not
-fail value comparison. The no-Partial control uses an empty assertion prefix
-and expects a complete response; it does not assert continuation.
+Each Case requires HTTP 200, no protocol issues, `finish_reason=stop`, and
+non-whitespace content. SSE also requires `[DONE]`. The assertion parses the
+literal input prefix plus returned suffix as exactly one complete JSON value.
+It rejects empty/truncated responses, repeated full objects, Markdown fences,
+invalid syntax and trailing values. It does not enforce answer values, field
+types, missing/extra fields, product accuracy or token counts. For example,
+`PA` plus `IRS` is a valid string value and passes this format-only policy.
+Whitespace inside a JSON string remains data; no trimming is performed. The
+no-Partial control uses an empty assertion prefix and validates the complete
+returned JSON; it does not assert continuation.
 
 ## Assertion contract
 
-Two additive operators use the existing Assertion `value` field:
+The runner retains two operators using the existing Assertion `value` field:
 
 - `json_prefix_valid`: `value` is the literal prefix string. The selected
   actual string is concatenated without trimming, then parsed as exactly one
@@ -60,6 +64,8 @@ Two additive operators use the existing Assertion `value` field:
   Parse `prefix + actual`, then compare the complete JSON value semantically.
   Object order and equivalent numeric notation follow existing JSON equality.
 
+The Partial Cases now use only `json_prefix_valid`; `json_prefix_equals` remains
+available for authored Cases and historical snapshots requiring value checks.
 Both reject non-string actual values, malformed/trailing JSON and concatenated
 documents exceeding the existing 4 MiB authored-value decoding limit. Invalid
 operator configuration is rejected by Spec validation. No new Assertion fields
@@ -67,13 +73,17 @@ or format decoder are introduced. Existing operators keep their behavior.
 
 ## Compatibility and release impact
 
-The change adds ten non-default, enabled, automatic T1 Cases and two opt-in
-JSON Partial Suites. Existing eight KVV token Cases/Suites and Plan memberships
-remain unchanged. Supported Case schema 2/3, Suite schema 1, CLI/API and stored
-database/report formats are unchanged. No data migration, deprecation or
-removal is required; historical results are not recomputed.
+The catalog contains ten non-default, enabled, automatic T1 Cases and two
+opt-in JSON Partial Suites. The eight KVV-derived Cases now use continuation
+format checks as documented in [their coverage notes](kvv-partial-coverage.md).
+Case/Suite IDs, memberships and Plan references remain unchanged. Supported
+Case schema 2/3, Suite schema 1, CLI/API and stored database/report formats are
+unchanged. No data migration, deprecation or
+removal is required; historical results are not recomputed. New runs use the
+format-only policy adopted on 2026-11-11, so their conclusions must not be
+compared as though earlier token/value assertions were identical.
 
-New JSON assertions require the additive runner feature `json_prefix_assertions`.
+JSON-prefix assertions require the runner feature `json_prefix_assertions`.
 Updated local/remote hosts advertise it; clients check it recursively through
 `all`, `any` and `each` before scheduling the new assertions. Existing jobs do
 not gain this requirement. Upgrade both client and selected runner to a build
@@ -84,34 +94,31 @@ references from separately saved plans. No database restoration is needed.
 
 ## Verification
 
-Passed T0 checks on 2026-11-11:
+Validation on 2026-11-11 separates generic operator coverage from the current
+Partial format policy:
 
-- `go test ./internal/testspec ./internal/jobcontract ./internal/application/jobhost ./internal/protocols/openaichat ./internal/adapters/runnerhttp`:
-  operator validation/evaluation and existing-operator regressions, nested
-  capability detection, old-runner rejection without input mutation, native
-  sync/SSE parsing and remote HTTP execution boundaries.
-- `go test ./data/cases ./data/suites ./internal/casecodec ./internal/application/suitecatalog`:
-  bundled Case decoding, all Suite references and input bindings, and catalog
-  discovery including the 18 Partial Cases and five dedicated/combined Partial Suites.
-- `go test ./internal/protocols/openaichat ./internal/application/plancatalog ./internal/persistence/workspace -run 'TestJSONPartial|TestBuiltin'`:
-  all five paired requests, fragmented SSE content, semantic JSON comparison,
-  rejection of observed bad outputs and correct JSON with wrong finish/status,
-  and retained built-in Plan loading/scheduling.
-- Both token and JSON Partial manifests pass the generator's `--check`;
+- `go test ./data/cases ./data/suites ./internal/casecodec ./internal/testspec ./internal/protocols/openaichat ./internal/jobcontract ./internal/application/suitecatalog`:
+  bundled decoding and references, all five paired requests, fragmented SSE,
+  format-only JSON validation, acceptance of changed values/types/fields,
+  rejection of malformed/repeated JSON and wrong finish/status, generic
+  operator regression tests and runner capability checks.
+- `go test ./internal/application/plancatalog ./internal/persistence/workspace -run TestBuiltin -count=1`:
+  retained built-in Plan loading and per-Case scheduling.
+- All three Partial manifests pass the generator's `--check`;
   seven generator unit tests pass. Direct checks confirm ten unique Case IDs,
   matching literal prefixes, no-flag controls, pairwise request equivalence,
   and no credentials/model bindings in authored request bodies.
-- `go vet` passes for testspec, jobcontract, jobhost and openaichat. New-file
-  whitespace checks and `git diff --check` pass.
+- `go vet ./internal/protocols/openaichat` and `git diff --check` pass.
 
 This integration made no live provider requests and does not transfer prior
 live-test conclusions onto the new authored Cases. Sampling variants and full
 provider parameter-boundary coverage remain outside this ten-Case catalog.
 
 The combined `kimi.partial` entry provides one 18-member Suite,
-flattening the existing JSON and token memberships without duplicate IDs.
-Its generator check, bundled reference/catalog tests, and retained built-in
-Plan scheduling test passed locally; it changes no existing Case definition.
+flattening the existing JSON and KVV-derived format memberships without
+duplicate IDs. Its generator check, bundled reference/catalog tests, and
+retained built-in Plan scheduling test passed locally. The combined Suite
+does not override its members' request bodies or assertions.
 
 The corresponding **Kimi Partial 综合回归计划**
 ([`65672e92-21af-4777-8bf4-72517da2746a`](../../plans/65672e92-21af-4777-8bf4-72517da2746a.json))

@@ -48,7 +48,7 @@ func jsonPartialFixtureResponse(t *testing.T, text, mode, finish string) string 
 	return string(raw)
 }
 
-func TestJSONPartialCasePairsPreserveParametersAndCompareSemanticJSON(t *testing.T) {
+func TestJSONPartialCasePairsPreserveParametersAndValidateJSONFormat(t *testing.T) {
 	for _, scenario := range []struct {
 		name   string
 		prefix string
@@ -121,7 +121,7 @@ func TestJSONPartialCasePairsPreserveParametersAndCompareSemanticJSON(t *testing
 					},
 				})
 				if verdict := testspec.Evaluate(spec.Assertions, observation); verdict.Status != testspec.VerdictPassed {
-					t.Fatalf("%s semantic JSON verdict = %+v", mode, verdict)
+					t.Fatalf("%s JSON format verdict = %+v", mode, verdict)
 				}
 			}
 			if !bytes.Equal(requests["sync"], requests["stream"]) {
@@ -131,17 +131,45 @@ func TestJSONPartialCasePairsPreserveParametersAndCompareSemanticJSON(t *testing
 	}
 }
 
-func TestJSONPartialCasesRejectObservedFailuresAndProtocolFaults(t *testing.T) {
+func TestJSONPartialAcceptsDifferentValuesWhenConcatenationIsValidJSON(t *testing.T) {
 	for _, scenario := range []struct {
 		name string
 		text string
 	}{
 		{name: "string", text: `IRS"}`},
+		{name: "field", text: `""}`},
+		{name: "object", text: `"answer":"LONDON","extra":{"nested":true}}`},
+		{name: "no-flag", text: `{"anything":true}`},
+		{name: "extraction", text: `"price_yuan":"299","colors":[]}`},
+	} {
+		for _, mode := range []string{"sync", "stream"} {
+			t.Run(scenario.name+"/"+mode, func(t *testing.T) {
+				contentType := "application/json"
+				if mode == "stream" {
+					contentType = "text/event-stream"
+				}
+				wire := jsonPartialFixtureResponse(t, scenario.text, mode, "stop")
+				verdict := runKVVCase(
+					t, "JSON-partial-"+scenario.name+"-"+mode, http.StatusOK, contentType, wire,
+				)
+				if verdict.Status != testspec.VerdictPassed {
+					t.Fatalf("valid JSON rejected by a content-value expectation: %+v", verdict)
+				}
+			})
+		}
+	}
+}
+
+func TestJSONPartialCasesRejectObservedFailuresAndProtocolFaults(t *testing.T) {
+	for _, scenario := range []struct {
+		name string
+		text string
+	}{
+		{name: "string", text: `IRS"`},
 		{name: "field", text: `{"answer":"PARIS"}`},
 		{name: "object", text: `“answer”:“PARIS”}`},
 		{name: "no-flag", text: `"PARIS"}`},
-		{name: "extraction", text: `"name":"Atlas Mini","size_mm":[120,80,30],
-			"price_yuan":"299","colors":["black","silver"]}`},
+		{name: "extraction", text: `"name":"Atlas Mini" "price_yuan":299}`},
 	} {
 		for _, mode := range []string{"sync", "stream"} {
 			t.Run(scenario.name+"/"+mode, func(t *testing.T) {

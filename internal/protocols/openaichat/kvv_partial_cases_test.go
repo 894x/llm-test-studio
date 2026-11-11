@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -19,10 +18,9 @@ import (
 )
 
 type kvvPartialFixture struct {
-	ID                   string          `json:"id"`
-	Request              json.RawMessage `json:"request"`
-	ExpectedPromptTokens int             `json:"expected_prompt_tokens"`
-	Directory            string          `json:"-"`
+	ID        string          `json:"id"`
+	Request   json.RawMessage `json:"request"`
+	Directory string          `json:"-"`
 }
 
 func loadKVVPartialFixtures(t *testing.T) []kvvPartialFixture {
@@ -69,24 +67,71 @@ func loadKVVPartialFixtures(t *testing.T) []kvvPartialFixture {
 	return fixtures
 }
 
-func kvvPartialUsageEvent(t *testing.T, tokens any, location string) string {
+type kvvPartialResponse struct {
+	Text          string
+	Finish        string
+	ToolArguments string
+	ToolName      string
+	IncludeTool   bool
+	Usage         map[string]any
+	UsageLocation string
+}
+
+func (fixture kvvPartialFixture) response() kvvPartialResponse {
+	response := kvvPartialResponse{Text: " a new response", Finish: "stop"}
+	if strings.Contains(fixture.Directory, "tools-") {
+		response.Text = ""
+		response.Finish = "tool_calls"
+		response.ToolName = "CodeRunner"
+		response.ToolArguments = `{"language":"python","code":"print(1)"}`
+		response.IncludeTool = true
+	}
+	return response
+}
+
+func kvvPartialStream(t *testing.T, response kvvPartialResponse) string {
 	t.Helper()
-	choice := map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}
-	event := map[string]any{
-		"id": "partial-fixture", "model": "fixture-model", "choices": []any{choice},
+	text := []rune(response.Text)
+	middle := len(text) / 2
+	deltas := []map[string]any{
+		{"role": "assistant", "content": string(text[:middle])},
+		{"content": string(text[middle:])},
 	}
-	usage := map[string]any{"prompt_tokens": tokens}
-	switch location {
-	case "top":
-		event["usage"] = usage
-	case "choice":
-		choice["usage"] = usage
+	if response.IncludeTool {
+		arguments := response.ToolArguments
+		middle := len(arguments) / 2
+		deltas[0]["tool_calls"] = []any{map[string]any{
+			"index": 0, "id": "partial-call", "type": "function",
+			"function": map[string]any{"name": response.ToolName, "arguments": arguments[:middle]},
+		}}
+		deltas[1]["tool_calls"] = []any{map[string]any{
+			"index": 0, "function": map[string]any{"arguments": arguments[middle:]},
+		}}
 	}
-	raw, err := json.Marshal(event)
-	if err != nil {
-		t.Fatal(err)
+	var stream strings.Builder
+	for index, delta := range deltas {
+		choice := map[string]any{"index": 0, "delta": delta, "finish_reason": nil}
+		event := map[string]any{
+			"id": "partial-fixture", "model": "fixture-model", "choices": []any{choice},
+		}
+		if index == len(deltas)-1 {
+			choice["finish_reason"] = response.Finish
+			if response.Usage != nil {
+				if response.UsageLocation == "choice" {
+					choice["usage"] = response.Usage
+				} else {
+					event["usage"] = response.Usage
+				}
+			}
+		}
+		raw, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stream.WriteString("data: " + string(raw) + "\n\n")
 	}
-	return "data: " + string(raw) + "\n\n"
+	stream.WriteString("data: [DONE]\n\n")
+	return stream.String()
 }
 
 func TestKVVPartialRequestsPreserveGoldenFields(t *testing.T) {
@@ -116,7 +161,7 @@ func TestKVVPartialRequestsPreserveGoldenFields(t *testing.T) {
 				if !bytes.Equal(gotJSON, wantJSON) {
 					t.Fatalf("golden request changed:\ngot %s\nwant %s", gotJSON, wantJSON)
 				}
-				stream := kvvPartialUsageEvent(t, fixture.ExpectedPromptTokens, "top") + "data: [DONE]\n\n"
+				stream := kvvPartialStream(t, fixture.response())
 				return runtime.Response{
 					Started: time.Now(), RequestBody: request.Body.Body,
 					HTTP: &http.Response{
@@ -140,35 +185,24 @@ func TestKVVPartialRequestsPreserveGoldenFields(t *testing.T) {
 	}
 }
 
-func TestKVVPartialTokenRangesAndUsageLocations(t *testing.T) {
+func TestKVVPartialContinuationDoesNotDependOnTokenCounts(t *testing.T) {
 	for _, fixture := range loadKVVPartialFixtures(t) {
 		t.Run(fixture.ID, func(t *testing.T) {
-			for _, location := range []string{"top", "choice"} {
+			for _, location := range []string{"missing", "top", "choice"} {
 				t.Run(location, func(t *testing.T) {
-					for _, tc := range []struct {
-						name   string
-						tokens any
-						want   testspec.VerdictStatus
-					}{
-						{name: "minimum", tokens: fixture.ExpectedPromptTokens, want: testspec.VerdictPassed},
-						{name: "maximum", tokens: fixture.ExpectedPromptTokens + 3, want: testspec.VerdictPassed},
-						{name: "below", tokens: fixture.ExpectedPromptTokens - 1, want: testspec.VerdictFailed},
-						{name: "above", tokens: fixture.ExpectedPromptTokens + 4, want: testspec.VerdictFailed},
-						{name: "fraction", tokens: float64(fixture.ExpectedPromptTokens) + 0.5,
-							want: testspec.VerdictFailed},
-						{name: "string", tokens: fmt.Sprint(fixture.ExpectedPromptTokens), want: testspec.VerdictFailed},
-						{name: "boolean", tokens: true, want: testspec.VerdictFailed},
-						{name: "null", tokens: nil, want: testspec.VerdictFailed},
-					} {
-						t.Run(tc.name, func(t *testing.T) {
-							stream := kvvPartialUsageEvent(t, tc.tokens, location) + "data: [DONE]\n\n"
-							verdict := runKVVCase(
-								t, fixture.Directory, http.StatusOK, "text/event-stream", stream,
-							)
-							if verdict.Status != tc.want {
-								t.Fatalf("verdict = %+v, want %s", verdict, tc.want)
-							}
-						})
+					for _, tokens := range []int{0, 1, 999999} {
+						response := fixture.response()
+						if location != "missing" {
+							response.Usage = map[string]any{"prompt_tokens": tokens}
+							response.UsageLocation = location
+						}
+						stream := kvvPartialStream(t, response)
+						verdict := runKVVCase(
+							t, fixture.Directory, http.StatusOK, "text/event-stream", stream,
+						)
+						if verdict.Status != testspec.VerdictPassed {
+							t.Fatalf("tokens %d changed continuation verdict: %+v", tokens, verdict)
+						}
 					}
 				})
 			}
@@ -176,22 +210,96 @@ func TestKVVPartialTokenRangesAndUsageLocations(t *testing.T) {
 	}
 }
 
-func TestKVVPartialRejectsMissingUsageAndBrokenStreams(t *testing.T) {
+func TestPartialCatalogExcludesTokenAndFixedAnswerAssertions(t *testing.T) {
+	directories := []string{}
+	for _, fixture := range loadKVVPartialFixtures(t) {
+		directories = append(directories, fixture.Directory)
+	}
+	for _, scenario := range []string{"string", "field", "object", "no-flag", "extraction"} {
+		for _, mode := range []string{"sync", "stream"} {
+			directories = append(directories, "JSON-partial-"+scenario+"-"+mode)
+		}
+	}
+	var check func(*testing.T, []testspec.Assertion)
+	check = func(t *testing.T, assertions []testspec.Assertion) {
+		t.Helper()
+		for _, assertion := range assertions {
+			checksUsage := assertion.Source == "usage" || strings.Contains(assertion.Pointer, "/usage")
+			checksTokens := strings.Contains(assertion.Pointer, "token")
+			if checksUsage || checksTokens || assertion.Operator == "json_prefix_equals" {
+				t.Errorf("unexpected token or fixed-answer assertion: %+v", assertion)
+			}
+			check(t, assertion.All)
+			check(t, assertion.Any)
+			check(t, assertion.Each)
+		}
+	}
+	for _, directory := range directories {
+		t.Run(directory, func(t *testing.T) {
+			check(t, loadKVVSpec(t, directory).Assertions)
+		})
+	}
+}
+
+func TestKVVPartialRejectsEmptyRepeatedAndBrokenResponses(t *testing.T) {
 	for _, fixture := range loadKVVPartialFixtures(t) {
 		t.Run(fixture.ID, func(t *testing.T) {
-			valid := kvvPartialUsageEvent(t, fixture.ExpectedPromptTokens, "top")
-			for _, tc := range []struct {
+			valid := kvvPartialStream(t, fixture.response())
+			cases := []struct {
 				name   string
 				status int
 				stream string
 			}{
-				{name: "missing usage", status: http.StatusOK,
-					stream: kvvPartialUsageEvent(t, nil, "missing") + "data: [DONE]\n\n"},
-				{name: "missing done", status: http.StatusOK, stream: valid},
+				{name: "missing done", status: http.StatusOK,
+					stream: strings.TrimSuffix(valid, "data: [DONE]\n\n")},
 				{name: "malformed event", status: http.StatusOK,
-					stream: "data: not-json\n\n" + valid + "data: [DONE]\n\n"},
-				{name: "wrong HTTP status", status: http.StatusBadRequest, stream: valid + "data: [DONE]\n\n"},
-			} {
+					stream: "data: not-json\n\n" + valid},
+				{name: "wrong HTTP status", status: http.StatusBadRequest, stream: valid},
+			}
+			invalid := map[string]kvvPartialResponse{}
+			for _, finish := range []string{"length", ""} {
+				response := fixture.response()
+				response.Finish = finish
+				invalid["wrong finish "+finish] = response
+			}
+			if strings.Contains(fixture.Directory, "tools-") {
+				for _, arguments := range []string{"", "not-json", "[]", "null"} {
+					response := fixture.response()
+					response.ToolArguments = arguments
+					invalid["bad tool arguments "+arguments] = response
+				}
+				response := fixture.response()
+				response.IncludeTool = false
+				invalid["missing tool call"] = response
+				response = fixture.response()
+				response.ToolName = "UnknownFunction"
+				invalid["unknown tool name"] = response
+			} else {
+				for _, text := range []string{"", " \n\t"} {
+					response := fixture.response()
+					response.Text = text
+					invalid["blank content "+text] = response
+				}
+			}
+			request := map[string]any{}
+			if err := json.Unmarshal(fixture.Request, &request); err != nil {
+				t.Fatal(err)
+			}
+			messages := request["messages"].([]any)
+			last := messages[len(messages)-1].(map[string]any)
+			if prefix, ok := last["content"].(string); ok && prefix != "" {
+				response := fixture.response()
+				response.Text = prefix + " repeated prefix"
+				invalid["repeated prefix"] = response
+			}
+			for name, response := range invalid {
+				cases = append(cases, struct {
+					name   string
+					status int
+					stream string
+				}{name: name, status: http.StatusOK, stream: kvvPartialStream(t, response)})
+			}
+			for _, tc := range cases {
 				t.Run(tc.name, func(t *testing.T) {
 					verdict := runKVVCase(
 						t, fixture.Directory, tc.status, "text/event-stream", tc.stream,
