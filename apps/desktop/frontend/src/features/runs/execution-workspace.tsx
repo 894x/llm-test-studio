@@ -306,19 +306,19 @@ function ExecutionInspector({ row, client, reports, selectedChildID, onSelectChi
     (report.run_id && job.run_ids.includes(report.run_id))).map(report => report.id) : [])])]
   if (job?.kind === "performance") return <PerformanceInspector row={row} client={client} reportIDs={reportIDs}
     recycleAction={recycleAction} onJobChange={onJobChange} onOpenReport={onOpenReport} />
-  const layout = (execution?: ReactNode, controls?: ReactNode) => <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+  const layout = (execution?: ReactNode, controls?: ReactNode, controlButtons?: ReactNode, controlFeedback?: ReactNode) => <div className="flex min-h-0 min-w-0 flex-1 flex-col">
     {job?.kind === "comparison" ? <div className="px-4 pt-3"><div className="mb-2 flex items-center justify-between gap-2">
       <p className="min-w-0 text-xs font-medium">{t("executions.children", { count: job.run_ids.length })}</p>
       {onOpenComparison ? <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon-sm" aria-label={t("executions.comparisonReport")} onClick={() => void onOpenComparison(job.comparison_id)}><GitCompareArrowsIcon aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{t("executions.comparisonReport")}</TooltipContent></Tooltip></TooltipProvider> : null}</div>
       {row.runs.length ? <SearchableSelect aria-label={t("executions.child")} value={run.id} onValueChange={onSelectChild} options={row.runs.map(child => ({ value: child.id, label: `${child.channel} · ${child.title}` }))} /> : null}</div> : null}
-    {run ? <RunInspectorContent key={run.id} run={run} tab={detailTab} onTabChange={onDetailTabChange} execution={execution} shortcuts={renderRunShortcuts?.(run.id, true, { extraAction: recycleAction, reportID: run.reportID })} />
+    {run ? <RunInspectorContent key={run.id} run={run} tab={detailTab} onTabChange={onDetailTabChange} execution={execution} shortcuts={renderRunShortcuts?.(run.id, true, { extraAction: recycleAction, controlButtons, feedback: controlFeedback, reportID: run.reportID })} />
       : <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1 px-4"><h2 className="pt-4 text-sm font-semibold">{row.title}</h2>{execution}</ScrollArea>}
-    {controls ? <div className="shrink-0 border-t border-divider px-4 py-3">{controls}</div> : null}
-    {(!run || !renderRunShortcuts) && recycleAction ? <div className="shrink-0 px-4 py-2">{recycleAction}</div> : null}
+    {controls && (!run || !renderRunShortcuts) ? <div className="shrink-0 border-t border-divider px-4 py-3">{controls}</div> : null}
+    {(!job || ["completed", "failed", "cancelled"].includes(job.execution?.status ?? job.submission?.confirmation?.status ?? "")) && (!run || !renderRunShortcuts) && recycleAction ? <div className="shrink-0 px-4 py-2">{recycleAction}</div> : null}
   </div>
-  return job ? <JobDetails key={job.job_id} client={client} jobID={job.job_id} initialJob={job}
+  return job ? <JobDetails key={job.job_id} client={client} jobID={job.job_id} initialJob={job} controlExtraAction={(!run || !renderRunShortcuts) ? recycleAction : undefined}
     reportIDs={run && renderRunShortcuts ? undefined : reportIDs} onOpenReport={onOpenReport} onJobChange={onJobChange}
-    renderLayout={({ details, controls }) => layout(details, controls)} /> : layout()
+    renderLayout={({ details, controls, controlButtons, controlFeedback }) => layout(details, controls, controlButtons, controlFeedback)} /> : layout()
 }
 
 function PerformanceInspector({ row, client, reportIDs, recycleAction, onJobChange, onOpenReport }: {

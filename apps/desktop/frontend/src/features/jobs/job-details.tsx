@@ -1,3 +1,6 @@
+import SquareIcon from "lucide-react/dist/esm/icons/square.mjs"
+import CircleXIcon from "lucide-react/dist/esm/icons/circle-x.mjs"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { publicDesktopErrorMessage } from "@/app/desktop-client"
@@ -10,8 +13,9 @@ import { isJobTerminal, type ControlInput, type ControlView, type JobView, type 
 import { jobControlRevision, jobControlStatus, type JobClient } from "./execution"
 import { useJobObservation } from "./use-job-observation"
 
-export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport, onJobChange, onArchived, renderProgress, renderPerformance, showPerformanceResult = true, renderLayout }: {
+export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport, onJobChange, onArchived, renderProgress, renderPerformance, showPerformanceResult = true, renderLayout, controlExtraAction }: {
   client: JobClient; jobID: string; initialJob?: JobView
+  controlExtraAction?: ReactNode
   reportIDs?: string[]
   onOpenReport?: (id: string) => void | Promise<void>
   onJobChange?: (job: JobView) => void
@@ -19,7 +23,7 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
   renderProgress?: (progress: QuickPerformanceProgress) => ReactNode
   renderPerformance?: (report: QuickPerformanceReport) => ReactNode
   showPerformanceResult?: boolean
-  renderLayout?: (state: { job: JobView; result: PerformanceResultView | null; error: unknown; details: ReactNode; controls: ReactNode }) => ReactNode
+  renderLayout?: (state: { job: JobView; result: PerformanceResultView | null; error: unknown; details: ReactNode; controls: ReactNode; controlButtons: ReactNode; controlFeedback: ReactNode }) => ReactNode
 }) {
   const { t } = useTranslation("jobs")
   const [refresh, setRefresh] = useState(0)
@@ -54,16 +58,29 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
   const control = (kind: ControlInput["kind"]) => {
     if (revision) void execute(async () => { setSubmittedControl(await client.controlJob({ job_id: job.job_id, kind, expected_revision: revision })) })
   }
-  const controlActions = terminal ? null : <section aria-label={t("executionControls")} className="space-y-2 text-xs [overflow-wrap:anywhere]">
-    <div className="flex flex-wrap gap-2">
-      <Button size="sm" variant="outline" aria-description={t("stopDescription")} disabled={pending || status === "draining" || !revision || !controlSummary?.ready || awaitingControl} onClick={() => control("stop_sending")}>{t("stop")}</Button>
-      <Button size="sm" variant="outline" aria-description={t("cancelDescription")} disabled={pending || !revision || !controlSummary?.ready || awaitingControl} onClick={() => control("cancel")}>{t("cancel")}</Button>
-    </div>
-    <p className="text-[11px] leading-relaxed text-muted-foreground">{!revision ? t("awaitingControlConfirmation") : t("controlHint")}</p>
+  const cancelDisabled = pending || !revision || !controlSummary?.ready || awaitingControl
+  const stopDisabled = cancelDisabled || status === "draining"
+  const controlButtons = terminal ? null : <TooltipProvider><div className="flex shrink-0 items-center gap-2">
+    <Tooltip>
+      <TooltipTrigger asChild><span className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring" tabIndex={stopDisabled ? 0 : undefined}>
+        <Button size="icon-sm" aria-label={t("stop")} variant="outline" aria-description={t("stopDescription")} disabled={stopDisabled} onClick={() => control("stop_sending")}><SquareIcon aria-hidden="true" /></Button>
+      </span></TooltipTrigger>
+      <TooltipContent side="top" className="block max-w-64"><p className="font-medium">{t("stop")}</p><p className="mt-1">{t("stopDescription")}</p>{!revision ? <p className="mt-1">{t("awaitingControlConfirmation")}</p> : null}</TooltipContent>
+    </Tooltip>
+    <Tooltip>
+      <TooltipTrigger asChild><span className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring" tabIndex={cancelDisabled ? 0 : undefined}>
+        <Button size="icon-sm" aria-label={t("cancel")} variant="outline" aria-description={t("cancelDescription")} disabled={cancelDisabled} onClick={() => control("cancel")}><CircleXIcon aria-hidden="true" /></Button>
+      </span></TooltipTrigger>
+      <TooltipContent side="top" className="block max-w-64"><p className="font-medium">{t("cancel")}</p><p className="mt-1">{t("cancelDescription")}</p>{!revision ? <p className="mt-1">{t("awaitingControlConfirmation")}</p> : null}</TooltipContent>
+    </Tooltip>
+    {controlExtraAction}
+  </div></TooltipProvider>
+  const controlFeedback = !terminal && (pending || currentControl || commandError) ? <div className="space-y-2 text-xs [overflow-wrap:anywhere]">
     {pending ? <p role="status" className="flex items-center gap-2 text-[11px] text-muted-foreground"><Spinner className="size-3" />{t("sendingControl")}</p> : null}
     {currentControl ? <p role="status" className="text-[11px] text-muted-foreground">{t(currentControl.kind === "cancel" ? "cancel" : "stop")} · {t(`controlStates.${currentControl.state}`)}{currentControl.observation ? ` · ${t(`observations.${currentControl.observation}`)}` : ""}</p> : null}
     {commandError ? <Alert variant="destructive"><AlertDescription>{publicDesktopErrorMessage(commandError, t("controlFailed"))}</AlertDescription></Alert> : null}
-  </section>
+  </div> : null
+  const controlActions = controlButtons ? <section aria-label={t("executionControls")} className="space-y-2">{controlButtons}{controlFeedback}</section> : null
   const p = job.progress?.progress
   const submission = job.submission
   const confirmation = submission?.confirmation
@@ -116,7 +133,7 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
       </> : <p className="text-muted-foreground">{t(result.execution_started ? "noCheckpoint" : "noObservation")}</p>}
     </section> : null}
   </section>
-  return renderLayout ? renderLayout({ job, result, error, details, controls: controlActions }) : details
+  return renderLayout ? renderLayout({ job, result, error, details, controls: controlActions, controlButtons, controlFeedback }) : details
 }
 
 function Property({ label, value }: { label: string; value: string }) {

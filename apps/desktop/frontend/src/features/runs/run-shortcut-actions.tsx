@@ -11,7 +11,7 @@ import type { TaskDraft } from "@/features/quick-test/task-draft"
 
 export type RerunCredentialRequest = { sourceID: string; draft: TaskDraft; concurrency: number }
 
-export function RunShortcutActions({ disabled, pending, waiting, error, reportID, newReport, credential, extraAction, onRerun, onOpenReport, onCredential, onCancelCredential }: {
+export function RunShortcutActions({ disabled, pending, waiting, error, reportID, newReport, credential, extraAction, controlButtons, feedback, onRerun, onOpenReport, onCredential, onCancelCredential }: {
   disabled: boolean
   pending: boolean
   waiting: boolean
@@ -20,20 +20,23 @@ export function RunShortcutActions({ disabled, pending, waiting, error, reportID
   newReport: boolean
   credential: RerunCredentialRequest | null
   extraAction?: ReactNode
+  controlButtons?: ReactNode
+  feedback?: ReactNode
   onRerun: () => void
   onOpenReport: (reportID: string) => Promise<void>
   onCredential: (request: RerunCredentialRequest, apiKey: string) => Promise<boolean>
   onCancelCredential: () => void
 }) {
   const { t } = useTranslation("runs")
+  const { t: tj } = useTranslation("jobs")
   const [apiKey, setAPIKey] = useState("")
   const credentialID = useId()
   const rerunLabel = t(pending ? "shortcuts.starting" : "shortcuts.rerun")
   const reportLabel = t(newReport ? "shortcuts.viewNewReport" : "shortcuts.viewReport")
-  return <TooltipProvider><div className="shrink-0 space-y-2 border-t border-divider px-4 py-3" aria-label={t("shortcuts.title")}>
+  return <TooltipProvider><div className="shrink-0 space-y-2 border-t border-divider px-4 py-3" role={controlButtons ? "region" : undefined} aria-label={controlButtons ? tj("executionControls") : t("shortcuts.title")}>
     <div className="flex items-center gap-2">
       <Tooltip>
-        <TooltipTrigger asChild><span className="inline-flex" tabIndex={disabled || credential ? 0 : undefined}>
+        <TooltipTrigger asChild><span className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring" tabIndex={disabled || credential ? 0 : undefined}>
           <Button size="icon-sm" disabled={disabled || !!credential} aria-label={rerunLabel} aria-description={t("shortcuts.hint")} aria-busy={pending} onClick={onRerun}>
             {pending ? <Spinner /> : <RotateCcwIcon />}
           </Button>
@@ -45,7 +48,9 @@ export function RunShortcutActions({ disabled, pending, waiting, error, reportID
         <TooltipContent side="top">{reportLabel}</TooltipContent>
       </Tooltip> : null}
       {extraAction}
+      {controlButtons}
     </div>
+    {feedback}
     {waiting ? <p className="text-[11px] text-muted-foreground" role="status">{t("shortcuts.waiting")}</p> : null}
     {credential ? <form className="space-y-2" onSubmit={event => {
       event.preventDefault()

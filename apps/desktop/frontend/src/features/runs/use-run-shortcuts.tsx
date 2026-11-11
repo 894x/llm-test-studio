@@ -11,7 +11,7 @@ import type { ReportGenerationProgress } from "@/features/reports/generation-pro
 import { isCaseConcurrency, isRunActive, type StartQuickTaskCommand, type WorkspaceSnapshot } from "./data"
 import { RunShortcutActions, type RerunCredentialRequest } from "./run-shortcut-actions"
 
-export type RunShortcutRenderer = (runID: string, showCurrentReport?: boolean, options?: { extraAction?: ReactNode; reportID?: string }) => ReactNode
+export type RunShortcutRenderer = (runID: string, showCurrentReport?: boolean, options?: { extraAction?: ReactNode; controlButtons?: ReactNode; feedback?: ReactNode; reportID?: string }) => ReactNode
 
 type RerunAttempt = { sourceID: string; runID?: string; waiting: boolean; error?: string }
 
@@ -157,6 +157,8 @@ export function useRunShortcuts({ client, workspace, reports, generation, draft,
       newReport={!!related && !!newReport}
       credential={credential?.sourceID === runID ? credential : null}
       extraAction={options?.extraAction}
+      controlButtons={options?.controlButtons}
+      feedback={options?.feedback}
       onRerun={() => void rerun(runID)}
       onOpenReport={onOpenReport}
       onCredential={submitCredential}

@@ -21,6 +21,7 @@
   "kind": { "job": "测试任务", "run": "测试运行", "report": "测试报告", "comparison": "渠道对比" },
   "moveAria": "将 {{title}} 移入回收站",
   "move": "移入回收站",
+  "moveDescription": "将整次测试记录及关联报告移入本客户端回收站，之后可恢复；不会释放磁盘空间，也不会删除远程节点数据。",
   "confirmTitle": "移入结果回收站",
   "confirmDescription": "所属的整次测试及关联报告将一起从本客户端各列表与总览移除，之后可以在回收站恢复。",
   "checking": "正在检查关联记录…",

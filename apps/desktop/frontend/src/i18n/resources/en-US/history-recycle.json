@@ -21,6 +21,7 @@
   "kind": { "job": "Test task", "run": "Test run", "report": "Test report", "comparison": "Channel comparison" },
   "moveAria": "Move {{title}} to the recycle bin",
   "move": "Move to recycle bin",
+  "moveDescription": "Move the entire test record and its associated reports to this client's recycle bin. You can restore them later; this does not reclaim disk space or delete data on remote nodes.",
   "confirmTitle": "Move to result recycle bin",
   "confirmDescription": "The entire owning test execution and its associated reports will be removed together from this client's lists and overview. You can restore them from the recycle bin.",
   "checking": "Checking associated records…",

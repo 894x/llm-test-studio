@@ -8,7 +8,7 @@
     "starting": "Starting…",
     "viewReport": "View report",
     "viewNewReport": "View new report",
-    "hint": "Rerun with current case definitions. The report opens when ready.",
+    "hint": "Start a new test with the current test definitions and keep the original record. The new report opens when ready.",
     "waiting": "Rerun started. The new report will open when ready.",
     "failed": "Unable to rerun. Check the channel configuration or local logs.",
     "reportFailed": "The new report could not be generated. Check local logs.",

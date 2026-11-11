@@ -68,13 +68,13 @@ export function RecycleHistoryButton({ client, target, onHistoryChanged, onRecyc
     } finally { inFlight.current = false; setPending(false) }
   }
   const trigger = <Button ref={triggerRef} type="button" variant="destructive" size={compact ? "icon-sm" : "sm"} disabled={disabled || pending}
-    aria-label={name ? t("moveAria", { title: name }) : t("move")}
+    aria-label={name ? t("moveAria", { title: name }) : t("move")} aria-description={t("moveDescription")}
     onClick={event => { event.stopPropagation(); void inspect() }}><Trash2Icon />{compact ? null : t("move")}</Button>
   return <>
     {renderTrigger ? <CustomRecycleTrigger render={renderTrigger} ref={setTriggerRef} disabled={disabled || pending}
       label={name ? t("moveAria", { title: name }) : t("move")} onClick={() => { void inspect() }} /> : compact ? <TooltipProvider><Tooltip>
-      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-      <TooltipContent>{t("move")}</TooltipContent>
+      <TooltipTrigger asChild><span className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring" tabIndex={disabled || pending ? 0 : undefined}>{trigger}</span></TooltipTrigger>
+      <TooltipContent side="top" className="block max-w-64"><p className="font-medium">{t("move")}</p><p className="mt-1">{t("moveDescription")}</p></TooltipContent>
     </Tooltip></TooltipProvider> : trigger}
     {refreshError ? compact ? <TooltipProvider><Tooltip><TooltipTrigger asChild>
       <span role="status" tabIndex={0} className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-warning-strong outline-none focus-visible:ring-2 focus-visible:ring-ring">
