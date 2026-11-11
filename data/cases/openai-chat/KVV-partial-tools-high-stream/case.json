@@ -1,0 +1,137 @@
+{
+  "schema_version": 3,
+  "id": "1b3a7971-4166-4766-bb73-2710cf3a82e0",
+  "key": "kvv.partial_tools_high.stream",
+  "name": "KVV · Partial Token · 工具 + reasoning_effort=high + partial 预填 · stream",
+  "description": "目的：比较 KVV k3_think_tools_with_thinking_effort_partial 原始 Partial 请求的 prompt token 基准，接受 235 至 238。来源：Moonshot KVV 66092cf cases.partial.jsonl。范围：K3 基准观察；K3.1 Pro 复用相同基准用于对比，不代表已验证的模型专属计数。只增加 stream=true，保留原始空/缺失字段；不单独验证语义续写。显式选择后运行，模型或模板差异可能导致不匹配，不能单凭差异断言计费错误或 Partial 不支持。",
+  "dimension": "compatibility",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "3214567是素数吗?"
+            },
+            {
+              "role": "assistant",
+              "content": "接下来我要写代码了",
+              "partial": true
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "CodeRunner",
+                "description": "代码执行器，支持运行 python 和 javascript 代码",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "language": {
+                      "type": "string",
+                      "enum": [
+                        "python",
+                        "javascript"
+                      ]
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "代码写在这里"
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "tool_choice": "required",
+          "reasoning_effort": "high",
+          "stream": true
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "done",
+          "source": "stream.completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "token_count",
+          "any": [
+            {
+              "id": "top",
+              "all": [
+                {
+                  "id": "top_integer",
+                  "source": "response",
+                  "pointer": "/usage/prompt_tokens",
+                  "operator": "type",
+                  "value": "integer"
+                },
+                {
+                  "id": "top_min",
+                  "source": "response",
+                  "pointer": "/usage/prompt_tokens",
+                  "operator": "gte",
+                  "value": 235
+                },
+                {
+                  "id": "top_max",
+                  "source": "response",
+                  "pointer": "/usage/prompt_tokens",
+                  "operator": "lte",
+                  "value": 238
+                }
+              ]
+            },
+            {
+              "id": "choice",
+              "all": [
+                {
+                  "id": "choice_integer",
+                  "source": "response",
+                  "pointer": "/choices/0/usage/prompt_tokens",
+                  "operator": "type",
+                  "value": "integer"
+                },
+                {
+                  "id": "choice_min",
+                  "source": "response",
+                  "pointer": "/choices/0/usage/prompt_tokens",
+                  "operator": "gte",
+                  "value": 235
+                },
+                {
+                  "id": "choice_max",
+                  "source": "response",
+                  "pointer": "/choices/0/usage/prompt_tokens",
+                  "operator": "lte",
+                  "value": 238
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

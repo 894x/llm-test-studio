@@ -1,0 +1,81 @@
+{
+  "schema_version": 3,
+  "id": "0b20296b-450a-4b16-8f4c-51ed0441ed62",
+  "key": "partial.json_no_flag.sync",
+  "name": "JSON Partial · 无 partial 完整 JSON 对照 · sync",
+  "description": "目的：不带 partial 时返回完整 JSON 对象。范围：K3 / K3.1 Pro 的 Chat sync，需显式选择；对照用例不拼接历史 assistant 内容。不设置 response_format；1024-token 输出预算，仅语义及协议检查，不比较 token 基准。来源：项目自编合成数据，依据 Kimi Partial 文档和 JSON 排查场景。",
+  "dimension": "workflow",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Return exactly this valid JSON object: {\"answer\":\"PARIS\"}. Use ordinary ASCII double quotation marks for the JSON syntax. Do not add Markdown, explanation, or any text outside the JSON object."
+            },
+            {
+              "role": "assistant",
+              "content": "{\"answer\":"
+            }
+          ],
+          "max_tokens": 1024,
+          "stream": false,
+          "thinking": {
+            "type": "disabled"
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "finish",
+          "source": "response",
+          "pointer": "/choices/0/finish_reason",
+          "operator": "equals",
+          "value": "stop"
+        },
+        {
+          "id": "content_type",
+          "source": "response",
+          "pointer": "/choices/0/message/content",
+          "operator": "type",
+          "value": "string"
+        },
+        {
+          "id": "json_syntax",
+          "source": "text",
+          "operator": "json_prefix_valid",
+          "value": ""
+        },
+        {
+          "id": "json_value",
+          "source": "text",
+          "operator": "json_prefix_equals",
+          "value": {
+            "prefix": "",
+            "expected": {
+              "answer": "PARIS"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

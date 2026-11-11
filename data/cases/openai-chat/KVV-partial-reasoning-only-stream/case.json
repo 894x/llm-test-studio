@@ -1,0 +1,111 @@
+{
+  "schema_version": 3,
+  "id": "867f1d49-6993-46d4-a21f-13357b60e646",
+  "key": "kvv.partial_reasoning_only.stream",
+  "name": "KVV · Partial Token · partial 预填（仅 reasoning，无 content 字段） · stream",
+  "description": "目的：比较 KVV k3_partial_partial_think_no_response 原始 Partial 请求的 prompt token 基准，接受 91 至 94。来源：Moonshot KVV 66092cf cases.partial.jsonl。范围：K3 基准观察；K3.1 Pro 复用相同基准用于对比，不代表已验证的模型专属计数。只增加 stream=true，保留原始空/缺失字段；不单独验证语义续写。显式选择后运行，模型或模板差异可能导致不匹配，不能单凭差异断言计费错误或 Partial 不支持。",
+  "dimension": "compatibility",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            },
+            {
+              "role": "assistant",
+              "reasoning_content": "reasoning",
+              "partial": true
+            }
+          ],
+          "reasoning_effort": "max",
+          "stream": true
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "done",
+          "source": "stream.completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "token_count",
+          "any": [
+            {
+              "id": "top",
+              "all": [
+                {
+                  "id": "top_integer",
+                  "source": "response",
+                  "pointer": "/usage/prompt_tokens",
+                  "operator": "type",
+                  "value": "integer"
+                },
+                {
+                  "id": "top_min",
+                  "source": "response",
+                  "pointer": "/usage/prompt_tokens",
+                  "operator": "gte",
+                  "value": 91
+                },
+                {
+                  "id": "top_max",
+                  "source": "response",
+                  "pointer": "/usage/prompt_tokens",
+                  "operator": "lte",
+                  "value": 94
+                }
+              ]
+            },
+            {
+              "id": "choice",
+              "all": [
+                {
+                  "id": "choice_integer",
+                  "source": "response",
+                  "pointer": "/choices/0/usage/prompt_tokens",
+                  "operator": "type",
+                  "value": "integer"
+                },
+                {
+                  "id": "choice_min",
+                  "source": "response",
+                  "pointer": "/choices/0/usage/prompt_tokens",
+                  "operator": "gte",
+                  "value": 91
+                },
+                {
+                  "id": "choice_max",
+                  "source": "response",
+                  "pointer": "/choices/0/usage/prompt_tokens",
+                  "operator": "lte",
+                  "value": 94
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "file_schema_version": 1,
+  "schema_version": 1,
+  "id": "65672e92-21af-4777-8bf4-72517da2746a",
+  "revision": 1,
+  "created_at": "2026-11-11T12:54:05Z",
+  "updated_at": "2026-11-11T12:54:05Z",
+  "name": "Kimi Partial 综合回归计划",
+  "protocol": "openai-chat",
+  "seed": 894,
+  "entries": [
+    {
+      "entry_id": "54e9567c-9c1c-4304-802b-39e9a577dbbc",
+      "target_kind": "suite",
+      "target_id": "7479627c-a147-519b-9917-bf21d0507682",
+      "parameters": {},
+      "load": {
+        "mode": "single",
+        "concurrency": 1,
+        "request_count": 1,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {}
+      },
+      "warmup_count": 0,
+      "settings": {}
+    }
+  ]
+}

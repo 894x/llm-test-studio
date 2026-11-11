@@ -27,7 +27,7 @@ This document describes the Chat Completions contract. Native K3 Responses cover
 | Dynamic tools | dependent-field/state partition | valid system tool declaration, declaration with `content`, global and dynamic tools coexisting | T1/T2 runnable |
 | Messages | required/empty partition | missing list, empty list, empty standard-message content | T2 runnable |
 | Vision/video shapes | polymorphic partition | Base64 image/video object and string inputs, plus missing discriminators/conditional fields | T3, in foundation but non-default selectable |
-| Partial Mode | workflow state | final assistant message with `partial=true` | T1 runnable |
+| Partial Mode | workflow state | final assistant message with `partial=true`; separate [eight KVV token fixtures](kvv-partial-coverage.md) and [ten JSON continuation/control Cases](json-partial-coverage.md) | T1 runnable; new profiles have T0 validation only |
 | Predicted Output | polymorphic/enum partition | string content, text-object array, invalid type | T1/T2 runnable |
 | Cache/safety identifiers | optional-field partition | `prompt_cache_key`, hashed `safety_identifier` accepted | T1 runnable |
 | 1M context admission | dependent token boundary | near-window profile requirements documented below | T3 deferred; no paid execution |

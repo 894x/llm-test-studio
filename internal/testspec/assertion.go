@@ -88,6 +88,19 @@ func validateAssertion(assertion Assertion, depth int, seen map[string]bool) err
 		if _, err := decodeValue(assertion.Value); err != nil {
 			return errors.New("assertion requires a JSON value")
 		}
+	case "json_prefix_valid":
+		value, err := decodeValue(assertion.Value)
+		if _, ok := value.(string); err != nil || !ok {
+			return errors.New("json_prefix_valid requires a prefix string")
+		}
+	case "json_prefix_equals":
+		value, err := decodeValue(assertion.Value)
+		if err != nil {
+			return err
+		}
+		if _, _, err := jsonPrefixExpectation(value); err != nil {
+			return err
+		}
 	case "in", "not_in":
 		value, err := decodeValue(assertion.Value)
 		if _, ok := value.([]any); err != nil || !ok {
@@ -413,6 +426,20 @@ func compare(operator string, actual any, expected any) (bool, error) {
 	case "json_valid":
 		text, ok := actual.(string)
 		return ok && json.Valid([]byte(text)), nil
+	case "json_prefix_valid":
+		prefix, ok := expected.(string)
+		if !ok {
+			return false, errors.New("json_prefix_valid requires a prefix string")
+		}
+		_, valid := decodePrefixedJSON(actual, prefix)
+		return valid, nil
+	case "json_prefix_equals":
+		prefix, expectedValue, err := jsonPrefixExpectation(expected)
+		if err != nil {
+			return false, err
+		}
+		value, valid := decodePrefixedJSON(actual, prefix)
+		return valid && jsonEqual(value, expectedValue), nil
 	case "http_url":
 		text, ok := actual.(string)
 		if !ok {

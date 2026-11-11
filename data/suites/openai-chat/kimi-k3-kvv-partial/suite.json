@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "key": "kimi.k3.kvv.partial",
+  "name": "kimi-k3 · KVV Partial Token 基准观察",
+  "protocol": "openai-chat",
+  "description": "显式选择后将模型绑定为 kimi-k3。运行 KVV cases.partial.jsonl 的全部 8 条 SSE token 观察，保留 K3 原始计数基准和 +0～+3 容差；K3.1 Pro 未独立校准。覆盖正文/推理预填、空/缺失字段和工具组合，仅校验 token 基准及流完整性，不代表语义续写或完整 API 覆盖。",
+  "cases": [
+    {
+      "case_id": "a2acd637-6aa9-4a6a-ad7e-a6b515bcd354"
+    },
+    {
+      "case_id": "919c9d14-6925-467e-9df5-8308c0e65e8d"
+    },
+    {
+      "case_id": "1b55b65b-4046-422d-94c0-cbf9eaa11378"
+    },
+    {
+      "case_id": "93299837-4137-4ef7-887e-c04ecc0900ef"
+    },
+    {
+      "case_id": "867f1d49-6993-46d4-a21f-13357b60e646"
+    },
+    {
+      "case_id": "b2992c44-8c1b-45a9-acba-e691dde25766"
+    },
+    {
+      "case_id": "fc7b22d9-bd81-4a1c-8e73-3b3e5e3edd1f"
+    },
+    {
+      "case_id": "1b3a7971-4166-4766-bb73-2710cf3a82e0"
+    }
+  ],
+  "inputs": []
+}

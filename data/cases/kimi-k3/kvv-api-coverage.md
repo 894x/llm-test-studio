@@ -15,7 +15,7 @@ Sources: [KVV at 66092cf](https://github.com/MoonshotAI/Kimi-Vendor-Verifier/tre
 [OpenAPI](https://platform.kimi.com/docs/openapi.json).
 
 Each new Case is non-default and runs against the model bound by the operator.
-Except for the attributed token fixture, inputs are project-authored and synthetic. `core` suites contain documented
+Except for the attributed token fixtures, inputs are project-authored and synthetic. `core` suites contain documented
 claims; `observed` suites contain KVV expectations that are not established as
 documented contracts. A 400 in those suites means KVV-compatible rejection,
 not necessarily an independently documented provider requirement. T1 denotes
@@ -24,9 +24,11 @@ is implied by membership.
 
 The `parameters` suites reuse the existing model-specific parameter, reasoning
 and JSON cases. `schema` isolates the strict flat-schema samples, while `token`
-is a separate K3 upstream-baseline observation. The token fixture is attributed
-in `data/cases/PROVENANCE.md`; unlike the other new cases it is adapted from
-upstream test data.
+is a separate K3 upstream-baseline observation. The token fixtures are attributed
+in `data/cases/PROVENANCE.md`; unlike the other new cases they are adapted from
+upstream test data. The `partial` suites add exactly eight original KVV Partial
+SSE fixtures, shared by K3 and K3.1 Pro comparison entries; see the
+[bounded Partial matrix and compatibility notes](kvv-partial-coverage.md).
 
 | KVV area | Required partitions and assertions | Existing or planned cases | Tier / status |
 |---|---|---|---|
@@ -41,7 +43,8 @@ upstream test data.
 | Parameters | fixed K3 settings and boundary rejection | existing K3/K3.1 parameter cases | T1/T2 existing; no duplicated copies |
 | Thinking | current top-level `reasoning_effort` valid and invalid values | existing K3/K3.1 reasoning cases | T1/T2 partial; legacy `thinking.effort` and model self-report are observations, not current documented contract |
 | Preserved thinking | carry complete returned assistant message across calls | existing matrix runner gap | blocked pending lossless replay |
-| Prompt token groundtruth | source request and tokenizer/template version must match; stream placement and permitted deviation must be defined | `kvv.prompt_tokens_assistant_hello.stream` | T1 KVV-observed: one upstream fixture, inclusive 99–102, checks top-level or choice-level usage; template/model drift remains possible. Other fixtures deferred; KVV's separate 539 test is skipped upstream |
+| Prompt token groundtruth | source request and tokenizer/template version must match; stream placement and permitted deviation must be defined | `kvv.prompt_tokens_assistant_hello.stream` | T1 KVV-observed: one upstream fixture, inclusive 99–102, checks top-level or choice-level usage; template/model drift remains possible. Other non-Partial fixtures deferred; KVV's separate 539 test is skipped upstream |
+| Partial prompt token groundtruth | all eight original content/reasoning, absent/empty-field and tool/effort partitions; SSE, integer count in `[expected, expected+3]`, top-level or first-choice usage | `kvv.partial_*.stream`, K3 / K3.1 Pro opt-in Partial Suites | Eight KVV observations implemented; K3 baselines retained for both comparison entries, not independently calibrated for K3.1 Pro. T0 only; semantic continuation and non-stream parity are outside this import |
 | Benchmark, image fixtures, load and long context | scoring / datasets or expensive execution | outside this integration | deferred / separate workflow |
 
 `response_format.strict=false` promises valid JSON object, not compliance with
@@ -49,8 +52,8 @@ every schema field. Generic nested/recursive Schema validation and complete
 upstream KVV parity are not claimed. Provider-backed execution and expenditure
 require a separate explicit run request.
 
-The token case asserts the final retained non-null top-level or first-choice
-usage and requires `[DONE]`; KVV stops reading on the first usage. Conflicting
+The token cases assert the final retained non-null top-level or first-choice
+usage and require `[DONE]`; KVV stops reading on the first usage. Conflicting
 usage values across chunks therefore need separate investigation and are not
 claimed to be evaluated identically.
 

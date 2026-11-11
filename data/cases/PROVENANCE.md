@@ -21,5 +21,22 @@ The upstream MIT copyright and permission notice is preserved in
 unchanged except for the stream flag that upstream adds at execution time; the
 assertion uses upstream's current inclusive `[99, 102]` tolerance. It is an
 upstream baseline, not a guarantee for every model or deployment template.
+
+The eight `KVV-partial-*-stream` requests and token baselines are adapted from
+[`cases.partial.jsonl` at the same 66092cf revision](https://github.com/MoonshotAI/Kimi-Vendor-Verifier/blob/66092cf444c97356c0e11c5078c67116390615d9/testdata/prompt_token_cases/cases.partial.jsonl).
+The original records are retained in [`kimi-k3/kvv-partial.jsonl`](kimi-k3/kvv-partial.jsonl)
+under the same preserved MIT notice. Requests add only `stream=true`; absent
+and empty content/reasoning fields remain distinct. Assertions retain each
+upstream baseline's inclusive `expected` through `expected+3` tolerance, with
+the product's additional complete-stream/protocol checks. Separate K3 and
+K3.1 Pro Suites share these K3 observations, not independently calibrated
+model-specific token guarantees.
+
+The ten `JSON-partial-*` Cases use independently authored synthetic prompts
+and product data. They adopt the JSON prefill workflow described in the
+[official Partial guide](https://platform.kimi.ai/docs/api/partial), not copied
+KVV fixtures or captured provider responses. Their scenarios and assertion
+semantics are documented in [`kimi-k3/json-partial-coverage.md`](kimi-k3/json-partial-coverage.md).
+
 Other KVV compatibility cases are project-authored synthetic cases derived
 from documented behavior or KVV scenario ideas, rather than copied fixtures.

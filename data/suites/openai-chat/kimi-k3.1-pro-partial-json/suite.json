@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "key": "kimi.k3.1.pro.partial.json",
+  "name": "kimi-k3.1-pro · JSON Partial 续写专项",
+  "protocol": "openai-chat",
+  "description": "绑定 kimi-k3.1-pro 后显式运行。10 条用例覆盖字符串内、字段边界和左花括号预填、无 partial 对照及合成商品提取，均包含 sync/stream；解析拼接后的 JSON 并比较字段值，允许正常空白差异，不以 HTTP 200 或 token 基准代替语义成功。需要 runner 支持 json_prefix_assertions。",
+  "cases": [
+    {
+      "case_id": "ecf26e5b-76f7-47e8-9b42-17e2890f99f8"
+    },
+    {
+      "case_id": "8b49424c-537b-4241-85be-3f790934c5ec"
+    },
+    {
+      "case_id": "fced2fab-f68d-424b-a4aa-09f8265d398b"
+    },
+    {
+      "case_id": "6bfb9219-8d73-4d8f-9efa-072b4308525a"
+    },
+    {
+      "case_id": "13940798-d562-4793-8ed6-a6cb2a87f153"
+    },
+    {
+      "case_id": "f5f0a537-5b2f-4170-b10c-9e025492c8cb"
+    },
+    {
+      "case_id": "0b20296b-450a-4b16-8f4c-51ed0441ed62"
+    },
+    {
+      "case_id": "2af6510a-5e0f-400f-9fe5-2ea69bcf6b34"
+    },
+    {
+      "case_id": "9a6200df-3b2f-45cc-89bd-2a5608f234f6"
+    },
+    {
+      "case_id": "56aafcba-c428-4117-acf1-bb728a00def2"
+    }
+  ],
+  "inputs": []
+}

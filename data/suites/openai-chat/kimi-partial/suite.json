@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "key": "kimi.partial",
+  "name": "Kimi · Partial 综合回归",
+  "protocol": "openai-chat",
+  "description": "共 18 条，先运行 10 条 JSON Partial 语义检查（含 sync/stream、无 partial 对照和商品提取），再运行 8 条 KVV Partial SSE token 基准观察；每条 Case 仅引用一次。适用于 K3 / K3.1 Pro，模型、渠道和凭证由运行配置绑定。JSON 检查拼接后的合法性及字段值；KVV 沿用 K3 原始 token 基准，K3.1 Pro 未独立校准，计数不匹配不等同于 Partial 不支持。需要支持 JSON 前缀断言的执行端。",
+  "cases": [
+    {
+      "case_id": "ecf26e5b-76f7-47e8-9b42-17e2890f99f8"
+    },
+    {
+      "case_id": "8b49424c-537b-4241-85be-3f790934c5ec"
+    },
+    {
+      "case_id": "fced2fab-f68d-424b-a4aa-09f8265d398b"
+    },
+    {
+      "case_id": "6bfb9219-8d73-4d8f-9efa-072b4308525a"
+    },
+    {
+      "case_id": "13940798-d562-4793-8ed6-a6cb2a87f153"
+    },
+    {
+      "case_id": "f5f0a537-5b2f-4170-b10c-9e025492c8cb"
+    },
+    {
+      "case_id": "0b20296b-450a-4b16-8f4c-51ed0441ed62"
+    },
+    {
+      "case_id": "2af6510a-5e0f-400f-9fe5-2ea69bcf6b34"
+    },
+    {
+      "case_id": "9a6200df-3b2f-45cc-89bd-2a5608f234f6"
+    },
+    {
+      "case_id": "56aafcba-c428-4117-acf1-bb728a00def2"
+    },
+    {
+      "case_id": "a2acd637-6aa9-4a6a-ad7e-a6b515bcd354"
+    },
+    {
+      "case_id": "919c9d14-6925-467e-9df5-8308c0e65e8d"
+    },
+    {
+      "case_id": "1b55b65b-4046-422d-94c0-cbf9eaa11378"
+    },
+    {
+      "case_id": "93299837-4137-4ef7-887e-c04ecc0900ef"
+    },
+    {
+      "case_id": "867f1d49-6993-46d4-a21f-13357b60e646"
+    },
+    {
+      "case_id": "b2992c44-8c1b-45a9-acba-e691dde25766"
+    },
+    {
+      "case_id": "fc7b22d9-bd81-4a1c-8e73-3b3e5e3edd1f"
+    },
+    {
+      "case_id": "1b3a7971-4166-4766-bb73-2710cf3a82e0"
+    }
+  ],
+  "inputs": []
+}

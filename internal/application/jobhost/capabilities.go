@@ -24,6 +24,7 @@ func CoreCapabilities() jobcontract.RunnerCapabilities {
 			jobcontract.FeatureFunctionalProgress,
 			jobcontract.FeatureCaseDescriptions,
 			jobcontract.FeatureCacheWriteHeaders,
+			jobcontract.FeatureJSONPrefixAssertions,
 		},
 	}
 }

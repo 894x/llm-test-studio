@@ -13,6 +13,7 @@ const FeaturePerformanceAffinity = "performance_affinity"
 const FeatureFunctionalProgress = "functional_progress"
 const FeatureCaseDescriptions = "case_descriptions"
 const FeatureCacheWriteHeaders = "cache_write_headers"
+const FeatureJSONPrefixAssertions = "json_prefix_assertions"
 
 // SupportsJob checks only the current task requirements, independent of client
 // release and build. Report-transfer requirements may be stricter for a caller.
@@ -45,6 +46,9 @@ func (capabilities RunnerCapabilities) SupportsJob(spec JobSpec) bool {
 					}
 					if requiresCacheWriteHeaders(definition.Assertions) {
 						features = append(features, FeatureCacheWriteHeaders)
+					}
+					if requiresJSONPrefixAssertions(definition.Assertions) {
+						features = append(features, FeatureJSONPrefixAssertions)
 					}
 				}
 				if entry.Performance != nil || entry.OnFailure != "" || run.Snapshot.PlanDocument.Entries[index].Name != "" {
