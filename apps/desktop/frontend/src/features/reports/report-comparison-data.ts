@@ -2,7 +2,7 @@ import { DesktopDataError } from "@/app/data-error"
 import { isUUID } from "@/features/catalog/data"
 import { parseReportDetail, type ReportDetail } from "./data"
 
-export const MAX_COMPARISON_REPORTS = 8
+export const MAX_COMPARISON_REPORTS = 16
 export type ComparisonChange = "baseline" | "same" | "regressed" | "recovered" | "changed" | "conditions_changed" | "added" | "missing"
 export interface ReportComparisonMetric { key: string; value: number; unit: string; samples: number; delta: number | null }
 export interface ReportComparisonCell {

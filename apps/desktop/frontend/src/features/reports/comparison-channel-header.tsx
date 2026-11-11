@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import "./report-comparison-view.css"
 
-export function ComparisonTableColumns({ channels, collapsed = [] }: { channels: number; collapsed?: boolean[] }) {
+export const COMPARISON_RESULT_COLUMN_WIDTH = 68
+
+export function ComparisonTableColumns({ channels, collapsed = [], sharedSeverity = false }: { channels: number; collapsed?: boolean[]; sharedSeverity?: boolean }) {
   const columns = useRef<HTMLTableColElement>(null)
   const [caseWidth, setCaseWidth] = useState(220)
-  const channelWidth = Array.from({ length: channels }, (_, index) => collapsed[index] ? 32 : 104).reduce((sum, width) => sum + width, 0)
+  const channelWidth = Array.from({ length: channels }, (_, index) => collapsed[index] ? 32 : sharedSeverity ? COMPARISON_RESULT_COLUMN_WIDTH : 104).reduce((sum, width) => sum + width, sharedSeverity ? 64 : 0)
   useLayoutEffect(() => {
     const table = columns.current?.parentElement
     if (!table) return
@@ -19,7 +21,7 @@ export function ComparisonTableColumns({ channels, collapsed = [] }: { channels:
     return () => observer.disconnect()
   }, [channelWidth])
   // Image export copies computed widths; a spanning col reports all of its columns combined.
-  return <colgroup ref={columns}><col style={{ width: caseWidth }} />{Array.from({ length: channels }, (_, index) => <col key={index} style={collapsed[index] ? { width: 32 } : undefined} />)}</colgroup>
+  return <colgroup ref={columns}><col style={{ width: caseWidth }} />{sharedSeverity ? <col style={{ width: 64 }} /> : null}{Array.from({ length: channels }, (_, index) => <col key={index} style={collapsed[index] ? { width: 32 } : undefined} />)}</colgroup>
 }
 
 export function ComparisonChannelHeader({ channel, baseline = false, exporting = false, collapsed = false, onToggle, disabled = false }: {

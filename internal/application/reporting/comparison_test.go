@@ -2,6 +2,7 @@ package reporting
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -143,6 +144,33 @@ func TestComparisonRejectsInvalidSelections(t *testing.T) {
 	}
 	if !reflect.DeepEqual(left.Report.Channel, right.Report.Channel) {
 		t.Fatal("test requires the same historical channel")
+	}
+}
+
+func TestComparisonAcceptsSixteenReports(t *testing.T) {
+	left, _ := comparisonPair(t)
+	for _, count := range []int{2, 8, 9, 16, 17} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			details := make([]Detail, 0, count)
+			for index := range count {
+				detail := left
+				detail.Report.ID = fmt.Sprintf("42000000-0000-4000-8000-%012d", index+100)
+				details = append(details, detail)
+			}
+			comparison, err := Compare(details, details[0].Report.ID)
+			if count > 16 {
+				if err == nil {
+					t.Fatal("accepted more than sixteen reports")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(comparison.Reports) != count || len(comparison.Rows[0].Cells) != count {
+				t.Fatalf("lost report columns for selection of %d", count)
+			}
+		})
 	}
 }
 

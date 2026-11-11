@@ -12,14 +12,15 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { TooltipProvider } from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import type { CatalogCaseSeverity } from "@/features/catalog/data"
 import { ExecutionDetails, VerificationBadge } from "./entry-case-table"
 import { QuickPerformanceRequestAnalysis } from "@/features/quick-test/quick-performance-request-analysis"
 import { blobToBase64 } from "./report-export-encoding"
 import { copyReportPNGToClipboard } from "./report-clipboard"
 import { ReportExportControls } from "./report-export-controls"
 import { CaseSeverityBadge } from "./case-severity-badge"
-import { ComparisonChannelHeader, ComparisonTableColumns } from "./comparison-channel-header"
+import { COMPARISON_RESULT_COLUMN_WIDTH, ComparisonChannelHeader, ComparisonTableColumns } from "./comparison-channel-header"
 import { comparisonReportID, type CompareReports, type ReportComparison, type ReportComparisonCell, type ReportComparisonRow } from "./report-comparison-data"
 import type { ReportDetail, ReportExportFormat } from "./data"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
@@ -72,9 +73,11 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
       if (format === "json") {
         blob = new Blob([JSON.stringify(data, null, 2)], { type: mediaType })
       } else {
+        const shown = data.reports.filter(detail => !hiddenReports.includes(comparisonReportID(detail))).length
+        const minWidth = shown > 8 ? 284 + shown * COMPARISON_RESULT_COLUMN_WIDTH + (data.reports.length - shown) * 32 : 0
         const element = await new Promise<HTMLElement>(resolve => {
           exportReady.current = resolve
-          setExportData({ comparison: data, width: workspace.current?.clientWidth || 1200 })
+          setExportData({ comparison: data, width: Math.max(workspace.current?.clientWidth || 1200, minWidth) })
         })
         const result = await exportVisualReport(element, format === "copy" ? "png" : format, baselineID)
         blob = result.blob; filename = result.filename; mediaType = result.mediaType
@@ -174,13 +177,15 @@ function ComparisonSuiteTable({ data, reports, rows, expanded, onExpandedChange,
   const currentPage = Math.min(page, lastPage)
   const visible = exporting ? rows : rows.slice(currentPage * 40, (currentPage + 1) * 40)
   const visibleReports = reports.filter(detail => !hiddenReports.includes(comparisonReportID(detail)))
+  const sharedSeverity = visibleReports.length > 8
   const reportIDs = visibleReports.map(comparisonReportID)
   const activeReportID = reportIDs.includes(detailReportID) ? detailReportID : reportIDs.includes(data.baseline_id) ? data.baseline_id : reportIDs[0]
-  return <div className="min-w-0 space-y-3">
-    <Table aria-label={t("compare.table")} className="table-fixed text-xs">
-      <ComparisonTableColumns channels={reports.length} collapsed={reports.map(detail => hiddenReports.includes(comparisonReportID(detail)))} />
+  const table = <Table aria-label={t("compare.table")} className="table-fixed text-xs"
+    style={sharedSeverity ? { minWidth: 284 + reports.reduce((width, detail) => width + (hiddenReports.includes(comparisonReportID(detail)) ? 32 : COMPARISON_RESULT_COLUMN_WIDTH), 0) } : undefined}>
+      <ComparisonTableColumns channels={reports.length} collapsed={reports.map(detail => hiddenReports.includes(comparisonReportID(detail)))} sharedSeverity={sharedSeverity} />
       <TableHeader><TableRow>
         <TableHead>{t("protocolDesign.caseName")}</TableHead>
+        {sharedSeverity ? <TableHead>{t("protocolDesign.severity")}</TableHead> : null}
         {reports.map(detail => {
           const info = reportInfo(detail)
           const id = comparisonReportID(detail)
@@ -199,6 +204,7 @@ function ComparisonSuiteTable({ data, reports, rows, expanded, onExpandedChange,
                 <span className="min-w-0 [overflow-wrap:anywhere]">{row.name || t("system.quickPerformance")}</span>
               </Button>}
           </TableCell>
+          {sharedSeverity ? <TableCell className="align-top"><ComparisonSeverity row={row} reports={visibleReports} exporting={exporting} /></TableCell> : null}
           {row.cells.flatMap(cell => {
             const detail = reports.find(detail => comparisonReportID(detail) === cell.report_id)
             if (!detail) return []
@@ -206,7 +212,7 @@ function ComparisonSuiteTable({ data, reports, rows, expanded, onExpandedChange,
             const caseItem = detail.source === "run" ? detail.entries.find(entry => entry.entry_id === cell.entry_id)?.cases.find(item => item.case_id === cell.case_id) : undefined
             const selected = expanded === row.key && cell.report_id === activeReportID
             const result = <>
-              {caseItem ? <CaseSeverityBadge severity={caseItem.severity} /> : null}
+              {caseItem && !sharedSeverity ? <CaseSeverityBadge severity={caseItem.severity} /> : null}
               {cell.change === "missing" || cell.status === "not_run" ? <Badge variant="outline" className="h-auto min-h-5 max-w-full whitespace-normal text-center text-muted-foreground [overflow-wrap:anywhere]">{t(cell.change === "missing" ? "compare.change.missing" : "comparison.noResult")}</Badge> :
                 <VerificationBadge status={cell.status as "passed" | "failed" | "not_applicable" | "indeterminate"} />}
             </>
@@ -219,17 +225,38 @@ function ComparisonSuiteTable({ data, reports, rows, expanded, onExpandedChange,
             </TableCell>
           })}
         </TableRow>
-        {expanded === row.key ? <TableRow id={`${detailsID}-${encodeURIComponent(row.key)}`}><TableCell colSpan={reports.length + 1} className="whitespace-normal py-3">
+        {expanded === row.key ? <TableRow id={`${detailsID}-${encodeURIComponent(row.key)}`}><TableCell colSpan={reports.length + (sharedSeverity ? 2 : 1)} className="whitespace-normal py-3">
           <ComparisonChannelDetails reports={visibleReports} row={row} baselineID={data.baseline_id} selectedReportID={detailReportID}
             onSelectedReportChange={onDetailReportChange} exporting={exporting} disabled={disabled} />
         </TableCell></TableRow> : null}
       </Fragment>)}</TableBody>
     </Table>
+  return <div className="min-w-0 space-y-3">
+    {sharedSeverity && !exporting ? <ScrollArea className="max-w-full [&>[data-slot=scroll-area-viewport]]:h-auto">{table}</ScrollArea> : table}
     {!exporting && lastPage > 0 ? <div className="flex items-center justify-end gap-2 text-xs"><span>{currentPage + 1} / {lastPage + 1}</span>
       <Button size="xs" variant="outline" disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>{t("protocolDesign.previous")}</Button>
       <Button size="xs" variant="outline" disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>{t("protocolDesign.next")}</Button>
     </div> : null}
   </div>
+}
+
+function ComparisonSeverity({ row, reports, exporting }: { row: ReportComparisonRow; reports: ReportDetail[]; exporting: boolean }) {
+  const groups = new Map<CatalogCaseSeverity, string[]>()
+  for (const detail of reports) {
+    if (detail.source !== "run") continue
+    const cell = row.cells.find(cell => cell.report_id === comparisonReportID(detail))
+    if (!cell || cell.change === "missing") continue
+    const item = detail.entries.find(entry => entry.entry_id === cell.entry_id)?.cases.find(item => item.case_id === cell.case_id)
+    if (!item) continue
+    const channels = groups.get(item.severity) ?? []
+    channels.push(reportInfo(detail).channel)
+    groups.set(item.severity, channels)
+  }
+  return <div className="flex min-h-7 flex-wrap items-center gap-2 py-1">{[...groups].map(([severity, channels]) =>
+    <Tooltip key={severity}><TooltipTrigger asChild><span tabIndex={exporting ? undefined : 0} className="rounded-sm outline-none focus-visible:outline-2 focus-visible:outline-ring">
+      <CaseSeverityBadge severity={severity} />
+    </span></TooltipTrigger><TooltipContent className="max-w-80 [overflow-wrap:anywhere]">{channels.join(" · ")}</TooltipContent></Tooltip>
+  )}</div>
 }
 
 function ComparisonChannelDetails({ reports, row, baselineID, selectedReportID, onSelectedReportChange, exporting, disabled }: {

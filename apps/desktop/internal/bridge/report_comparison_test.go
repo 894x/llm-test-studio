@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/894x/llm-test-studio/internal/application/reporting"
@@ -13,6 +14,32 @@ type comparisonReportQuery struct {
 	recordingReportingQuery
 	details map[string]reporting.Detail
 	readIDs []string
+}
+
+func TestDesktopReportComparisonAcceptsSixteenReports(t *testing.T) {
+	query := &comparisonReportQuery{details: map[string]reporting.Detail{}}
+	ids := make([]string, 0, 17)
+	for index := range 17 {
+		id := fmt.Sprintf("42000000-0000-4000-8000-%012d", index+100)
+		ids = append(ids, id)
+		query.details[id] = reporting.Detail{
+			SchemaVersion: 1,
+			Source:        reporting.SourceRun,
+			Report:        domain.Report{ID: id},
+		}
+	}
+	app := New(func(context.Context) (Dependencies, error) { return Dependencies{Reports: query}, nil })
+	app.onStartup(context.Background())
+	result, err := app.CompareReports(ids[:16], ids[0])
+	if err != nil || len(result.Reports) != 16 || len(query.readIDs) != 16 {
+		t.Fatalf("sixteen-report comparison: reports=%d, reads=%d, error=%v", len(result.Reports), len(query.readIDs), err)
+	}
+	if _, err := app.CompareReports(ids, ids[0]); err == nil {
+		t.Fatal("accepted seventeen reports")
+	}
+	if len(query.readIDs) != 16 {
+		t.Fatal("oversized selection must be rejected before reading reports")
+	}
 }
 
 func (query *comparisonReportQuery) Detail(ctx context.Context, id string) (reporting.Detail, error) {

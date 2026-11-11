@@ -18,6 +18,54 @@ function fixture() {
 }
 
 describe("report comparison", () => {
+  it("accepts sixteen reports and shares the severity column without losing differing severities", async () => {
+    const data = fixture(); const user = userEvent.setup()
+    const reports = Array.from({ length: 16 }, (_, index) => {
+      const detail = structuredClone(data.comparison.reports[index === 0 ? 0 : 1])
+      if (detail.source !== "run") throw new Error("Expected run report")
+      detail.report.id = reportID(100 + index); detail.report.run_id = reportID(200 + index)
+      detail.report.channel.name = `Channel ${index + 1}`
+      if (index === 15) detail.entries[0].cases[0].severity = "normal"
+      return detail
+    })
+    data.comparison.reports = reports
+    data.comparison.baseline_id = reports[0].report.id
+    data.comparison.rows.forEach(row => {
+      const cells = row.cells
+      row.cells = reports.map((detail, index) => ({ ...structuredClone(cells[index === 0 ? 0 : 1]), report_id: detail.report.id }))
+    })
+    expect(parseReportComparison(data.comparison).reports).toHaveLength(16)
+    expect(() => parseReportComparison({ ...data.comparison, reports: [...reports, reports[0]] })).toThrow()
+    const documents: HTMLElement[] = []
+    const save = vi.fn(async () => true)
+    const visual = vi.fn<NonNullable<React.ComponentProps<typeof ReportComparisonView>["exportVisualReport"]>>(async element => {
+      documents.push(element.cloneNode(true) as HTMLElement)
+      return { blob: new Blob(["html"]), filename: "comparison.html", mediaType: "text/html" }
+    })
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportComparisonView reportIDs={reports.map(comparisonReportID)} compareReports={data.compareReports}
+      saveReportExport={save} copyReportPNG={vi.fn()} exportVisualReport={visual} /></I18nextProvider>)
+    const table = await screen.findByRole("table", { name: "报告对比结果" })
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(18)
+    const first = within(table).getByRole("button", { name: "Reject invalid parameter" }).closest("tr")!
+    const cells = first.querySelectorAll(":scope > td")
+    expect(cells[1]).toHaveTextContent("必过容忍")
+    for (const cell of [...cells].slice(2)) expect(cell).not.toHaveTextContent(/必过|容忍/)
+    await user.click(screen.getByRole("button", { name: "查看Channel 16的用例详情：Reject invalid parameter" }))
+    expect(screen.getByRole("region", { name: "渠道详情" })).toHaveTextContent("16 / 16")
+    await user.click(screen.getByRole("button", { name: "下一个渠道" }))
+    expect(screen.getByRole("region", { name: "渠道详情" })).toHaveTextContent("1 / 16")
+    await user.click(screen.getByRole("button", { name: "报告导出" }))
+    await user.click(screen.getByRole("button", { name: "HTML" }))
+    await waitFor(() => expect(save).toHaveBeenCalledOnce())
+    expect(documents[0]).toHaveStyle({ width: "1372px" })
+    expect(documents[0].querySelectorAll("thead:first-of-type > tr > th").length).toBeGreaterThanOrEqual(18)
+    for (let channel = 9; channel <= 16; channel++) await user.click(screen.getByRole("button", { name: `折叠渠道：Channel ${channel}` }))
+    const compactTable = screen.getByRole("table", { name: "报告对比结果" })
+    expect(compactTable.querySelectorAll(":scope > thead > tr > th")).toHaveLength(17)
+    const compactRow = within(compactTable).getByRole("button", { name: "Reject invalid parameter" }).closest("tr")!
+    expect(within(compactRow).getAllByText("必过")).toHaveLength(8)
+  }, 15_000)
+
   it("slides through one channel at a time, skips collapsed channels, and exports the selected details", async () => {
     const data = fixture(); const user = userEvent.setup()
     const third = structuredClone(data.comparison.reports[1])
@@ -316,14 +364,14 @@ describe("report comparison", () => {
 
   it("bounds multiselection and removes unavailable reports from the active selection", async () => {
     const data = fixture(); const user = userEvent.setup()
-    data.snapshot.reports = Array.from({ length: 9 }, (_, index) => ({ ...data.snapshot.reports[0], id: reportID(100 + index), run_id: reportID(200 + index), channel_name: `Channel ${index}` }))
+    data.snapshot.reports = Array.from({ length: 17 }, (_, index) => ({ ...data.snapshot.reports[0], id: reportID(100 + index), run_id: reportID(200 + index), channel_name: `Channel ${index}` }))
     const props = { snapshot: data.snapshot, compareReports: data.compareReports, getDetail: vi.fn(), exportReport: vi.fn(), saveReportExport: vi.fn(), copyReportPNG: vi.fn() }
     const rendered = render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace {...props} /></I18nextProvider>)
     expect(screen.getByRole("checkbox", { name: "选择当前显示的报告" })).toBeDisabled()
     const checkboxes = screen.getAllByRole("checkbox", { name: /^选择报告：/ })
-    for (const checkbox of checkboxes.slice(0, 8)) await user.click(checkbox)
-    expect(checkboxes[8]).toBeDisabled()
-    expect(screen.getByRole("button", { name: "对比报告（8）" })).toBeEnabled()
+    for (const checkbox of checkboxes.slice(0, 16)) await user.click(checkbox)
+    expect(checkboxes[16]).toBeDisabled()
+    expect(screen.getByRole("button", { name: "对比报告（16）" })).toBeEnabled()
     rendered.rerender(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace {...props} snapshot={{ ...data.snapshot, reports: [] }} /></I18nextProvider>)
     expect(screen.getByRole("button", { name: "对比报告（0）" })).toBeDisabled()
     expect(data.compareReports).not.toHaveBeenCalled()

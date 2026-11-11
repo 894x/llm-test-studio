@@ -13,7 +13,7 @@ import (
 )
 
 // MaxComparisonReports bounds detail and evidence reads for an interactive view.
-const MaxComparisonReports = 8
+const MaxComparisonReports = 16
 
 type Comparison struct {
 	SchemaVersion int             `json:"schema_version"`
