@@ -198,6 +198,7 @@
   "emptyHint": "运行完成并封存结论后，报告会出现在这里。",
   "catalogAria": "测试报告目录",
   "columns": {
+    "casesAndPlanItems": "用例 / 计划项",
     "verdict": "结论",
     "reportPlan": "报告 / 计划",
     "target": "目标",

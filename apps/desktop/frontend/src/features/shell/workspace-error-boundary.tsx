@@ -1,9 +1,8 @@
+import { RefreshButton } from "@/components/ui/refresh-button"
 import { Component, type ReactNode } from "react"
-import RefreshCwIcon from "lucide-react/dist/esm/icons/refresh-cw.mjs"
 import { useTranslation } from "react-i18next"
 
 import { reportWorkspaceRenderFailure } from "@/app/desktop-client"
-import { Button } from "@/components/ui/button"
 
 class WorkspaceRenderBoundary extends Component<{
   children: ReactNode
@@ -33,9 +32,7 @@ export function WorkspaceErrorBoundary({ children }: { children: ReactNode }) {
           <h2 className="text-sm font-semibold">{t("pageError.title")}</h2>
           <p className="text-xs text-muted-foreground">{t("pageError.description")}</p>
           <p className="text-xs text-muted-foreground">{t("pageError.reloadHint")}</p>
-          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-            <RefreshCwIcon />{t("pageError.reload")}
-          </Button>
+          <RefreshButton variant="outline" label={t("pageError.reload")} onClick={() => window.location.reload()} />
         </div>
       </div>
     }>

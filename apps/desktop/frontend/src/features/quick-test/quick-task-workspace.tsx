@@ -1,3 +1,4 @@
+import { RefreshButton } from "@/components/ui/refresh-button"
 import { performanceProfilesEqual } from "./performance-profile"
 import { isQuickPerformanceProtocol, type QuickPerformanceCommand, type QuickPerformanceProfile, type QuickPerformanceReport } from "./data"
 import {
@@ -820,7 +821,7 @@ function QuickTaskContent({
               <div ref={setPerformanceActionsContainer} hidden={mode !== "performance"} />
             </div>
             {error ? <Alert variant="destructive" className="mb-4"><AlertDescription>{error}</AlertDescription></Alert> : null}
-            {refreshError ? <Alert className="mb-4"><AlertDescription>{t("task.refreshFailed")}</AlertDescription><Button size="sm" variant="outline" onClick={() => void refreshProgress()}>{t("task.refresh")}</Button></Alert> : null}
+            {refreshError ? <Alert className="mb-4"><AlertDescription>{t("task.refreshFailed")}</AlertDescription><RefreshButton variant="outline" label={t("task.refresh")} onClick={() => void refreshProgress()} /></Alert> : null}
             {!task && mode === "functional" && tasksReady ? (
               <>
                 <div className="mb-4">{protocolField}</div>
@@ -1116,14 +1117,14 @@ function QuickTaskContent({
                   </fieldset>
                   {hasFileInputs ? <Alert><AlertDescription>{t("fileInput.launchUnavailable")}</AlertDescription></Alert> : null}
                   <div className="flex flex-wrap justify-end gap-2">
-                    <Button type="submit" disabled={busy || hasFileInputs || !connectionsReady || !tasksReady}>
-                      {pending === "start" ? (
-                        <Spinner data-icon="inline-start" />
-                      ) : (
-                        <PlayIcon data-icon="inline-start" />
-                      )}
-                      {pending === "start" ? t("task.starting") : t("task.start")}
-                    </Button>
+                    <TooltipProvider><Tooltip><TooltipTrigger asChild>
+                      <span className="inline-flex" tabIndex={busy || hasFileInputs || !connectionsReady || !tasksReady ? 0 : undefined}>
+                        <Button type="submit" size="icon-sm" aria-label={t(pending === "start" ? "task.starting" : "task.start")} aria-busy={pending === "start"}
+                          disabled={busy || hasFileInputs || !connectionsReady || !tasksReady}>
+                          {pending === "start" ? <Spinner /> : <PlayIcon aria-hidden="true" />}
+                        </Button>
+                      </span>
+                    </TooltipTrigger><TooltipContent>{t(pending === "start" ? "task.starting" : "task.start")}</TooltipContent></Tooltip></TooltipProvider>
                   </div>
                   </form>
                   <div hidden={mode !== "performance"}>

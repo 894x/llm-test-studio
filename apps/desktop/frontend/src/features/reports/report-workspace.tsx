@@ -68,7 +68,9 @@ const EMPTY_BENCHMARK_CLIENT = {}
 const EMPTY_FILTERS = { kind: "all", status: "all", model: "all", channel: "all", definition: "all" }
 
 export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, comparisonControl, preferredReportID, reportOpenSequence = 0, getDetail, exportReport, saveReportExport, copyReportPNG, renderRunShortcuts, exportVisualReport = createVisualReportExport,
-  recycleClient, onHistoryChanged, historyChanges = [], benchmarkClient = EMPTY_BENCHMARK_CLIENT, compareReports }: {
+  recycleClient, onHistoryChanged, historyChanges = [], benchmarkClient = EMPTY_BENCHMARK_CLIENT, compareReports, onRerunComparison, commandPending = false }: {
+  onRerunComparison?: (command: import("@/features/comparisons/data").StartComparisonCommand) => Promise<void>
+  commandPending?: boolean
   compareReports?: CompareReports
   benchmarkClient?: Partial<BenchmarkClient>
   comparisonControl?: ReactNode
@@ -331,6 +333,8 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
         </div>
       )}
       inspector={isComparing ? undefined : selectedBenchmark ? <BenchmarkReportInspector run={selectedBenchmark.run} result={selectedBenchmark.result} onOpen={!isViewingReport ? () => setViewingReportID(selectedBenchmark.id) : undefined} /> : selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={{ schema_version: 1, reports: visibleReports }}
+        key={selectedComparison.id} disabled={commandPending}
+        onRerun={onRerunComparison ? () => onRerunComparison({ plan_id: selectedComparison.plan_id, model_id: selectedComparison.model_id, channel_ids: selectedComparison.channels.map(channel => channel.channel_id) }) : undefined}
         onOpen={!isViewingReport ? () => openBatchReports(selectedComparison) : undefined} exportControls={comparisonReport.controls} recycleAction={recycleAction} /> : selected ? (
         <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={() => handleExport("copy")}
           shortcuts={selected.source === "run" && selected.run_id ? renderRunShortcuts?.(selected.run_id, !isViewingReport, { extraAction: recycleAction }) : null} recycleAction={recycleAction} />
@@ -372,7 +376,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
                 {compareReports ? <TableHead className="w-9"><Checkbox aria-label={t("compare.selectVisible")} checked={allVisibleChecked ? true : selectableReportIDs.some(id => availableCheckedIDs.includes(id)) ? "indeterminate" : false}
                   disabled={!selectableReportIDs.length || (!allVisibleChecked && new Set([...availableCheckedIDs, ...selectableReportIDs]).size > MAX_COMPARISON_REPORTS)}
                   onCheckedChange={checked => setCheckedReportIDs(checked === true ? [...new Set([...availableCheckedIDs, ...selectableReportIDs])] : availableCheckedIDs.filter(id => !selectableReportIDs.includes(id)))} /></TableHead> : null}
-                <TableHead className="h-8 w-[88px] pl-2 text-[11px]">{t("columns.verdict")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.reportPlan")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.target")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.cases")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.generated")}</TableHead><TableHead className="h-8 w-[96px] pr-2 text-right text-[11px]">{t("columns.view")}</TableHead>
+                <TableHead className="h-8 w-[88px] pl-2 text-[11px]">{t("columns.verdict")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.reportPlan")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.target")}</TableHead><TableHead className="h-8 text-[11px]">{t(visibleComparisons.length ? "columns.casesAndPlanItems" : "columns.cases")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.generated")}</TableHead><TableHead className="h-8 w-[96px] pr-2 text-right text-[11px]">{t("columns.view")}</TableHead>
               </TableRow></TableHeader>
               <TableBody>{search.rows.map((item) => {
                 if (item.kind === "benchmark") return <TableRow key={item.id} data-state={item.id === selectedItem?.id ? "selected" : undefined} aria-selected={item.id === selectedItem?.id} onClick={() => setSelectedID(item.id)}>
@@ -391,11 +395,8 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
                     {compareReports ? <TableCell /> : null}
                     <TableCell className="py-1 pl-2 text-xs"><Badge variant="secondary">{t(`status.${comparison.status}`)}</Badge></TableCell>
                     <TableCell className="py-1 text-xs"><div className="font-medium">{t("comparison.title")}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.plan_name}</div></TableCell>
-                    <TableCell className="py-1 text-xs"><div>{comparison.model_name}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.channels.map(channel => channel.channel_name).join(" / ")}</div></TableCell>
-                    <TableCell className="py-1 text-[11px] tabular-nums">{comparison.channels.map(channel => {
-                      const report = reportsByRun.get(channel.run_id)
-                      return <div key={channel.channel_id}>{channel.channel_name} · {channelVerdict(channel, t, report)}{report ? ` · ${report.passed_case_count}/${report.verified_case_count}` : ""}</div>
-                    })}</TableCell>
+                    <TableCell className="py-1 text-xs"><div>{comparison.plan_name}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.channels.map(channel => channel.channel_name).join(" / ")}</div></TableCell>
+                    <TableCell className="py-1 text-[11px]"><ComparisonPlanItems reportID={comparison.channels.map(channel => reportsByRun.get(channel.run_id)?.id).find(Boolean)} getDetail={getDetail} /></TableCell>
                     <TableCell className="py-1 text-xs tabular-nums">{formatTimestamp(comparison.created_at, i18n.resolvedLanguage ?? i18n.language)}</TableCell>
                     <TableCell className="py-1 pr-2 text-right"><Button variant="outline" size="xs" aria-label={t("comparison.viewAria", { model: comparison.model_name })}
                       onClick={event => { event.stopPropagation(); openBatchReports(comparison) }}>{t("comparison.view")}</Button></TableCell>
@@ -1038,4 +1039,23 @@ function displayReportVerdict(report: ReportSummary, t: (key: string) => string)
 function displayReportPlan(report: ReportSummary, t: (key: string) => string): string {
   const key = reportPlanTranslationKey(report)
   return key ? t(key) : report.plan_name
+}
+
+function ComparisonPlanItems({ reportID, getDetail }: { reportID?: string; getDetail: (id: string) => Promise<ReportDetail> }) {
+  const { t } = useTranslation("reports")
+  const [state, setState] = useState<{ id: string; names: string[]; failed?: boolean }>({ id: "", names: [] })
+  useEffect(() => {
+    if (!reportID) return
+    let active = true
+    void Promise.resolve().then(() => getDetail(reportID)).then(detail => {
+      if (active) setState({ id: reportID, names: detail.source === "run" && detail.report.id === reportID ? detail.entries.map(entry => entry.name) : [] })
+    }).catch(() => {
+      if (active) setState({ id: reportID, names: [], failed: true })
+    })
+    return () => { active = false }
+  }, [reportID, getDetail])
+  if (!reportID) return <span className="text-muted-foreground">—</span>
+  if (state.id !== reportID) return <Spinner className="size-3" aria-label={t("detailLoading")} />
+  if (state.failed) return <span className="text-muted-foreground" title={t("compare.error")}>—</span>
+  return <div className="space-y-0.5 [overflow-wrap:anywhere]">{state.names.length ? state.names.map((name, index) => <div key={index}>{name}</div>) : "—"}</div>
 }

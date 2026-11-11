@@ -692,6 +692,8 @@ function AppWorkspace({
         />
       ) : page === "reports" ? (
         <ReportWorkspace
+          commandPending={commandPending}
+          onRerunComparison={async command => { await startComparison(command); navigate("runs") }}
           benchmarkClient={client}
           snapshot={reports!}
           comparisonControl={comparisonState.error ? <Button size="sm" variant="ghost" onClick={() => {

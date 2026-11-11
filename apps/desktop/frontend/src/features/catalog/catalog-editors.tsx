@@ -8,6 +8,8 @@ import ArrowDownIcon from "lucide-react/dist/esm/icons/arrow-down.mjs"
 import ArrowUpIcon from "lucide-react/dist/esm/icons/arrow-up.mjs"
 import CopyIcon from "lucide-react/dist/esm/icons/copy.mjs"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
+import PencilIcon from "lucide-react/dist/esm/icons/pencil.mjs"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import Trash2Icon from "lucide-react/dist/esm/icons/trash-2.mjs"
 import { useTranslation } from "react-i18next"
 
@@ -62,11 +64,16 @@ export function CatalogEditor({
   const title = t(copyBuiltinPlan ? "plans.saveAs" : item ? "editor.editTitle" : "editor.newTitle", { noun })
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        {trigger ?? <Button size="sm" variant={item ? "outline" : "default"} disabled={pending || (kind === "mapping" && (!catalog.models.length || !catalog.channels.length))}>
+      {trigger || kind === "plan" ? <SheetTrigger asChild>
+        {trigger ?? <Button size="sm" variant={item ? "outline" : "default"} disabled={pending}>
           {!item ? <PlusIcon data-icon="inline-start" /> : null}{title}
         </Button>}
-      </SheetTrigger>
+      </SheetTrigger> : <TooltipProvider><Tooltip><TooltipTrigger asChild><SheetTrigger asChild>
+        <Button size="icon-sm" variant={item ? "outline" : "default"} aria-label={title}
+          disabled={pending || (kind === "mapping" && (!catalog.models.length || !catalog.channels.length))}>
+          {item ? <PencilIcon aria-hidden="true" /> : <PlusIcon aria-hidden="true" />}
+        </Button>
+      </SheetTrigger></TooltipTrigger><TooltipContent>{title}</TooltipContent></Tooltip></TooltipProvider>}
       <SheetContent className={kind === "case" || kind === "suite" ? "data-[side=right]:w-full data-[side=right]:sm:max-w-3xl" : kind === "plan" ? "data-[side=right]:w-full data-[side=right]:sm:max-w-2xl" : "sm:max-w-lg"} onEscapeKeyDown={(event) => {
         if (event.target instanceof HTMLElement && event.target.matches('[role="combobox"][aria-expanded="true"]')) event.preventDefault()
       }}>
@@ -96,7 +103,10 @@ export function DeleteCatalogButton({
   const noun = t(`editor.noun.${kind}`)
   return (
     <AlertDialog>
-      <AlertDialogTrigger asChild><Button size="sm" variant="destructive" disabled={pending}>{t("editor.delete", { noun })}</Button></AlertDialogTrigger>
+      {kind === "plan" ? <AlertDialogTrigger asChild><Button size="sm" variant="destructive" disabled={pending}>{t("editor.delete", { noun })}</Button></AlertDialogTrigger> :
+        <TooltipProvider><Tooltip><TooltipTrigger asChild><AlertDialogTrigger asChild>
+          <Button size="icon-sm" variant="destructive" disabled={pending} aria-label={t("editor.delete", { noun })}><Trash2Icon aria-hidden="true" /></Button>
+        </AlertDialogTrigger></TooltipTrigger><TooltipContent>{t("editor.delete", { noun })}</TooltipContent></Tooltip></TooltipProvider>}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("editor.deleteTitle", { noun })}</AlertDialogTitle>

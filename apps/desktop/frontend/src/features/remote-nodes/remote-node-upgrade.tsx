@@ -1,3 +1,4 @@
+import { RefreshButton } from "@/components/ui/refresh-button"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Collapsible } from "radix-ui"
@@ -100,7 +101,7 @@ export function RemoteNodeUpgrade({ node, controller, disabled }: {
     {active && <>
       <p className="text-[11px] text-muted-foreground">{t(needsAttention ? "upgrade.attention" : "upgrade.background")}</p>
       <div className="flex flex-wrap gap-2">
-        <Button variant="ghost" size="sm" disabled={disabled || pending} onClick={() => controller.refresh(node)}><RefreshCwIcon />{t("upgrade.refresh")}</Button>
+        <RefreshButton label={t("upgrade.refresh")} disabled={disabled} refreshing={pending} onClick={() => controller.refresh(node)} />
         <Button variant="outline" size="sm"
           disabled={disabled || pending || operation.conflict || (!view && tasksBusy)} onClick={() => controller.retry(node)}>
           {pending ? <Spinner /> : <RefreshCwIcon />}{t("upgrade.retry")}

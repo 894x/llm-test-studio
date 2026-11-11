@@ -198,6 +198,7 @@
   "emptyHint": "Reports appear here after runs complete and archive their conclusions.",
   "catalogAria": "Test report catalog",
   "columns": {
+    "casesAndPlanItems": "Cases / Plan items",
     "verdict": "Verdict",
     "reportPlan": "Report / plan",
     "target": "Target",

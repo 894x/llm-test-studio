@@ -1,3 +1,4 @@
+import { RefreshButton } from "@/components/ui/refresh-button"
 import { useCallback, useEffect, useId, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
@@ -219,9 +220,7 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
           </div>
 
           {error && <Alert variant="destructive">{t(error)}</Alert>}
-          {blocked && !loading && <Button variant="outline" size="sm" onClick={() => { setError(""); void read(generation.current) }}>
-            <RefreshCwIcon />{t("reload")}
-          </Button>}
+          {blocked && !loading && <RefreshButton variant="outline" label={t("reload")} onClick={() => { setError(""); void read(generation.current) }} />}
           <div role="status" aria-live="polite" hidden={!busy && !loading && !notice} className="text-xs text-muted-foreground">
             {busy ? <span className="inline-flex items-center gap-2"><Spinner />{t("working")}</span>
               : loading ? <span className="inline-flex items-center gap-2"><Spinner />{t("loading")}</span>
@@ -310,8 +309,8 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
                 <RemoteNodeUpgrade node={node} controller={upgrades} disabled={unavailable} />
               </section>)}
             </div>
-            {checking && polls >= MAX_POLLS && <Alert>{t("pollPaused")}<Button className="mt-2" variant="outline" size="sm"
-              disabled={unavailable} onClick={() => { setPolls(0); void read(generation.current) }}><RefreshCwIcon />{t("reload")}</Button></Alert>}
+            {checking && polls >= MAX_POLLS && <Alert>{t("pollPaused")}<RefreshButton className="mt-2" variant="outline" label={t("reload")}
+              disabled={unavailable} onClick={() => { setPolls(0); void read(generation.current) }} /></Alert>}
           </>}
         </div>
       </ScrollArea>

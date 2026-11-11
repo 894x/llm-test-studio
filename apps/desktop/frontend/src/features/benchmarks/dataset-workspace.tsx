@@ -1,3 +1,4 @@
+import { RefreshButton } from "@/components/ui/refresh-button"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import DownloadIcon from "lucide-react/dist/esm/icons/download.mjs"
@@ -49,7 +50,7 @@ export function DatasetWorkspace({ client, onTest }: { client: Partial<Benchmark
   const runtimeReady = inventory?.runtime.state === "ready"
   const download = selected?.download
   return <PageFrame title={t("datasetManager.title")} description={t("datasetManager.description")} inspectorLabel={t("datasetManager.details")}
-    actions={<><Button variant="ghost" size="sm" disabled={pending} onClick={() => void refresh()}>{t("refresh")}</Button><Button size="sm" disabled={!selected} onClick={() => onTest(selected!.dataset.id)}>{t("datasetManager.test")}</Button></>}
+    actions={<><RefreshButton label={t("refresh")} refreshing={pending} onClick={() => void refresh()} /><Button size="sm" disabled={!selected} onClick={() => onTest(selected!.dataset.id)}>{t("datasetManager.test")}</Button></>}
     inspector={selected ? <div className="min-w-0 [overflow-wrap:anywhere]">
       <InspectorHeader title={selected.dataset.name} subtitle={t(`datasetManager.categories.${selected.dataset.category}`, { defaultValue: selected.dataset.category })} />
       <div className="space-y-4 px-4 pb-4"><p className="text-xs leading-relaxed">{t(`datasetDescriptions.${selected.dataset.id}`, { defaultValue: selected.dataset.description })}</p>

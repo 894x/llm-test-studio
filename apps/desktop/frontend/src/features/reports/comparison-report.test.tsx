@@ -42,6 +42,23 @@ async function openComparison(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("channel comparison reports", () => {
+  it("reruns the full comparison from its inspector and opens the report", async () => {
+    const data = fixture(); const user = userEvent.setup()
+    let finish!: () => void
+    const rerun = vi.fn(() => new Promise<void>(resolve => { finish = resolve }))
+    mount(data, { onRerunComparison: rerun })
+    const inspector = screen.getByRole("complementary", { name: "报告详情" })
+    await user.click(within(inspector).getByRole("button", { name: "重跑一次" }))
+    expect(rerun).toHaveBeenCalledExactlyOnceWith({ plan_id: data.comparisons.comparisons[0].plan_id,
+      model_id: data.comparisons.comparisons[0].model_id,
+      channel_ids: data.comparisons.comparisons[0].channels.map(channel => channel.channel_id) })
+    expect(within(inspector).getByRole("button", { name: "正在启动…" })).toBeDisabled()
+    finish()
+    await waitFor(() => expect(within(inspector).getByRole("button", { name: "重跑一次" })).toBeEnabled())
+    await user.click(within(inspector).getByRole("button", { name: "查看报告" }))
+    expect(await screen.findByRole("table", { name: "渠道对比用例结果" })).toBeInTheDocument()
+  })
+
   it.each(["shortcut", "list"])("retains differences filtering when opening a complete batch from the %s", async source => {
     const data = fixture(); const user = userEvent.setup()
     const comparison = reportComparisonFixture(data.left, data.right)
@@ -55,7 +72,7 @@ describe("channel comparison reports", () => {
     expect(table).not.toHaveTextContent("Unchanged case")
     expect(table).toHaveTextContent("Reject invalid parameter")
     expect(compareReports).toHaveBeenCalledExactlyOnceWith([data.left.report.id, data.right.report.id], data.left.report.id)
-    expect(data.getDetail).not.toHaveBeenCalled()
+    expect(data.getDetail).toHaveBeenCalledTimes(source === "list" ? 1 : 0)
     await user.click(screen.getByRole("button", { name: "返回报告列表" }))
     expect(screen.getByRole("table", { name: "测试报告目录" })).toBeInTheDocument()
     expect(screen.queryByRole("table", { name: "报告对比结果" })).not.toBeInTheDocument()
@@ -78,7 +95,7 @@ describe("channel comparison reports", () => {
     expect(screen.getByRole("checkbox", { name: "仅看差异" })).toBeEnabled()
   })
 
-  it("interleaves batch history and independently selectable reports by time", () => {
+  it("interleaves batch history and independently selectable reports by time", async () => {
     const data = fixture()
     const newer = { ...data.snapshot.reports[0], id: reportID(50), run_id: reportID(51),
       generated_at: "2026-10-12T00:00:00Z", model_name: "newest ordinary report" }
@@ -95,7 +112,7 @@ describe("channel comparison reports", () => {
     expect(rows[3]).toHaveTextContent("渠道 B")
     expect(rows[4]).toHaveTextContent("渠道 A")
     expect(data.snapshot).toEqual(original)
-    expect(data.getDetail).not.toHaveBeenCalled()
+    await waitFor(() => expect(data.getDetail).toHaveBeenCalledTimes(1))
   })
 
   it("lists one comparison, searches both channels, and opens details on demand", async () => {
@@ -103,9 +120,12 @@ describe("channel comparison reports", () => {
     mount(data)
     const list = screen.getByRole("table", { name: "测试报告目录" })
     expect(within(list).getAllByRole("row")).toHaveLength(4)
-    expect(list).toHaveTextContent("渠道 A · 通过 · 1/1")
-    expect(list).toHaveTextContent("渠道 B · 失败 · 0/1")
-    expect(data.getDetail).not.toHaveBeenCalled()
+    const row = within(list).getAllByRole("row")[1]
+    expect(within(row).getAllByRole("cell")[2]).toHaveTextContent("渠道一致性")
+    expect(await within(row).findByText(data.left.entries[0].name)).toBeInTheDocument()
+    expect(row).not.toHaveTextContent("渠道 A · 通过 · 1/1")
+    expect(row).not.toHaveTextContent("渠道 B · 失败 · 0/1")
+    expect(data.getDetail).toHaveBeenCalledExactlyOnceWith(data.left.report.id)
     await user.type(screen.getByRole("searchbox"), "渠道 B")
     const table = await openComparison(user)
     expect(within(table).getAllByRole("columnheader")).toHaveLength(3)
@@ -158,7 +178,7 @@ describe("channel comparison reports", () => {
 
   it("preserves one side while the other report is pending or fails, and retries", async () => {
     const data = fixture(); const user = userEvent.setup()
-    data.getDetail.mockRejectedValueOnce(new Error("private provider error"))
+    data.getDetail.mockRejectedValueOnce(new Error("private provider error")).mockRejectedValueOnce(new Error("private provider error"))
     mount(data)
     await openComparison(user)
     expect(screen.getByRole("alert")).not.toHaveTextContent("private provider error")
@@ -263,7 +283,7 @@ describe("channel comparison reports", () => {
     expect(watermark).toHaveValue("rhzs")
     expect(reader).not.toHaveBeenCalled()
     await user.click(within(inspector).getByRole("button", { name: "JSON" }))
-    await waitFor(() => expect(reader).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(reader).toHaveBeenCalledTimes(3))
     expect(within(inspector).getByRole("button", { name: "生成中…" })).toBeDisabled()
     expect(watermark).toBeDisabled()
     for (const name of ["HTML", "PNG", "PDF", "复制 PNG"]) {
@@ -305,14 +325,14 @@ describe("channel comparison reports", () => {
       new Promise<typeof data.right>(resolve => { finishRight = resolve }))
     const rendered = mount(data, { getDetail: reader })
     await openComparison(user)
-    await waitFor(() => expect(reader).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(reader).toHaveBeenCalledTimes(3))
     const refreshed = structuredClone(data.comparisons)
     refreshed.comparisons[0].channels[1].report_ready = false
     rendered.rerender(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace snapshot={data.snapshot} comparisons={refreshed}
       getDetail={reader} exportReport={vi.fn()} saveReportExport={vi.fn()} copyReportPNG={vi.fn()} /></I18nextProvider>)
     finishRight(data.right)
     await waitFor(() => expect(screen.getByRole("button", { name: "HTML" })).toBeEnabled())
-    expect(reader).toHaveBeenCalledTimes(2)
+    expect(reader).toHaveBeenCalledTimes(3)
     expect(screen.getByRole("table", { name: "渠道对比用例结果" })).toHaveTextContent("失败")
   })
 

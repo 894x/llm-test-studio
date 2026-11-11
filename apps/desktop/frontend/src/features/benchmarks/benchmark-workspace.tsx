@@ -1,3 +1,4 @@
+import { RefreshButton } from "@/components/ui/refresh-button"
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
@@ -118,7 +119,7 @@ export function BenchmarkWorkspace({ client, modeControl, catalog, connectionsRe
   const numericFields: [keyof BenchmarkOptions, string, number, number][] = [["sample_limit", "sampleLimit", 0, 10000], ["epochs", "epochs", 1, 32], ["concurrency", "concurrency", 1, 64], ["max_tokens", "maxTokens", 1, 1048576], ["timeout_seconds", "timeout", 1, 86400], ["seed", "seed", 0, 2147483647]]
   return <main aria-label={t("title")} className="grid min-h-0 min-w-0 flex-1 grid-cols-[240px_minmax(0,1fr)] gap-4 overflow-hidden p-4 xl:grid-cols-[256px_minmax(0,1fr)]">
     <aside className="flex min-h-0 min-w-0 flex-col" aria-label={t("history")}>
-      <div className="shrink-0 space-y-4 pb-4 pt-2">{modeControl}<div className="flex items-center justify-between gap-2"><h2 className="text-sm font-semibold">{t("history")}</h2><Button size="xs" variant="ghost" onClick={() => void history.refresh()} disabled={history.pending}>{t("refresh")}</Button></div></div>
+      <div className="shrink-0 space-y-4 pb-4 pt-2">{modeControl}<div className="flex items-center justify-between gap-2"><h2 className="text-sm font-semibold">{t("history")}</h2><RefreshButton label={t("refresh")} onClick={() => void history.refresh()} refreshing={history.pending} /></div></div>
       <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
         {!history.runs.length && !history.pending ? <Empty><EmptyTitle>{t("empty")}</EmptyTitle><EmptyDescription>{t("emptyHint")}</EmptyDescription></Empty> : null}
         <div className="space-y-2">{history.runs.map(run => <div key={run.id} className="min-w-0 rounded-md p-2 hover:bg-surface-hover">

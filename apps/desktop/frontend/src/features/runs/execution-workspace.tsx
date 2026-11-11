@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactN
 import { useTranslation } from "react-i18next"
 import PanelRightIcon from "lucide-react/dist/esm/icons/panel-right.mjs"
 import FileTextIcon from "lucide-react/dist/esm/icons/file-text.mjs"
+import GitCompareArrowsIcon from "lucide-react/dist/esm/icons/git-compare-arrows.mjs"
 import FilterXIcon from "lucide-react/dist/esm/icons/filter-x.mjs"
 import RefreshCwIcon from "lucide-react/dist/esm/icons/refresh-cw.mjs"
 import { publicDesktopErrorMessage } from "@/app/desktop-client"
@@ -306,8 +307,9 @@ function ExecutionInspector({ row, client, reports, selectedChildID, onSelectChi
   if (job?.kind === "performance") return <PerformanceInspector row={row} client={client} reportIDs={reportIDs}
     recycleAction={recycleAction} onJobChange={onJobChange} onOpenReport={onOpenReport} />
   const layout = (execution?: ReactNode, controls?: ReactNode) => <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-    {job?.kind === "comparison" ? <div className="px-4 pt-3"><p className="mb-2 text-xs font-medium">{t("executions.children", { count: job.run_ids.length })}</p>
-      {onOpenComparison ? <Button variant="outline" size="sm" className="mb-2" onClick={() => void onOpenComparison(job.comparison_id)}>{t("executions.comparisonReport")}</Button> : null}
+    {job?.kind === "comparison" ? <div className="px-4 pt-3"><div className="mb-2 flex items-center justify-between gap-2">
+      <p className="min-w-0 text-xs font-medium">{t("executions.children", { count: job.run_ids.length })}</p>
+      {onOpenComparison ? <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon-sm" aria-label={t("executions.comparisonReport")} onClick={() => void onOpenComparison(job.comparison_id)}><GitCompareArrowsIcon aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{t("executions.comparisonReport")}</TooltipContent></Tooltip></TooltipProvider> : null}</div>
       {row.runs.length ? <SearchableSelect aria-label={t("executions.child")} value={run.id} onValueChange={onSelectChild} options={row.runs.map(child => ({ value: child.id, label: `${child.channel} · ${child.title}` }))} /> : null}</div> : null}
     {run ? <RunInspectorContent key={run.id} run={run} tab={detailTab} onTabChange={onDetailTabChange} execution={execution} shortcuts={renderRunShortcuts?.(run.id, true, { extraAction: recycleAction, reportID: run.reportID })} />
       : <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1 px-4"><h2 className="pt-4 text-sm font-semibold">{row.title}</h2>{execution}</ScrollArea>}

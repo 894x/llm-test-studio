@@ -1,6 +1,6 @@
+import { RefreshButton } from "@/components/ui/refresh-button"
 import { useCallback, useEffect, useRef, useState } from "react"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
-import RotateCcwIcon from "lucide-react/dist/esm/icons/rotate-ccw.mjs"
 import { useTranslation } from "react-i18next"
 
 import { publicDesktopErrorMessage, type DesktopClient } from "@/app/desktop-client"
@@ -126,9 +126,7 @@ export function HistoryRecycleWorkspace({ client, onHistoryChanged, onBack }: {
     <PageFrame title={t("title")} description={t("description")} actions={
       <>
         {onBack ? <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeftIcon />{t("back")}</Button> : null}
-        <Button variant="outline" size="sm" disabled={busy} onClick={() => void load()}>
-          {list.loading === "refresh" ? <Spinner /> : <RotateCcwIcon />}{t("refresh")}
-        </Button>
+        <RefreshButton variant="outline" label={t("refresh")} disabled={busy} refreshing={list.loading === "refresh"} onClick={() => void load()} />
       </>
     }>
       <ScrollArea contentWidth="viewport" className="min-h-0 flex-1 px-4">
