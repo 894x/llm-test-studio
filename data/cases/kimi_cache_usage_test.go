@@ -237,14 +237,15 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 }
 
 type kimiCacheHTTP struct {
-	t        *testing.T
-	protocol domain.Protocol
-	key      string
-	fault    string
-	read     bool
-	stream   bool
-	calls    int
-	first    []byte
+	t           *testing.T
+	protocol    domain.Protocol
+	key         string
+	fault       string
+	read        bool
+	stream      bool
+	calls       int
+	first       []byte
+	mutateUsage func(map[string]any, int)
 }
 
 func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -467,6 +468,9 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 	if fixture.fault == "missing_usage" {
 		usage = nil
+	}
+	if fixture.mutateUsage != nil {
+		fixture.mutateUsage(usage, fixture.calls)
 	}
 	fixture.respond(w, usage)
 }

@@ -3,7 +3,7 @@
   "id": "aa3efd1a-0977-5a71-abc1-2fba0022f492",
   "key": "kimi.cache.ttl.read_1h_after_6m_stream",
   "name": "Kimi 1h 缓存 — 等待 6 分钟后读取 — 流式",
-  "description": "T3 长耗时专项：首次以唯一前缀冷写 1h 缓存，完整接收响应后等待 360 秒，原样重发首次请求；要求首次读取为 0、1h 写入为正且 5m 写入为 0，延迟读取量等于首次写入量且不重新写入。合并检查 usage 与 MSH 响应头及协议完整性。等待期间不发送探测请求，避免刷新 TTL。非默认执行；每个 Case 至少等待 6 分钟。本用例只证明超过 5 分钟仍可复用，不证明完整 1 小时。上游未提供缓存 ID，内容一致与计数相等不等于物理缓存身份认证。来源：https://platform.kimi.com/docs/guide/context-caching（2026-11-12）。",
+  "description": "T3 长耗时专项：首次以唯一前缀冷写 1h 缓存，完整接收响应后等待 360 秒，原样重发首次请求；要求首次读取为 0、1h 写入为正且 5m 写入为 0，延迟读取量等于首次写入量且不重新写入。合并检查 usage 与 MSH 响应头及协议完整性。等待期间不发送探测请求，避免刷新 TTL。非默认执行；每个 Case 至少等待 6 分钟。本用例只证明超过 5 分钟仍可复用，不证明完整 1 小时。上游未提供缓存 ID，内容一致与计数相等不等于物理缓存身份认证。来源：https://platform.kimi.com/docs/guide/context-caching（2026-11-12）。 流式 Chat/Responses 的延迟读取在读取量为正、两档 MSH 写入头齐全且均为 0 时允许省略 cache_write_tokens；字段存在时仍严格校验，首次冷写仍须显式正写入。此项为目标提供方观测兼容规则。",
   "dimension": "cache",
   "enabled": true,
   "default": false,
@@ -398,18 +398,90 @@
           "value": true
         },
         {
-          "id": "write_integer_1",
-          "source": "requests",
-          "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
-          "operator": "type",
-          "value": "integer"
-        },
-        {
-          "id": "write_nonnegative_1",
-          "source": "requests",
-          "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
-          "operator": "gte",
-          "value": 0
+          "id": "write_accounting_1",
+          "any": [
+            {
+              "id": "write_reported_1",
+              "all": [
+                {
+                  "id": "write_integer_1",
+                  "source": "requests",
+                  "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
+                  "operator": "type",
+                  "value": "integer"
+                },
+                {
+                  "id": "write_nonnegative_1",
+                  "source": "requests",
+                  "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
+                  "operator": "gte",
+                  "value": 0
+                },
+                {
+                  "id": "header_sum_1",
+                  "source": "requests",
+                  "pointer": "/1",
+                  "operator": "sum_equals",
+                  "value": {
+                    "total": "/response/usage/prompt_tokens_details/cache_write_tokens",
+                    "parts": [
+                      "/metrics/msh_usage_cache_write_tokens_5m",
+                      "/metrics/msh_usage_cache_write_tokens_1h"
+                    ]
+                  }
+                },
+                {
+                  "id": "no_rewrite",
+                  "source": "requests",
+                  "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
+                  "operator": "equals",
+                  "value": 0
+                },
+                {
+                  "id": "write_bound_1",
+                  "source": "requests",
+                  "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
+                  "operator": "lte",
+                  "expected_from": {
+                    "source": "requests",
+                    "pointer": "/1/response/usage/prompt_tokens"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "write_omitted_zero_1",
+              "all": [
+                {
+                  "id": "write_omitted_absent_1",
+                  "source": "requests",
+                  "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "write_omitted_hit_1",
+                  "source": "requests",
+                  "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+                  "operator": "gt",
+                  "value": 0
+                },
+                {
+                  "id": "write_omitted_5m_zero_1",
+                  "source": "requests",
+                  "pointer": "/1/metrics/msh_usage_cache_write_tokens_5m",
+                  "operator": "equals",
+                  "value": 0
+                },
+                {
+                  "id": "write_omitted_1h_zero_1",
+                  "source": "requests",
+                  "pointer": "/1/metrics/msh_usage_cache_write_tokens_1h",
+                  "operator": "equals",
+                  "value": 0
+                }
+              ]
+            }
+          ]
         },
         {
           "id": "header_5m_integer_1",
@@ -440,30 +512,10 @@
           "value": 0
         },
         {
-          "id": "header_sum_1",
-          "source": "requests",
-          "pointer": "/1",
-          "operator": "sum_equals",
-          "value": {
-            "total": "/response/usage/prompt_tokens_details/cache_write_tokens",
-            "parts": [
-              "/metrics/msh_usage_cache_write_tokens_5m",
-              "/metrics/msh_usage_cache_write_tokens_1h"
-            ]
-          }
-        },
-        {
           "id": "cache_hit",
           "source": "requests",
           "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
           "operator": "gt",
-          "value": 0
-        },
-        {
-          "id": "no_rewrite",
-          "source": "requests",
-          "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
-          "operator": "equals",
           "value": 0
         },
         {
@@ -837,16 +889,6 @@
           "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
           "operator": "gte",
           "value": 0
-        },
-        {
-          "id": "write_bound_1",
-          "source": "requests",
-          "pointer": "/1/response/usage/prompt_tokens_details/cache_write_tokens",
-          "operator": "lte",
-          "expected_from": {
-            "source": "requests",
-            "pointer": "/1/response/usage/prompt_tokens"
-          }
         },
         {
           "id": "read_bound_1",
@@ -1351,18 +1393,90 @@
           "value": true
         },
         {
-          "id": "write_integer_1",
-          "source": "requests",
-          "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
-          "operator": "type",
-          "value": "integer"
-        },
-        {
-          "id": "write_nonnegative_1",
-          "source": "requests",
-          "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
-          "operator": "gte",
-          "value": 0
+          "id": "write_accounting_1",
+          "any": [
+            {
+              "id": "write_reported_1",
+              "all": [
+                {
+                  "id": "write_integer_1",
+                  "source": "requests",
+                  "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
+                  "operator": "type",
+                  "value": "integer"
+                },
+                {
+                  "id": "write_nonnegative_1",
+                  "source": "requests",
+                  "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
+                  "operator": "gte",
+                  "value": 0
+                },
+                {
+                  "id": "header_sum_1",
+                  "source": "requests",
+                  "pointer": "/1",
+                  "operator": "sum_equals",
+                  "value": {
+                    "total": "/response/usage/input_tokens_details/cache_write_tokens",
+                    "parts": [
+                      "/metrics/msh_usage_cache_write_tokens_5m",
+                      "/metrics/msh_usage_cache_write_tokens_1h"
+                    ]
+                  }
+                },
+                {
+                  "id": "no_rewrite",
+                  "source": "requests",
+                  "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
+                  "operator": "equals",
+                  "value": 0
+                },
+                {
+                  "id": "write_bound_1",
+                  "source": "requests",
+                  "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
+                  "operator": "lte",
+                  "expected_from": {
+                    "source": "requests",
+                    "pointer": "/1/response/usage/input_tokens"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "write_omitted_zero_1",
+              "all": [
+                {
+                  "id": "write_omitted_absent_1",
+                  "source": "requests",
+                  "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
+                  "operator": "not_exists"
+                },
+                {
+                  "id": "write_omitted_hit_1",
+                  "source": "requests",
+                  "pointer": "/1/response/usage/input_tokens_details/cached_tokens",
+                  "operator": "gt",
+                  "value": 0
+                },
+                {
+                  "id": "write_omitted_5m_zero_1",
+                  "source": "requests",
+                  "pointer": "/1/metrics/msh_usage_cache_write_tokens_5m",
+                  "operator": "equals",
+                  "value": 0
+                },
+                {
+                  "id": "write_omitted_1h_zero_1",
+                  "source": "requests",
+                  "pointer": "/1/metrics/msh_usage_cache_write_tokens_1h",
+                  "operator": "equals",
+                  "value": 0
+                }
+              ]
+            }
+          ]
         },
         {
           "id": "header_5m_integer_1",
@@ -1393,30 +1507,10 @@
           "value": 0
         },
         {
-          "id": "header_sum_1",
-          "source": "requests",
-          "pointer": "/1",
-          "operator": "sum_equals",
-          "value": {
-            "total": "/response/usage/input_tokens_details/cache_write_tokens",
-            "parts": [
-              "/metrics/msh_usage_cache_write_tokens_5m",
-              "/metrics/msh_usage_cache_write_tokens_1h"
-            ]
-          }
-        },
-        {
           "id": "cache_hit",
           "source": "requests",
           "pointer": "/1/response/usage/input_tokens_details/cached_tokens",
           "operator": "gt",
-          "value": 0
-        },
-        {
-          "id": "no_rewrite",
-          "source": "requests",
-          "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
-          "operator": "equals",
           "value": 0
         },
         {
@@ -1748,16 +1842,6 @@
           "pointer": "/1/response/usage/input_tokens_details/cached_tokens",
           "operator": "gte",
           "value": 0
-        },
-        {
-          "id": "write_bound_1",
-          "source": "requests",
-          "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
-          "operator": "lte",
-          "expected_from": {
-            "source": "requests",
-            "pointer": "/1/response/usage/input_tokens"
-          }
         },
         {
           "id": "read_bound_1",

@@ -51,6 +51,10 @@ func TestKimiCacheTTLDelayedReplayAndFirstWriteComparison(t *testing.T) {
 			for _, fault := range []string{
 				"", "partial_hit", "warm_initial", "no_hit", "rewrite", "zero_write",
 				"wrong_ttl_prime", "header_mismatch_repeat", "body_mismatch_repeat", "missing_usage", "interrupted",
+				"omitted_after_6m", "omitted_initial", "omitted_warm_initial", "omitted_after_no_hit",
+				"omitted_after_partial_hit", "omitted_after_new_write", "omitted_after_missing_header",
+				"omitted_after_ttl_conflict", "null_after_6m", "invalid_after_6m",
+				"negative_after_6m", "fractional_after_6m",
 			} {
 				t.Run(item.Key+"/"+string(proto)+"/"+fault, func(t *testing.T) {
 					synctest.Test(t, func(t *testing.T) {
@@ -62,6 +66,7 @@ func TestKimiCacheTTLDelayedReplayAndFirstWriteComparison(t *testing.T) {
 							fixture := &kimiCacheHTTP{
 								t: t, protocol: proto, key: item.Key, fault: fault, read: true, stream: stream,
 							}
+							configureTTLWriteFault(fixture, fault)
 							var initialFinished time.Time
 							transport := cacheTTLTransport(func(r *http.Request) (*http.Response, error) {
 								if fixture.calls == 1 && time.Since(initialFinished) != 6*time.Minute {
@@ -96,6 +101,9 @@ func TestKimiCacheTTLDelayedReplayAndFirstWriteComparison(t *testing.T) {
 								t.Fatal(err)
 							}
 							wantPass := fault == "" || (!stream && fault == "interrupted")
+							if fault == "omitted_after_6m" {
+								wantPass = stream && proto != domain.ProtocolAnthropicMessages
+							}
 							if (result.Verdict.Status == testspec.VerdictPassed) != wantPass {
 								t.Fatalf("TTL verdict=%s, want pass=%t; issues=%v", result.Verdict.Status, wantPass, result.Observation.Issues)
 							}
@@ -119,5 +127,51 @@ func TestKimiCacheTTLDelayedReplayAndFirstWriteComparison(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func configureTTLWriteFault(fixture *kimiCacheHTTP, fault string) {
+	baseFaults := map[string]string{
+		"omitted_warm_initial":         "warm_initial",
+		"omitted_after_no_hit":         "no_hit",
+		"omitted_after_partial_hit":    "partial_hit",
+		"omitted_after_new_write":      "rewrite",
+		"omitted_after_missing_header": "missing_header_1h",
+		"omitted_after_ttl_conflict":   "body_mismatch_repeat",
+	}
+	if base, exists := baseFaults[fault]; exists {
+		fixture.fault = base
+	}
+	mutations := map[string]any{
+		"null_after_6m": nil, "invalid_after_6m": "0",
+		"negative_after_6m": -1, "fractional_after_6m": 0.5,
+	}
+	value, invalidValue := mutations[fault]
+	omitted := strings.HasPrefix(fault, "omitted_")
+	if !omitted && !invalidValue {
+		return
+	}
+	call := 2
+	if fault == "omitted_initial" || fault == "omitted_warm_initial" {
+		call = 1
+	}
+	fixture.mutateUsage = func(usage map[string]any, current int) {
+		if current != call || usage == nil {
+			return
+		}
+		details, field := usage, "cache_creation_input_tokens"
+		if fixture.protocol != domain.ProtocolAnthropicMessages {
+			name := "input_tokens_details"
+			if fixture.protocol == domain.ProtocolOpenAIChat {
+				name = "prompt_tokens_details"
+			}
+			details, _ = usage[name].(map[string]any)
+			field = "cache_write_tokens"
+		}
+		if omitted {
+			delete(details, field)
+			return
+		}
+		details[field] = value
 	}
 }
