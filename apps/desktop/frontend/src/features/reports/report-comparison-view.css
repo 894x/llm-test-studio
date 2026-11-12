@@ -3,8 +3,11 @@
 }
 
 .report-comparison-channel-heading {
-  position: relative;
-  min-height: 48px;
+  min-height: 28px;
+}
+
+.report-comparison-channel-heading button {
+  background-color: transparent;
 }
 
 .report-comparison-channel-name {
@@ -15,9 +18,9 @@
 
 thead:has(.report-comparison-channel[data-tilted="true"]) .report-comparison-channel[data-collapsed="true"] .report-comparison-channel-label {
   top: auto;
-  bottom: 8px;
+  bottom: var(--comparison-label-bottom);
   left: calc(50% + 7px);
-  width: 140px;
+  width: var(--comparison-label-width);
   text-align: left;
   transform: rotate(-90deg);
   transform-origin: left bottom;
@@ -30,23 +33,18 @@ thead:has(.report-comparison-channel[data-tilted="true"]) .report-comparison-cha
 
 thead:has(.report-comparison-channel[data-tilted="true"]) .report-comparison-channel {
   .report-comparison-channel-heading {
-    position: relative;
-    height: 152px;
+    min-height: max(28px, calc(var(--comparison-heading-height) + 8px));
   }
 
   .report-comparison-channel-label {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 124px;
+    bottom: var(--comparison-label-bottom);
+    left: var(--comparison-label-left);
+    width: var(--comparison-label-width);
     line-height: 14px;
     text-align: left;
-    transform: translate(-50%, -50%) rotate(-60deg);
-    transform-origin: center;
+    transform: rotate(-60deg);
+    transform-origin: left bottom;
   }
 
-}
-
-thead th[data-comparison-baseline="true"] {
-  background: var(--surface-active) !important;
 }

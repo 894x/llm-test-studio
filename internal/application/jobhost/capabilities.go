@@ -26,6 +26,8 @@ func CoreCapabilities() jobcontract.RunnerCapabilities {
 			jobcontract.FeatureCacheWriteHeaders,
 			jobcontract.FeatureJSONPrefixAssertions,
 			jobcontract.FeatureSequenceSteps,
+			jobcontract.FeatureAssertionFailureStatus,
+			jobcontract.FeatureHTTPHeaderEvidence,
 		},
 	}
 }

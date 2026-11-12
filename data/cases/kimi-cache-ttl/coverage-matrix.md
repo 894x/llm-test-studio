@@ -1,5 +1,25 @@
 # Kimi 1h 缓存跨 5 分钟保留验证
 
+## 当前双来源 TTL 兼容决策表
+
+以下取代下文初始实现的“两档头必返”和“仅 SSE 零写入省略”，保留两个 Case、
+三协议、JSON/SSE、请求和等待；来源和扩展界限见
+[缓存专项说明](../../../doc/kimi-cache-usage.md)。
+
+| 证据或状态 | 判定 | 本地回归 |
+| --- | --- | --- |
+| 仅完整 MSH 头 | 与总量和档位相符时通过 | `header_only`，三协议 JSON/SSE |
+| 仅完整 body 拆分 | 与总量和档位相符时通过 | `usage_only`、顶层/details |
+| 多来源同时返回 | 必须全部一致，冲突失败 | `both`、`conflicting_body_locations`、原有 mismatch |
+| body 完整，头部分缺失 | 校验已返回头，缺失不补值 | `partial_headers_with_usage` |
+| 总量已知，仅零档省略 | 用量闭合且选中档明确时通过 | `usage_only_zero_bucket_omitted` |
+| 没有分项、空 body、只有一档头 | TTL 未验证，读写结论独立；不是通过或失败 | `no_ttl`、`empty_usage_ttl`、`partial_headers_without_usage` |
+| null/非法分项或互相冲突 | TTL 失败，不能由另一来源兜底 | `null_usage_ttl`、`conflicting_body_locations` |
+| 冷轮零读取省略且显式正写入 | Chat/Responses 允许，保留未返回事实 | `official`，JSON/SSE |
+| 后续未命中或读取缺失 | 失败 | `usage_only_no_hit`、`usage_only_missing_hit` |
+| 命中轮零写入省略 | Chat/Responses 须有完整两档零分项；不足时 TTL 未验证 | `usage_only_zero_write_omitted`、`usage_only_omitted_write_incomplete_ttl` |
+| 部分命中、首轮明确命中、重写、请求不同 | 失败，原有身份及时序要求保持 | 原有 TTL 故障及虚拟时钟回归 |
+
 范围：`kimi-k3` / `kimi-k3.1-pro` 的 Chat Completions、Responses、Messages，
 JSON 与 SSE。只覆盖 1h 冷写 → 360 秒静默等待 → 原请求读取，不覆盖完整参数契约、
 完整 1h 保留、5m 精确过期或滑动续期。文档核对日期：2026-11-12。

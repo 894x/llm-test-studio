@@ -22,6 +22,9 @@ func validateAssertion(assertion Assertion, depth int, seen map[string]bool) err
 		return errors.New("assertion IDs must be unique identifiers")
 	}
 	seen[assertion.ID] = true
+	if assertion.FailureStatus != "" && assertion.FailureStatus != VerdictIndeterminate {
+		return errors.New("failure_status must be indeterminate when specified")
+	}
 	if !validTransform(assertion.Transform) {
 		return errors.New("unknown assertion transform")
 	}
@@ -158,6 +161,33 @@ func evaluateOne(assertion Assertion, observation Observation) AssertionResult {
 }
 
 func evaluateScoped(assertion Assertion, observation Observation, item any) AssertionResult {
+	result := evaluateRawScoped(assertion, observation, item)
+	if result.Status == VerdictFailed && assertion.FailureStatus == VerdictIndeterminate {
+		result.Status = VerdictIndeterminate
+		result.Reason = "evidence_unavailable"
+	}
+	return result
+}
+
+// HasEvidenceGap distinguishes an explicitly authored warning from an
+// unavailable assertion source or an execution/protocol error.
+func HasEvidenceGap(verdict Verdict) bool {
+	if verdict.Status != VerdictIndeterminate {
+		return false
+	}
+	var contains func([]AssertionResult) bool
+	contains = func(results []AssertionResult) bool {
+		for _, result := range results {
+			if result.Reason == "evidence_unavailable" || contains(result.Children) {
+				return true
+			}
+		}
+		return false
+	}
+	return contains(verdict.Assertions)
+}
+
+func evaluateRawScoped(assertion Assertion, observation Observation, item any) AssertionResult {
 	result := AssertionResult{
 		ID: assertion.ID, Source: assertion.Source, Pointer: assertion.Pointer,
 		Operator: assertion.Operator, Expected: append(json.RawMessage{}, assertion.Value...),

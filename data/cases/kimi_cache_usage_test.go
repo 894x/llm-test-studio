@@ -115,6 +115,11 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 			}
 			if read {
 				faults = append(faults, "no_hit", "rewrite", "body_mismatch_repeat", "wrong_ttl_prime")
+				faults = append(faults,
+					"missing_write_repeat", "missing_write_warm_prime", "missing_write_no_hit",
+					"missing_write_new_write", "missing_write_header", "missing_write_ttl",
+					"null_write", "invalid_write",
+				)
 			} else {
 				faults = append(faults, "zero_write")
 			}
@@ -177,14 +182,26 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 						t.Fatal(err)
 					}
 					wantPassed := fault == ""
+					if fault == "missing_write_repeat" || fault == "missing_write_warm_prime" {
+						wantPassed = headers && proto != domain.ProtocolAnthropicMessages
+					}
+					if fault == "missing_write_header" {
+						wantPassed = headers && proto != domain.ProtocolAnthropicMessages
+					}
 					if fault == "top_level_ttl" || fault == "both_ttl" {
 						wantPassed = true
 					}
 					if !headers && slices.Contains(headerFaults, fault) {
 						wantPassed = true
 					}
+					if headers && slices.Contains([]string{"missing_header", "missing_header_5m", "missing_header_1h"}, fault) {
+						wantPassed = true
+					}
 					if fault == "no_body_ttl" || fault == "omit_zero_bucket" {
-						wantPassed = proto != domain.ProtocolAnthropicMessages
+						wantPassed = headers || proto != domain.ProtocolAnthropicMessages
+					}
+					if fault == "body_missing_selected" && headers {
+						wantPassed = true
 					}
 					if slices.Contains([]string{"wrong_total", "missing_total", "negative_total", "invalid_total"}, fault) {
 						wantPassed = true
@@ -237,15 +254,16 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 }
 
 type kimiCacheHTTP struct {
-	t           *testing.T
-	protocol    domain.Protocol
-	key         string
-	fault       string
-	read        bool
-	stream      bool
-	calls       int
-	first       []byte
-	mutateUsage func(map[string]any, int)
+	t             *testing.T
+	protocol      domain.Protocol
+	key           string
+	fault         string
+	read          bool
+	stream        bool
+	calls         int
+	first         []byte
+	mutateUsage   func(map[string]any, int)
+	mutateHeaders func(http.Header, int)
 }
 
 func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -291,10 +309,13 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	if fixture.read && fixture.calls > 1 {
 		write, read = 0, 512
 	}
+	if fixture.fault == "missing_write_warm_prime" {
+		write, read = 0, 512
+	}
 	if fixture.fault == "zero_write" {
 		write = 0
 	}
-	if fixture.fault == "no_hit" {
+	if fixture.fault == "no_hit" || fixture.fault == "missing_write_no_hit" {
 		read = 0
 	}
 	if fixture.fault == "partial_hit" && fixture.calls > 1 {
@@ -303,7 +324,8 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	if fixture.fault == "warm_initial" && fixture.calls == 1 {
 		read = 1
 	}
-	if fixture.fault == "rewrite" && fixture.calls > 1 {
+	rewrite := fixture.fault == "rewrite" || fixture.fault == "missing_write_new_write"
+	if rewrite && fixture.calls > 1 {
 		write = 1
 	}
 	short, long := write, 0
@@ -330,6 +352,8 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			w.Header().Del(protocol.MSHCacheWriteHeader5m)
 		case "missing_header_1h":
 			w.Header().Del(protocol.MSHCacheWriteHeader1h)
+		case "missing_write_header":
+			w.Header().Del(protocol.MSHCacheWriteHeader5m)
 		}
 	}
 	switch fixture.fault {
@@ -365,7 +389,7 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		cacheCreation[selected] = 1.5
 	case "body_sum_mismatch":
 		cacheCreation[selected] = write + 1
-	case "body_mismatch_repeat":
+	case "body_mismatch_repeat", "missing_write_ttl":
 		if fixture.calls > 1 {
 			cacheCreation[selected] = write + 1
 		}
@@ -461,6 +485,17 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	switch fixture.fault {
 	case "missing_write":
 		delete(details, field)
+	case "missing_write_warm_prime":
+		delete(details, field)
+	case "missing_write_repeat", "missing_write_no_hit", "missing_write_new_write",
+		"missing_write_header", "missing_write_ttl":
+		if fixture.calls > 1 {
+			delete(details, field)
+		}
+	case "null_write":
+		details[field] = nil
+	case "invalid_write":
+		details[field] = "0"
 	case "negative_write":
 		details[field] = -1
 	case "fractional_write":
@@ -471,6 +506,9 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 	if fixture.mutateUsage != nil {
 		fixture.mutateUsage(usage, fixture.calls)
+	}
+	if fixture.mutateHeaders != nil {
+		fixture.mutateHeaders(w.Header(), fixture.calls)
 	}
 	fixture.respond(w, usage)
 }

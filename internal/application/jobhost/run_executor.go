@@ -17,6 +17,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/execution/load"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
+	"github.com/894x/llm-test-studio/internal/protocols"
 )
 
 type RunRepository interface {
@@ -196,6 +197,9 @@ func (core *RunExecutor) Execute(ctx context.Context, execution Execution) (Outc
 	}
 	requestContext, stopRequests := context.WithCancel(context.Background())
 	defer stopRequests()
+	if execution.Spec.HTTPHeaderEvidence {
+		requestContext = protocols.WithHeaderEvidence(requestContext)
+	}
 	group := &runGroup{
 		inputs: inputs, failed: make(chan struct{}, 1), done: make(chan struct{}),
 		onFailure: execution.OnPersistenceFailure, requestContext: requestContext, stopRequests: stopRequests,

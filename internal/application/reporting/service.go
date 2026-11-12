@@ -149,17 +149,18 @@ type EntryDetail struct {
 }
 
 type CaseDetail struct {
-	CaseID         string                        `json:"case_id"`
-	Revision       uint64                        `json:"revision"`
-	Key            string                        `json:"key"`
-	Name           string                        `json:"name"`
-	Dimension      string                        `json:"dimension"`
-	Protocol       domain.Protocol               `json:"protocol"`
-	Severity       domain.CaseSeverity           `json:"severity"`
-	Verification   domain.VerificationSummary    `json:"verification"`
-	Metrics        map[string]domain.MetricValue `json:"metrics"`
-	SummaryResult  *domain.Result                `json:"summary_result,omitempty"`
-	RequestResults []domain.Result               `json:"request_results"`
+	CaseID             string                        `json:"case_id"`
+	Revision           uint64                        `json:"revision"`
+	Key                string                        `json:"key"`
+	Name               string                        `json:"name"`
+	Dimension          string                        `json:"dimension"`
+	Protocol           domain.Protocol               `json:"protocol"`
+	Severity           domain.CaseSeverity           `json:"severity"`
+	Verification       domain.VerificationSummary    `json:"verification"`
+	Metrics            map[string]domain.MetricValue `json:"metrics"`
+	SummaryResult      *domain.Result                `json:"summary_result,omitempty"`
+	RequestResults     []domain.Result               `json:"request_results"`
+	VerificationChecks []VerificationCheck           `json:"verification_checks,omitempty"`
 }
 
 func (service Service) Detail(ctx context.Context, reportID string) (Detail, error) {
@@ -314,8 +315,9 @@ func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([
 				Dimension: definition.Dimension,
 				Protocol:  report.Protocol, Severity: definition.Severity,
 				Verification: domain.SummarizeVerification(requests), Metrics: aggregateMetrics(requests),
-				SummaryResult:  summary,
-				RequestResults: requests,
+				SummaryResult:      summary,
+				RequestResults:     requests,
+				VerificationChecks: cacheVerificationChecks(requests),
 			})
 		}
 		suites = append(suites, EntryDetail{

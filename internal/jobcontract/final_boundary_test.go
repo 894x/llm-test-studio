@@ -104,6 +104,8 @@ func completeTaskCapabilities() RunnerCapabilities {
 			FeatureCacheWriteHeaders,
 			FeatureJSONPrefixAssertions,
 			FeatureSequenceSteps,
+			FeatureAssertionFailureStatus,
+			FeatureHTTPHeaderEvidence,
 		},
 	}
 }

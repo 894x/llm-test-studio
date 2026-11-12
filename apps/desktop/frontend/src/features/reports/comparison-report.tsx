@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { ComparisonChannelResult, ComparisonSummary } from "@/features/comparisons/data"
 import type { FormalReportDetail, ReportCaseDetail, ReportEntryDetail, ReportSnapshot } from "./data"
-import { ExecutionDetails, VerificationBadge } from "./entry-case-table"
+import { ExecutionDetails, VerificationBadges } from "./entry-case-table"
 import { CaseSeverityBadge } from "./case-severity-badge"
 import { ComparisonChannelHeader, ComparisonTableColumns } from "./comparison-channel-header"
 
@@ -103,7 +103,7 @@ function ComparisonCaseTable({ channels, entries, loaded, paginate }: {
             return <TableCell key={channel.channel_id} className="whitespace-normal align-top [overflow-wrap:anywhere]">
               {result ? <div className="flex min-h-7 flex-wrap items-center gap-2 py-1">
                 <CaseSeverityBadge severity={result.severity} />
-                <VerificationBadge status={result.verification.status} />
+                <VerificationBadges status={result.verification.status} checks={result.verification_checks} summaryOnly />
               </div> : <span className="text-muted-foreground">{t(loaded[channel.channel_id]?.error ? "comparison.unavailable" : loaded[channel.channel_id]?.detail ? "comparison.noResult" : "comparison.pending")}</span>}
             </TableCell>
           })}

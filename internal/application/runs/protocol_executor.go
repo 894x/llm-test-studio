@@ -236,7 +236,7 @@ func draftFromProtocol(caseID string, result testspec.Result) ResultDraft {
 	if draft.ErrorCode == "" && result.Verdict.Status == testspec.VerdictFailed {
 		draft.ErrorCode, draft.Failure = "assertion_failed", domain.FailureSemantic
 	}
-	if draft.ErrorCode == "" && result.Verdict.Status == testspec.VerdictIndeterminate {
+	if draft.ErrorCode == "" && result.Verdict.Status == testspec.VerdictIndeterminate && !testspec.HasEvidenceGap(result.Verdict) {
 		draft.ErrorCode, draft.Failure = "assertion_unavailable", domain.FailureProtocol
 	}
 	return draft

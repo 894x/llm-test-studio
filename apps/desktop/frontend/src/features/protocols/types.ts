@@ -16,6 +16,7 @@ export interface AssertionResult {
 }
 export interface Verification { status: VerificationStatus; assertions: AssertionResult[] }
 export interface VerificationSummary { status: VerificationStatus; passed: number; failed: number; observed: number; indeterminate: number }
+export interface HeaderEvidence { values: Record<string, string[]>; truncated?: boolean }
 export interface ProtocolObservation {
   protocol: CatalogProtocol
   http_status?: number
@@ -26,7 +27,7 @@ export interface ProtocolObservation {
   usage?: JSONValue
   task?: { id: string; status: string; terminal: boolean }
   artifacts: { kind: string; url: string }[]
-  exchanges: { step: string; method: string; path: string; request_body?: JSONValue; http_status?: number; response?: JSONValue; elapsed_ms: number }[]
+  exchanges: { step: string; method: string; path: string; request_body?: JSONValue; http_status?: number; response?: JSONValue; elapsed_ms: number; request_headers?: HeaderEvidence; response_headers?: HeaderEvidence }[]
   issues: { stage: string; code: string }[]
 }
 export interface ProtocolColumn { id: string; label: string; unit?: string; metric?: string; observation?: "http_status" | "task_status" | "artifacts" }

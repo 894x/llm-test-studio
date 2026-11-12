@@ -4,6 +4,26 @@ import { parseReportDetail } from "./data"
 import type { ExecutionOrigin } from "./execution-origin"
 
 describe("current protocol report contract", () => {
+  it("preserves Core check summaries and optional sanitized header evidence", () => {
+    const source = protocolReportFixture("indeterminate")
+    source.entries[0].cases[0].verification_checks = [
+      { id: "cache_io", verification: { status: "passed", passed: 1, failed: 0, observed: 0, indeterminate: 0 } },
+      { id: "cache_ttl", verification: { status: "indeterminate", passed: 0, failed: 0, observed: 0, indeterminate: 1 } },
+    ]
+    source.request_results[0].observation!.exchanges.push({ step: "initial", method: "POST", path: "/chat/completions", elapsed_ms: 1,
+      request_headers: { values: { Authorization: ["[redacted]"] } },
+      response_headers: { values: {}, truncated: true } })
+    const parsed = parseReportDetail(source)
+    if (parsed.source !== "run") throw new Error("run expected")
+    expect(parsed.entries[0].cases[0].verification_checks).toEqual(source.entries[0].cases[0].verification_checks)
+    expect(parsed.request_results[0].observation?.exchanges[0].request_headers?.values.Authorization).toEqual(["[redacted]"])
+    expect(parsed.request_results[0].observation?.exchanges[0].response_headers).toEqual({ values: {}, truncated: true })
+    expect(parsed.request_results[0].observation?.exchanges[0].request_headers).not.toBe(source.request_results[0].observation!.exchanges[0].request_headers)
+    const invalid = structuredClone(source) as unknown as Record<string, unknown>
+    const requests = invalid.request_results as { observation: { exchanges: Record<string, unknown>[] } }[]
+    requests[0].observation.exchanges[0].request_headers = { values: { Authorization: "unvalidated" } }
+    expect(() => parseReportDetail(invalid)).toThrow()
+  })
   it("preserves dimension statistics from Core and accepts earlier details without the additive fields", () => {
     const source = protocolReportFixture()
     const statistic = { dimension: "parameters", case_count: 5, passed_case_count: 1, failed_case_count: 1,

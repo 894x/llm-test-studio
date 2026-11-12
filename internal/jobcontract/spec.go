@@ -97,6 +97,7 @@ type JobSpec struct {
 	Spec               Payload         `json:"spec"`
 	Assets             []Asset         `json:"assets"`
 	FunctionalProgress bool            `json:"functional_progress,omitempty"`
+	HTTPHeaderEvidence bool            `json:"http_header_evidence,omitempty"`
 }
 
 type Secret struct {
@@ -161,6 +162,9 @@ func (spec JobSpec) validateOwned(owned *[]domain.Run) error {
 		if !quickRun {
 			return invalid("functional_progress")
 		}
+	}
+	if spec.HTTPHeaderEvidence && spec.Kind != KindRun && spec.Kind != KindComparison {
+		return invalid("http_header_evidence")
 	}
 	switch spec.Kind {
 	case KindRun:

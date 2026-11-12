@@ -15,6 +15,8 @@ const FeatureCaseDescriptions = "case_descriptions"
 const FeatureCacheWriteHeaders = "cache_write_headers"
 const FeatureJSONPrefixAssertions = "json_prefix_assertions"
 const FeatureSequenceSteps = "sequence_steps"
+const FeatureAssertionFailureStatus = "assertion_failure_status"
+const FeatureHTTPHeaderEvidence = "http_header_evidence"
 
 // SupportsJob checks only the current task requirements, independent of client
 // release and build. Report-transfer requirements may be stricter for a caller.
@@ -26,6 +28,9 @@ func (capabilities RunnerCapabilities) SupportsJob(spec JobSpec) bool {
 	}
 	protocols := []string{}
 	features := []string{}
+	if spec.HTTPHeaderEvidence {
+		features = append(features, FeatureHTTPHeaderEvidence)
+	}
 	if spec.FunctionalProgress {
 		features = append(features, FeatureFunctionalProgress)
 	}
@@ -53,6 +58,9 @@ func (capabilities RunnerCapabilities) SupportsJob(spec JobSpec) bool {
 					}
 					if definition.UsesSequenceControls() {
 						features = append(features, FeatureSequenceSteps)
+					}
+					if requiresAssertionFailureStatus(definition.Assertions) {
+						features = append(features, FeatureAssertionFailureStatus)
 					}
 				}
 				if entry.Performance != nil || entry.OnFailure != "" || run.Snapshot.PlanDocument.Entries[index].Name != "" {

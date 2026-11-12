@@ -29,6 +29,7 @@ const (
 	scopeTaskConcurrencyCommand
 	scopeMaintenanceRecord
 	scopeBoolean
+	scopeHeaderEvidenceBoolean
 )
 
 // Scan collection counts before decoding typed slices. A bounded byte body can
@@ -50,8 +51,11 @@ func scanValue(decoder *json.Decoder, scope documentScope) error {
 	if err != nil {
 		return invalid("body")
 	}
-	if scope == scopeBoolean {
+	if scope == scopeBoolean || scope == scopeHeaderEvidenceBoolean {
 		if _, ok := token.(bool); !ok {
+			if scope == scopeHeaderEvidenceBoolean {
+				return invalid("http_header_evidence")
+			}
 			return invalid("functional_progress")
 		}
 		return nil
@@ -109,6 +113,8 @@ func childScope(parent documentScope, name string) documentScope {
 		switch name {
 		case "functional_progress":
 			return scopeBoolean
+		case "http_header_evidence":
+			return scopeHeaderEvidenceBoolean
 		case "job":
 			if parent == scopeRoot {
 				return scopeJob
@@ -169,12 +175,12 @@ func envelopeFields(scope documentScope) []string {
 		// Secret's string-only decoder also uses the same strict decode helper.
 		return []string{
 			"job", "secrets", "contract", "job_id", "node_installation_id", "engine_build_id",
-			"target", "kind", "spec", "assets", "functional_progress", "slot", "value",
+			"target", "kind", "spec", "assets", "functional_progress", "http_header_evidence", "slot", "value",
 		}
 	case scopeJob:
 		return []string{
 			"contract", "job_id", "node_installation_id", "engine_build_id", "target",
-			"kind", "spec", "assets", "functional_progress",
+			"kind", "spec", "assets", "functional_progress", "http_header_evidence",
 		}
 	case scopePayload:
 		return []string{"run", "performance", "comparison"}

@@ -883,6 +883,7 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
 function ConclusionBadge({ passed, status, verdict }: { passed: boolean; status?: ReportSummary["run_status"]; verdict?: string }) {
   const { t } = useTranslation("reports")
   if (verdict === "observed" || verdict === "not_applicable") return <VerificationBadge status="not_applicable" />
+  if (verdict === "indeterminate") return <VerificationBadge status="indeterminate" />
   if (status === "cancelled") {
     return <Badge variant="outline" className="border-warning/25 bg-warning-soft text-warning-strong">{t("system.cancelled")}</Badge>
   }

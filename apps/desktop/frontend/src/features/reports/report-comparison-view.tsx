@@ -14,7 +14,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { CatalogCaseSeverity } from "@/features/catalog/data"
-import { ExecutionDetails, VerificationBadge } from "./entry-case-table"
+import { ExecutionDetails, VerificationBadges } from "./entry-case-table"
 import { QuickPerformanceRequestAnalysis } from "@/features/quick-test/quick-performance-request-analysis"
 import { blobToBase64 } from "./report-export-encoding"
 import { copyReportPNGToClipboard } from "./report-clipboard"
@@ -214,7 +214,7 @@ function ComparisonSuiteTable({ data, reports, rows, expanded, onExpandedChange,
             const result = <>
               {caseItem && !sharedSeverity ? <CaseSeverityBadge severity={caseItem.severity} /> : null}
               {cell.change === "missing" || cell.status === "not_run" ? <Badge variant="outline" className="h-auto min-h-5 max-w-full whitespace-normal text-center text-muted-foreground [overflow-wrap:anywhere]">{t(cell.change === "missing" ? "compare.change.missing" : "comparison.noResult")}</Badge> :
-                <VerificationBadge status={cell.status as "passed" | "failed" | "not_applicable" | "indeterminate"} />}
+                <VerificationBadges status={cell.status as "passed" | "failed" | "not_applicable" | "indeterminate"} checks={caseItem?.verification_checks} summaryOnly />}
             </>
             return <TableCell key={cell.report_id} className="whitespace-normal align-top [overflow-wrap:anywhere]">
               {exporting ? <div className={`flex min-h-7 flex-wrap items-center gap-2 rounded-md px-1 py-1 ${selected ? "bg-surface-active" : ""}`}>{result}</div> :

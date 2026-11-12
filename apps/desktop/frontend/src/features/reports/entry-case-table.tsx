@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { protocolPresentation } from "@/features/protocols/registry"
-import type { ProtocolObservation, AssertionResult, ProtocolColumn, VerificationStatus, VerificationSummary } from "@/features/protocols/types"
+import type { HeaderEvidence, ProtocolObservation, AssertionResult, ProtocolColumn, VerificationStatus, VerificationSummary } from "@/features/protocols/types"
 import { desktopLocale } from "@/i18n/runtime"
 import type { ReportCaseDetail, ReportEntryDetail, ReportResult } from "./data"
 import { copyReportTextToClipboard } from "./report-clipboard"
@@ -112,7 +112,7 @@ export function EntryCaseTable({
               </Tooltip></TooltipProvider></TableCell>
               <TableCell className="py-1 text-[11px] [overflow-wrap:anywhere]">{caseItem.dimension ?? "—"}</TableCell>
               <TableCell className="py-1"><CaseSeverityBadge severity={caseItem.severity} /></TableCell>
-              <TableCell className="py-1"><VerificationBadge status={caseItem.verification.status} /></TableCell>
+              <TableCell className="py-1"><VerificationBadges status={caseItem.verification.status} checks={caseItem.verification_checks} /></TableCell>
               {columns.map(column => <TableCell key={column.id} className="py-1 text-xs tabular-nums">{caseColumn(caseItem, column)}</TableCell>)}
               <TableCell className="py-1 pr-3 text-[11px]"><VerificationCounts summary={caseItem.verification} compact /></TableCell>
             </TableRow>
@@ -133,12 +133,37 @@ function reportCaseRowID(entryID: string, caseID: string): string {
   return `report-case-${entryID}-${caseID}`
 }
 
-export function VerificationBadge({ status }: { status: VerificationStatus }) {
+export function VerificationBadge({ status, label }: { status: VerificationStatus; label?: string }) {
   const { t } = useTranslation("reports")
   const style = status === "failed" ? "border-destructive/25 bg-destructive/5 text-destructive"
     : status === "passed" ? "border-outcome-pass/25 bg-outcome-pass/10 text-outcome-pass"
     : status === "indeterminate" ? "border-warning/25 bg-warning-soft text-warning-strong" : "text-muted-foreground"
-  return <Badge variant="outline" className={style}>{t(`protocolDesign.verdict.${status}`)}</Badge>
+  return <Badge variant="outline" className={style}>{label ?? t(`protocolDesign.verdict.${status}`)}</Badge>
+}
+
+export function VerificationBadges({ status, checks, assertions, summaryOnly = false }: {
+  status: VerificationStatus
+  checks?: ReportCaseDetail["verification_checks"]
+  assertions?: AssertionResult[]
+  summaryOnly?: boolean
+}) {
+  const { t } = useTranslation("reports")
+  const recorded = checks?.map(check => ({ id: check.id, status: check.verification.status })) ??
+    assertions?.filter(item => item.id === "cache_io" || item.id === "cache_ttl").map(item => ({ id: item.id, status: item.status })) ?? []
+  if (recorded.length !== 2) return <VerificationBadge status={status} />
+  if (summaryOnly) return <VerificationBadge status={status}
+    label={status === "indeterminate" && recorded.some(item => item.status === "passed")
+      ? t("protocolDesign.partialPassed") : undefined} />
+  return <span className="inline-flex min-w-0 max-w-full flex-wrap gap-1"
+    aria-label={recorded.map(item => t(`protocolDesign.cacheChecks.${item.id}.${item.status}`)).join("，")}>
+    {recorded.map(item => <Badge key={item.id} variant="outline"
+      className={`h-auto min-h-5 max-w-full whitespace-normal text-left [overflow-wrap:anywhere] ${item.status === "passed"
+        ? "border-outcome-pass/25 bg-outcome-pass/10 text-outcome-pass"
+        : item.status === "failed" ? "border-destructive/25 bg-destructive/5 text-destructive"
+          : "border-warning/25 bg-warning-soft text-warning-strong"}`}>
+      {t(`protocolDesign.cacheChecks.${item.id}.${item.status}`)}
+    </Badge>)}
+  </span>
 }
 
 export function VerificationCounts({ summary, compact = false }: { summary: VerificationSummary; compact?: boolean }) {
@@ -184,7 +209,7 @@ export function ExecutionDetails({ results, paginate = true }: { results: Report
       <summary className="flex cursor-pointer flex-wrap items-center gap-2 rounded-sm py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span>{t("protocolDesign.executionNumber", { count: page * DETAIL_PAGE_SIZE + index + 1 })}</span>
         <span className="text-muted-foreground">{t(`protocolDesign.execution.${result.execution_status}`)}</span>
-        <VerificationBadge status={result.verification.status} />
+        <VerificationBadges status={result.verification.status} assertions={result.verification.assertions} />
         {result.dimensions?.phase === "warmup" ? <span className="text-muted-foreground">{t("protocolDesign.warmupExecution")}</span> : null}
         {result.observation?.http_status !== undefined ? <span>HTTP {result.observation.http_status}</span> : null}
         {result.error_code ? <span className="break-all text-destructive">{t(`common:errorCode.${result.error_code}`, { defaultValue: result.error_code })}</span> : null}
@@ -196,6 +221,10 @@ export function ExecutionDetails({ results, paginate = true }: { results: Report
         {result.observation ? <>
           <ObservationDetails observation={result.observation} />
           {result.observation.exchanges.map((exchange, i) => <details key={i} className="min-w-0"><summary className="cursor-pointer rounded-sm py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">{exchange.step} · {exchange.method} · {exchange.http_status ?? "—"} · {number(exchange.elapsed_ms)} ms</summary>
+            <div className="mt-2 grid min-w-0 gap-3 lg:grid-cols-2">
+              <HeaderDetails label={t("protocolDesign.requestHeaders")} evidence={exchange.request_headers} />
+              <HeaderDetails label={t("protocolDesign.responseHeaders")} evidence={exchange.response_headers} />
+            </div>
             <div className="mt-2 grid min-w-0 gap-3 lg:grid-cols-2"><JSONEvidence label={t("protocolDesign.request")} value={exchange.request_body} copyable /><JSONEvidence label={t("protocolDesign.response")} value={exchange.response} copyable /></div>
           </details>)}
           <JSONEvidence label={t("protocolDesign.observation")} value={{ ...result.observation, exchanges: undefined }} />
@@ -204,6 +233,18 @@ export function ExecutionDetails({ results, paginate = true }: { results: Report
     </details>)}
     {!results.length ? <p className="py-2 text-xs text-muted-foreground">{t("protocolDesign.noExecutions")}</p> : null}
     {paginate ? <ResultPagination page={page} count={results.length} size={DETAIL_PAGE_SIZE} onPage={setPage} /> : null}
+  </div>
+}
+
+function HeaderDetails({ label, evidence }: { label: string; evidence?: HeaderEvidence }) {
+  const { t } = useTranslation("reports")
+  if (!evidence) return <details className="min-w-0">
+    <summary className="cursor-pointer rounded-sm text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">{label}</summary>
+    <p className="mt-2 text-xs text-muted-foreground">{t("protocolDesign.headersNotRecorded")}</p>
+  </details>
+  return <div className="min-w-0">
+    <JSONEvidence label={label} value={evidence.values} copyable />
+    {evidence.truncated ? <p className="mt-1 text-xs text-warning-strong">{t("protocolDesign.headersTruncated")}</p> : null}
   </div>
 }
 

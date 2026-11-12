@@ -46,17 +46,18 @@ type Step struct {
 }
 
 type Assertion struct {
-	ID           string          `json:"id"`
-	Source       string          `json:"source,omitempty"`
-	Pointer      string          `json:"pointer,omitempty"`
-	Operator     string          `json:"operator,omitempty"`
-	Value        json.RawMessage `json:"value,omitempty"`
-	All          []Assertion     `json:"all,omitempty"`
-	Any          []Assertion     `json:"any,omitempty"`
-	Each         []Assertion     `json:"each,omitempty"`
-	EachMode     string          `json:"each_mode,omitempty"`
-	Transform    string          `json:"transform,omitempty"`
-	ExpectedFrom *Reference      `json:"expected_from,omitempty"`
+	ID            string          `json:"id"`
+	FailureStatus VerdictStatus   `json:"failure_status,omitempty"`
+	Source        string          `json:"source,omitempty"`
+	Pointer       string          `json:"pointer,omitempty"`
+	Operator      string          `json:"operator,omitempty"`
+	Value         json.RawMessage `json:"value,omitempty"`
+	All           []Assertion     `json:"all,omitempty"`
+	Any           []Assertion     `json:"any,omitempty"`
+	Each          []Assertion     `json:"each,omitempty"`
+	EachMode      string          `json:"each_mode,omitempty"`
+	Transform     string          `json:"transform,omitempty"`
+	ExpectedFrom  *Reference      `json:"expected_from,omitempty"`
 }
 
 type Reference struct {
@@ -131,6 +132,14 @@ type Exchange struct {
 	ElapsedMS       float64            `json:"elapsed_ms"`
 	Metrics         map[string]float64 `json:"metrics,omitempty"`
 	StreamCompleted *bool              `json:"stream_completed,omitempty"`
+	RequestHeaders  *HeaderEvidence    `json:"request_headers,omitempty"`
+	ResponseHeaders *HeaderEvidence    `json:"response_headers,omitempty"`
+}
+
+// HeaderEvidence records sanitized headers; nil evidence means not captured.
+type HeaderEvidence struct {
+	Values    map[string][]string `json:"values"`
+	Truncated bool                `json:"truncated,omitempty"`
 }
 
 type Observation struct {

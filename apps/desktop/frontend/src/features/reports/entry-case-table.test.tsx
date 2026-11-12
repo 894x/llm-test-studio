@@ -3,10 +3,49 @@ import { I18nextProvider } from "react-i18next"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { createAppI18n } from "@/i18n/i18n"
 import { openAIChatPresentation } from "@/features/protocols/openai-chat"
-import { EntryCaseTable, ExecutionDetails } from "./entry-case-table"
+import { EntryCaseTable, ExecutionDetails, VerificationBadges } from "./entry-case-table"
 import type { ReportEntryDetail, ReportResult } from "./data"
 
 afterEach(() => vi.unstubAllGlobals())
+
+it("shows cache IO success and missing TTL as separate authoritative warning outcomes", () => {
+  render(<I18nextProvider i18n={createAppI18n("zh-CN")}><VerificationBadges status="indeterminate" checks={[
+    { id: "cache_io", verification: { status: "passed", passed: 1, failed: 0, observed: 0, indeterminate: 0 } },
+    { id: "cache_ttl", verification: { status: "indeterminate", passed: 0, failed: 0, observed: 0, indeterminate: 1 } },
+  ]} /></I18nextProvider>)
+  expect(screen.getByText("缓存读写通过")).toHaveClass("text-outcome-pass")
+  expect(screen.getByText("TTL 证据不足")).toHaveClass("text-warning-strong")
+  expect(screen.queryByText("失败")).not.toBeInTheDocument()
+})
+
+it("places separate recorded request and response headers before the bodies", () => {
+  const result: ReportResult = { id: "headers", execution_status: "completed", metrics: {},
+    verification: { status: "passed", assertions: [] }, observation: {
+      protocol: "openai-chat", metrics: {}, artifacts: [], issues: [], exchanges: [{
+        step: "initial", method: "POST", path: "/chat/completions", elapsed_ms: 1,
+        request_headers: { values: { Authorization: ["[redacted]"], "Content-Type": ["application/json"] } },
+        response_headers: { values: { "Msh-Usage-Cache-Write-Tokens-5m": ["3584"] } },
+        request_body: {}, response: {},
+      }],
+    } }
+  render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ExecutionDetails results={[result]} /></I18nextProvider>)
+  fireEvent.click(screen.getByText(/initial · POST/))
+  const request = screen.getByText("请求头")
+  const response = screen.getByText("响应头")
+  expect(request.compareDocumentPosition(screen.getByText("请求体")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(response.compareDocumentPosition(screen.getByText("响应")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  fireEvent.click(request)
+  fireEvent.click(response)
+  expect(request.closest("details")).toHaveTextContent("[redacted]")
+  expect(response.closest("details")).toHaveTextContent("3584")
+})
+
+it("labels uncaptured headers instead of inventing empty historic headers", () => {
+  renderBodyEvidence("existing request")
+  fireEvent.click(screen.getByText("请求头"))
+  fireEvent.click(screen.getByText("响应头"))
+  expect(screen.getAllByText("此记录未采集头信息。")).toHaveLength(2)
+})
 
 function renderBodyEvidence(requestBody: string) {
   const result: ReportResult = {

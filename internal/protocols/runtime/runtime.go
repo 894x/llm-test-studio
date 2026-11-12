@@ -16,11 +16,13 @@ const MaxResponseBytes int64 = 32 << 20
 const MaxExchanges = 1024
 
 type Response struct {
-	HTTP         *http.Response
-	Started      time.Time
-	TTFBMS       float64
-	RequestBody  json.RawMessage
-	PreparedWire *PreparedWire `json:"-"`
+	HTTP            *http.Response
+	Started         time.Time
+	TTFBMS          float64
+	RequestBody     json.RawMessage
+	PreparedWire    *PreparedWire `json:"-"`
+	RequestHeaders  *testspec.HeaderEvidence
+	ResponseHeaders *testspec.HeaderEvidence
 }
 
 type Transport interface {
@@ -92,7 +94,8 @@ func Exchange(step string, request Request, response Response) testspec.Exchange
 	}
 	entry := testspec.Exchange{
 		Step: step, Method: request.Method, Path: request.Path,
-		RequestBody: append(json.RawMessage{}, body...),
+		RequestBody:    append(json.RawMessage{}, body...),
+		RequestHeaders: response.RequestHeaders, ResponseHeaders: response.ResponseHeaders,
 	}
 	if response.HTTP != nil {
 		status := response.HTTP.StatusCode

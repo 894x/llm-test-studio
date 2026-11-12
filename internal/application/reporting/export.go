@@ -144,6 +144,12 @@ type htmlCaseReport struct {
 	Severity string
 	Status   string
 	Results  []resultRow
+	Checks   []htmlVerificationCheck
+}
+
+type htmlVerificationCheck struct {
+	Label string
+	Class string
 }
 
 type quickHTMLReport struct {
@@ -249,6 +255,7 @@ func htmlEntryReports(suites []EntryDetail, locale string) []htmlEntryReport {
 			cases = append(cases, htmlCaseReport{
 				Index: caseIndex + 1, Detail: testCase, Severity: localizedCaseSeverity(testCase.Severity, locale), Status: status,
 				Results: resultRows(testCase.RequestResults),
+				Checks:  htmlVerificationChecks(testCase.VerificationChecks, locale),
 			})
 		}
 		var performance *quicktest.PerformanceReport
@@ -457,10 +464,9 @@ func sortedMetrics(values map[string]domain.MetricValue) []namedMetric {
 func resultRows(results []domain.Result) []resultRow {
 	rows := make([]resultRow, 0, len(results))
 	for _, result := range results {
-		status := "passed"
+		status := string(result.Verification.Status)
 		errorCode := ""
 		if !result.Passed() {
-			status = "failed"
 			errorCode = string(result.ErrorCode)
 		}
 		rows = append(rows, resultRow{
@@ -500,13 +506,14 @@ func formatNumber(value float64) string {
 
 var reportHTMLTemplate = template.Must(template.New("report").Funcs(template.FuncMap{
 	"performanceOverview": renderPerformanceOverviewHTML,
+	"verdictClass":        verdictClass,
 }).Parse(`<!doctype html>
 <html lang="{{.Language}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LLM Test Studio Report {{.Detail.Report.ID}}</title><style>
-:root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}h3{margin:22px 0 10px}h4{margin:16px 0 8px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}.suite{margin-top:30px;border:1px solid #d9e2ef;border-radius:14px;padding:22px}.case{margin-top:18px;border-top:1px solid #e6eaf0;padding-top:2px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}.issues{color:#b42318}.severity{display:inline-block;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600}.severity-critical{color:#b42318;background:#fde7ea}.severity-normal{color:#36536f;background:#e8eef5}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}.suite,tr{break-inside:avoid}}
+:root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}h3{margin:22px 0 10px}h4{margin:16px 0 8px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.warning{color:#a16207}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}.suite{margin-top:30px;border:1px solid #d9e2ef;border-radius:14px;padding:22px}.case{margin-top:18px;border-top:1px solid #e6eaf0;padding-top:2px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}.issues{color:#b42318}.severity{display:inline-block;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600}.severity-critical{color:#b42318;background:#fde7ea}.severity-normal{color:#36536f;background:#e8eef5}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}.suite,tr{break-inside:avoid}}
 </style></head><body><div class="watermark">{{.Watermark}}</div><main>
 <h1>{{.Labels.Title}}</h1><p class="muted">{{.Detail.Report.Model.Name}} · {{.Detail.Report.Channel.Name}} · {{.GeneratedUTC}}</p>
-<h2 class="{{if .Detail.Report.Conclusion.Passed}}pass{{else}}fail{{end}}">{{.Labels.Conclusion}}: {{.Conclusion}}</h2>
+<h2 class="{{verdictClass .Detail.Report.Conclusion.Verdict}}">{{.Labels.Conclusion}}: {{.Conclusion}}</h2>
 <p>{{.Labels.Plan}} {{.Detail.Report.PlanSnapshot.Plan.ID}} · {{.Labels.Run}} {{.Detail.Report.RunID}} · {{.Labels.Report}} {{.Detail.Report.ID}}</p>
 {{if .Issues}}<ul class="issues">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>{{end}}
 {{if .Detail.PerformanceSummary}}<h2>{{.Labels.PerformanceSummary}}</h2><p class="muted">{{.Labels.PerformanceSummaryScope}}</p><section class="grid">{{range .PerformanceMetrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}}</span></div>{{end}}</section>{{end}}
@@ -518,7 +525,7 @@ var reportHTMLTemplate = template.Must(template.New("report").Funcs(template.Fun
 {{range .Suites}}<section class="suite" data-suite-entry-id="{{.Detail.EntryID}}" data-suite-status="{{.Detail.Status}}" data-suite-conclusion="{{.Detail.Conclusion.Verdict}}">
 <h2>{{$.Labels.Suite}} {{.Index}}: {{.Detail.Name}}</h2>
 <p class="muted"><strong>{{.Detail.Key}}</strong> · {{$.Labels.Entry}} {{.Detail.EntryID}} · {{.Detail.Protocol}} · seed {{.Detail.Seed}} · {{.Detail.Parameters}} · warmup {{.Detail.WarmupCount}} · {{.Detail.Settings}}</p>
-<h3 class="{{if .Detail.Conclusion.Passed}}pass{{else}}fail{{end}}">{{$.Labels.Status}}: {{.Status}} · {{$.Labels.Conclusion}}: {{.Conclusion}}</h3>
+<h3 class="{{verdictClass .Detail.Conclusion.Verdict}}">{{$.Labels.Status}}: {{.Status}} · {{$.Labels.Conclusion}}: {{.Conclusion}}</h3>
 {{if .Issues}}<ul class="issues">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>{{end}}
 <h3>{{$.Labels.CoreMetrics}}</h3><section class="grid">{{range .Metrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
 <h3>SLA</h3><section class="grid">{{range .SLA}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
@@ -530,10 +537,10 @@ var reportHTMLTemplate = template.Must(template.New("report").Funcs(template.Fun
 <div class="scroll"><table><thead><tr><th>{{$.Labels.Request}}</th><th>{{$.Labels.Status}}</th><th>E2E ms</th><th>{{$.Labels.Input}}</th><th>{{$.Labels.Output}}</th><th>{{$.Labels.Error}}</th></tr></thead><tbody>{{range .Performance.Samples}}<tr><td>{{.RequestIndex}}</td><td>{{if .Success}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2EMS}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.ErrorCode}}</td></tr>{{end}}</tbody></table></div>
 {{else}}<h3>{{$.Labels.Cases}} ({{len .Cases}})</h3>{{end}}
 {{range .Cases}}<section class="case" data-case-id="{{.Detail.CaseID}}"><h4>{{$.Labels.Case}} {{.Index}}: {{.Detail.Name}} [{{.Detail.Key}}]</h4>
-<p class="muted">{{$.Labels.Dimension}} {{.Detail.Dimension}} · {{$.Labels.Type}} {{.Detail.Protocol}} v{{.Detail.Revision}} · {{$.Labels.Revision}} {{.Detail.Revision}} · {{$.Labels.Severity}} <span class="severity severity-{{.Detail.Severity}}">{{.Severity}}</span> · {{$.Labels.Status}} {{.Status}}</p>
-<h4>{{$.Labels.RequestDetails}} ({{len .Results}})</h4><div class="scroll"><table><thead><tr><th>{{$.Labels.Request}}</th><th>{{$.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{$.Labels.TTFTAny}} ms</th><th>{{$.Labels.TTFTVisible}} ms</th><th>{{$.Labels.TTST}} ms</th><th>{{$.Labels.ObservedICL}} ms</th><th>{{$.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{$.Labels.Queue}} ms</th><th>{{$.Labels.Input}}</th><th>{{$.Labels.Output}}</th><th>{{$.Labels.Error}}</th></tr></thead><tbody>{{range .Results}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
+<p class="muted">{{$.Labels.Dimension}} {{.Detail.Dimension}} · {{$.Labels.Type}} {{.Detail.Protocol}} v{{.Detail.Revision}} · {{$.Labels.Revision}} {{.Detail.Revision}} · {{$.Labels.Severity}} <span class="severity severity-{{.Detail.Severity}}">{{.Severity}}</span> · {{$.Labels.Status}} {{.Status}}{{range .Checks}} · <span class="{{.Class}}">{{.Label}}</span>{{end}}</p>
+<h4>{{$.Labels.RequestDetails}} ({{len .Results}})</h4><div class="scroll"><table><thead><tr><th>{{$.Labels.Request}}</th><th>{{$.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{$.Labels.TTFTAny}} ms</th><th>{{$.Labels.TTFTVisible}} ms</th><th>{{$.Labels.TTST}} ms</th><th>{{$.Labels.ObservedICL}} ms</th><th>{{$.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{$.Labels.Queue}} ms</th><th>{{$.Labels.Input}}</th><th>{{$.Labels.Output}}</th><th>{{$.Labels.Error}}</th></tr></thead><tbody>{{range .Results}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else if eq .Status "indeterminate"}}<span class="warning">{{$.Labels.Indeterminate}}</span>{{else if eq .Status "not_applicable"}}{{$.Labels.Observed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
 </section>{{end}}
-{{if .Unassigned}}<section class="suite"><h2>{{.Labels.Unassigned}} ({{len .Unassigned}})</h2><div class="scroll"><table><thead><tr><th>{{.Labels.Request}}</th><th>{{.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{.Labels.TTFTAny}} ms</th><th>{{.Labels.TTFTVisible}} ms</th><th>{{.Labels.TTST}} ms</th><th>{{.Labels.ObservedICL}} ms</th><th>{{.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{.Labels.Queue}} ms</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Unassigned}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
+{{if .Unassigned}}<section class="suite"><h2>{{.Labels.Unassigned}} ({{len .Unassigned}})</h2><div class="scroll"><table><thead><tr><th>{{.Labels.Request}}</th><th>{{.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{.Labels.TTFTAny}} ms</th><th>{{.Labels.TTFTVisible}} ms</th><th>{{.Labels.TTST}} ms</th><th>{{.Labels.ObservedICL}} ms</th><th>{{.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{.Labels.Queue}} ms</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Unassigned}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else if eq .Status "indeterminate"}}<span class="warning">{{$.Labels.Indeterminate}}</span>{{else if eq .Status "not_applicable"}}{{$.Labels.Observed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
 <p class="muted">Schema v{{.Detail.SchemaVersion}} · {{.Labels.Footer}}</p>
 </main></body></html>`))
 
@@ -545,7 +552,7 @@ var quickReportHTMLTemplate = template.Must(template.New("quick-report").Funcs(t
 }).Parse(`<!doctype html>
 <html lang="{{.Language}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LLM Test Studio Quick Performance Report {{.Detail.Performance.ReportID}}</title><style>
-:root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}tr{break-inside:avoid}}
+:root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.warning{color:#a16207}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}tr{break-inside:avoid}}
 </style></head><body><div class="watermark">{{.Watermark}}</div><main>
 <h1>{{.Labels.QuickTitle}}</h1><p class="muted">{{.Detail.Performance.ModelID}} · {{.Detail.Performance.BaseURL}} · {{.Detail.Performance.GeneratedAt}}</p>
 <h2 class="{{if .Detail.Performance.Success}}pass{{else}}fail{{end}}">{{.Labels.Conclusion}}: {{.Conclusion}}</h2>
@@ -663,7 +670,7 @@ func formalReportImageLines(detail Detail) []string {
 		for caseIndex, testCase := range suite.Cases {
 			caseStatus := "NOT AVAILABLE"
 			if testCase.SummaryResult != nil {
-				caseStatus = strings.ToUpper(resultStatus(testCase.SummaryResult.Passed()))
+				caseStatus = strings.ToUpper(string(testCase.SummaryResult.Verification.Status))
 			}
 			lines = append(lines,
 				fmt.Sprintf("CASE %d %s [%s]", caseIndex+1, testCase.Name, testCase.Key),

@@ -101,8 +101,8 @@ func TestKimiCacheTTLDelayedReplayAndFirstWriteComparison(t *testing.T) {
 								t.Fatal(err)
 							}
 							wantPass := fault == "" || (!stream && fault == "interrupted")
-							if fault == "omitted_after_6m" {
-								wantPass = stream && proto != domain.ProtocolAnthropicMessages
+							if fault == "omitted_after_6m" || fault == "omitted_after_missing_header" {
+								wantPass = proto != domain.ProtocolAnthropicMessages
 							}
 							if (result.Verdict.Status == testspec.VerdictPassed) != wantPass {
 								t.Fatalf("TTL verdict=%s, want pass=%t; issues=%v", result.Verdict.Status, wantPass, result.Observation.Issues)

@@ -181,6 +181,12 @@ func (client *Client) Send(ctx context.Context, request runtime.Request) (runtim
 		HTTP: response, Started: started, TTFBMS: ttfb, RequestBody: wire.view,
 		PreparedWire: wire.metadata,
 	}
+	if capture, _ := ctx.Value(headerEvidenceKey{}).(bool); capture {
+		result.RequestHeaders = captureHeaderEvidence(httpRequest.Header, secret)
+		if response != nil {
+			result.ResponseHeaders = captureHeaderEvidence(response.Header, secret)
+		}
+	}
 	if err != nil || closeErr != nil {
 		if response != nil && response.Body != nil {
 			_ = response.Body.Close()

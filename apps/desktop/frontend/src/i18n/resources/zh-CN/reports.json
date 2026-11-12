@@ -3,13 +3,22 @@
     "label": "报告筛选",
     "kind": "报告类型",
     "allKinds": "全部类型",
-    "kinds": { "run": "测试报告", "quick_performance": "性能报告", "comparison": "渠道对比", "benchmark": "数据集评测" },
+    "kinds": {
+      "run": "测试报告",
+      "quick_performance": "性能报告",
+      "comparison": "渠道对比",
+      "benchmark": "数据集评测"
+    },
     "status": "运行状态",
     "allStatuses": "全部状态",
     "model": "模型",
     "channel": "渠道",
     "definition": "套件或计划",
-    "all": { "model": "全部模型", "channel": "全部渠道", "definition": "全部套件 / 计划" },
+    "all": {
+      "model": "全部模型",
+      "channel": "全部渠道",
+      "definition": "全部套件 / 计划"
+    },
     "shown": "显示 {{count}} / {{total}} 条",
     "hint": "筛选作用于已加载记录；套件和计划按报告中的名称筛选。",
     "clear": "清除筛选"
@@ -488,6 +497,25 @@
     "outputTokens": "输出 Token",
     "outputTokensColumn": "输出",
     "cachedTokens": "缓存 Token",
-    "executionMetrics": "请求指标"
+    "executionMetrics": "请求指标",
+    "requestHeaders": "请求头",
+    "responseHeaders": "响应头",
+    "headersNotRecorded": "此记录未采集头信息。",
+    "headersTruncated": "部分头信息因大小限制未记录。",
+    "partialPassed": "警告",
+    "cacheChecks": {
+      "cache_io": {
+        "passed": "缓存读写通过",
+        "failed": "缓存读写失败",
+        "indeterminate": "缓存读写未验证",
+        "not_applicable": "缓存读写未评估"
+      },
+      "cache_ttl": {
+        "passed": "TTL 对账通过",
+        "failed": "TTL 对账失败",
+        "indeterminate": "TTL 证据不足",
+        "not_applicable": "TTL 未评估"
+      }
+    }
   }
 }

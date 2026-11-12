@@ -1,5 +1,64 @@
 # Kimi 缓存写入与用量对账
 
+## 分项结论与缺少 TTL 证据
+
+现有 12 个 Case 的三协议 JSON/SSE 定义分别输出 `cache_io`（缓存读写）和
+`cache_ttl`（TTL 对账）两个断言组。首轮写入、后续命中、禁止重写、等待及同请求
+属于读写组；分项来源、数值、请求档位和来源一致性属于 TTL 组。
+
+只有 TTL 证据不完整时，`ttl_*_evidence_required` 通过显式
+`failure_status: "indeterminate"` 记录未验证，报告以黄色“TTL 证据不足”显示；
+读写组单独显示其原生结论。不能因此把整条 Case 算为通过，也不计入断言失败数。
+写入错误、未命中、部分命中、错档、负数、非法类型及来源冲突仍失败。缺少或空的
+body 分项可由完整 header 佐证；没有任何完整来源才是证据不足。所有已返回的值
+仍独立校验，不能选择另一来源掩盖错误。
+
+报告列表、套件/Case 汇总、渠道对比和导出沿用 `indeterminate`，不以 `passed=false`
+替换为失败。旧报告没有这两个 authored 组时不推导分项；本次用户指定的现有
+对比在备份后按新规则重评，其他历史不自动改变。
+
+每一步的证据详情依次展示请求头、响应头、请求体、响应体。新功能任务在执行器
+声明 `http_header_evidence` 能力时冻结同名标记，JSON/SSE 在 Go 传输边界采集，
+写入现有 Exchange 的可选 `request_headers/response_headers`，保存 `values` 和
+可选 `truncated`。鉴权、密钥、cookie 等头脱敏，已知密钥回显和签名 URL 查询串
+清除；限制头数量和长度。未采集与已采集空映射保持区别，旧记录显示“未记录”，
+不会从 TTL 指标补造完整头。新断言策略需要 `assertion_failure_status` 能力，
+升级及降级限制见 [兼容性说明](compatibility-policy.md)。
+
+## 当前规则：header 与 usage 两种 TTL 证据
+
+范围为现有综合对账 10 Case 与延迟验证 2 Case，三协议 JSON/SSE，目标为
+`kimi-k3` / `kimi-k3.1-pro`；来源于 2026-11-12 核对的
+[官方缓存文档](https://platform.kimi.com/docs/guide/context-caching)。下文早期章节的
+MSH 必返、首轮零读取必返及仅 SSE 可省略零写入限制由本节替代。
+
+| 协议 | 原生写入总量 | TTL 证据 |
+| --- | --- | --- |
+| Chat | `usage.prompt_tokens_details.cache_write_tokens` | 两档 MSH 头，或顶层/details 的 `cache_creation` |
+| Responses | `usage.input_tokens_details.cache_write_tokens` | 两档 MSH 头，或顶层/details 的 `cache_creation` |
+| Messages | `usage.cache_creation_input_tokens` | `usage.cache_creation`，或兼容提供方的两档 MSH 头 |
+
+body 扩展、Messages 的 header 回退及零字段省略属于兼容验收，不是所有提供方的
+官方必返约定。请求、Case/Suite/Plan 身份、12 Case / 18 请求预算、流终态、
+输入/输出/读写上界、360 秒等待、同请求及延迟命中量等于首次写入的要求保持。
+
+每次响应须有一套可核对的分项：完整头含两档非负整数；body 为 object，正写入
+选中档明确等于总量，非选中零档可省略。显式零写入时至少返回一个零档，另一档
+可省略；空 object 不是独立证据。有完整 body 时允许头部分缺失，返回的头仍校验。
+每个 body 位置和所有已返回头独立校验，任何类型错误、负数、小数、重复头、
+错档、错和或来源冲突均失败。只有总量时 `ttl_*_evidence_required` 记录未验证，
+表示 TTL 证据不足，不从请求参数推算。
+
+Chat/Responses 首轮读取可确实缺失，但须有显式正写入，原始 usage/指标不补零；
+字段存在时仍校验整数、非负和上界，延迟首轮明确非零读取仍失败。后续读取必须
+明确为正。命中轮零写入可省略，但须有两档零头或 body 两档显式零佐证；不能仅凭
+命中或单个零档推断。Messages 原生总量和读取仍必返，null/字符串不视为省略。
+
+本次按用户明确要求，对指定的已完成 Kimi 对比以保存响应重评，先做一致备份。
+这是限定任务 ID 的一次性数据修复，其他历史、用户覆盖及在途任务不自动迁移。
+原始执行输入、请求、响应、时间、指标及 ID 保留；重评结果标记规则版本，不发送
+新供应商请求。Case/runner/数据库格式不变，无格式迁移或弃用。
+
 ## 2026-11-12 延迟流式读取省略零写入字段
 
 `kimi.cache.ttl.read_1h_after_6m_stream` 的 Chat/Responses 第二次读取，沿用
@@ -58,6 +117,28 @@ token，等于首次写入；SSE 的第二次 usage 省略写入字段，两档�
 本节替代下文关于旧套件继续作为可选入口的历史说明。支持范围、退出条件和降级
 见[兼容性说明](compatibility-policy.md)。验证仅含本地生成、目录、旧 ID 解析、
 用户覆盖及桌面初始化回归，没有供应商调用。
+
+## 2026-11-12 流式读取的零写入字段省略
+
+仅调整 `kimi.cache.headers.read_5m_stream` 和
+`kimi.cache.headers.read_1h_stream` 两个逻辑 Case 的 Chat/Responses 定义。
+首轮或重复轮的同次响应在 `cached_tokens > 0`、两档 MSH 写入头均存在且为
+0 时，允许 `cache_write_tokens` 缺失，按 0 验收。此规则是用户指定的目标渠道
+兼容性验收，依据本次报告观测，不扩大为所有供应商的官方字段约定。
+
+| 边界 | 验收规则 | 本地回归 |
+| --- | --- | --- |
+| 命中且缺失写入字段 | 读取量为正、两档头均为 0，才允许按零写入通过 | 重复轮省略、首轮已命中且两轮省略 |
+| 未命中或存在新写入 | 不能用字段省略替代写入计数或掩盖重写 | 未命中、写入头为正时省略均失败 |
+| 字段已返回 | 保留整数、非负、上界、usage/header 对账和重复轮写入为 0 的校验 | null、字符串、负数、小数、重写继续失败 |
+| 其他证据 | 保留输入/输出、缓存读取、TTL 分项、两档头完整性及流终态校验 | 缺头、TTL 矛盾及既有故障继续失败 |
+
+Messages 原生 `cache_creation_input_tokens`、其他 Case 和非流式定义保持原规则。
+保留已发布 v0.2.0 的 Case 身份、请求、工作流及 Suite/Plan 引用；只影响新运行
+使用的内置定义，用户覆盖、冻结快照和历史报告不改写或重算。文件、runner 和
+数据库格式不变，无迁移、弃用或移除安排；降级使用旧版内置断言，无需数据转换。
+验证使用本地 HTTP/SSE fixture 和保存后重判，不发送真实供应商请求。
+下文各历史章节的字段必返规则以本节限定的例外为准。
 
 ## 2026-11-12 多步骤延迟验证
 

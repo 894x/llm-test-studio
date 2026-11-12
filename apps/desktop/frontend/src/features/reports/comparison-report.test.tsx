@@ -42,6 +42,35 @@ async function openComparison(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("channel comparison reports", () => {
+  it.each([false, true])("keeps matrix outcomes compact and cache checks in expanded details (complete: %s)", async complete => {
+    const data = fixture(); const user = userEvent.setup()
+    for (const detail of [data.left, data.right]) {
+      const item = detail.entries[0].cases[0]
+      const status = detail === data.left ? "passed" : "indeterminate"
+      item.verification = { status, passed: status === "passed" ? 1 : 0, failed: 0, observed: 0, indeterminate: status === "indeterminate" ? 1 : 0 }
+      item.verification_checks = [
+        { id: "cache_io", verification: { status: "passed", passed: 1, failed: 0, observed: 0, indeterminate: 0 } },
+        { id: "cache_ttl", verification: item.verification },
+      ]
+      item.request_results[0].verification = { status, assertions: [
+        { id: "cache_io", status: "passed" }, { id: "cache_ttl", status },
+      ] }
+    }
+    const comparison = reportComparisonFixture(data.left, data.right)
+    mount(data, complete ? { compareReports: vi.fn(async () => comparison) } : {})
+    await user.click(screen.getByRole("button", { name: "查看渠道对比报告：test-model" }))
+    const table = await screen.findByRole("table", { name: complete ? "报告对比结果" : "渠道对比用例结果" })
+    const row = within(table).getByRole("button", { name: "Reject invalid parameter" }).closest("tr")!
+    expect(within(row).getByText("通过")).toHaveClass("text-outcome-pass")
+    expect(within(row).getByText("警告")).toHaveClass("text-warning-strong")
+    expect(within(row).queryByText("缓存读写通过")).not.toBeInTheDocument()
+    expect(within(row).queryByText("TTL 证据不足")).not.toBeInTheDocument()
+    await user.click(within(row).getByRole("button", { name: complete
+      ? "查看渠道 B的用例详情：Reject invalid parameter" : "Reject invalid parameter" }))
+    expect(screen.getAllByText("缓存读写通过").length).toBeGreaterThan(0)
+    expect(screen.getByText("TTL 证据不足")).toHaveClass("text-warning-strong")
+  })
+
   it("reruns the full comparison from its inspector and opens the report", async () => {
     const data = fixture(); const user = userEvent.setup()
     let finish!: () => void

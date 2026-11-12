@@ -1,7 +1,7 @@
 import { isProtocolRunSettings, type ProtocolRunSettings } from "@/features/protocols/types"
 import { isJSONValue, isUUID, type CatalogCaseSeverity, type CatalogProtocol, type CatalogPlanParameterValue } from "@/features/catalog/data"
 import { isProtocol } from "@/features/catalog/protocols"
-import type { AssertionResult, ProtocolObservation, Verification, VerificationSummary } from "@/features/protocols/types"
+import type { AssertionResult, HeaderEvidence, ProtocolObservation, Verification, VerificationSummary } from "@/features/protocols/types"
 import { DesktopDataError } from "@/app/data-error"
 import { translateDesktop as tx } from "@/i18n/runtime"
 import { parseQuickPerformanceReport, type QuickPerformanceReport } from "@/features/quick-test/data"
@@ -58,6 +58,7 @@ export interface ReportCaseDetail {
   severity: CatalogCaseSeverity
   verification: VerificationSummary; metrics: Record<string, ReportMetric>
   summary_result?: ReportResult; request_results: ReportResult[]
+  verification_checks?: { id: "cache_io" | "cache_ttl"; verification: VerificationSummary }[]
 }
 export interface ReportEntryDetail {
   performance?: QuickPerformanceReport
@@ -307,7 +308,17 @@ function parseCase(value: unknown): ReportCaseDetail {
     ...(value.dimension === undefined ? {} : { dimension: value.dimension as string }),
     protocol: value.protocol, severity: value.severity, verification: parseSummary(value.verification), metrics: parseMetricMap(value.metrics),
     ...(value.summary_result === undefined ? {} : { summary_result: parseResult(value.summary_result) }),
-    request_results: value.request_results.map(parseResult) }
+    request_results: value.request_results.map(parseResult),
+    ...(value.verification_checks === undefined ? {} : { verification_checks: parseVerificationChecks(value.verification_checks) }) }
+}
+function parseVerificationChecks(value: unknown): NonNullable<ReportCaseDetail["verification_checks"]> {
+  if (!Array.isArray(value) || value.length !== 2) throw invalidReport()
+  const checks = value.map(item => {
+    if (!isRecord(item) || (item.id !== "cache_io" && item.id !== "cache_ttl")) throw invalidReport()
+    return { id: item.id, verification: parseSummary(item.verification) }
+  })
+  if (checks[0].id === checks[1].id) throw invalidReport()
+  return checks as NonNullable<ReportCaseDetail["verification_checks"]>
 }
 function parseSummary(value: unknown): VerificationSummary {
   if (!isRecord(value) || !isVerificationStatus(value.status) ||
@@ -356,12 +367,23 @@ function parseObservation(value: unknown): ProtocolObservation {
       return { step: item.step, method: item.method, path: item.path, elapsed_ms: item.elapsed_ms,
         ...(item.http_status !== undefined ? { http_status: item.http_status as number } : {}),
         ...(item.request_body !== undefined ? { request_body: structuredClone(item.request_body) } : {}),
-        ...(item.response !== undefined ? { response: structuredClone(item.response) } : {}) }
+        ...(item.response !== undefined ? { response: structuredClone(item.response) } : {}),
+        ...(item.request_headers === undefined ? {} : { request_headers: parseHeaderEvidence(item.request_headers) }),
+        ...(item.response_headers === undefined ? {} : { response_headers: parseHeaderEvidence(item.response_headers) }) }
     }),
     issues: value.issues.map(item => {
       if (!isRecord(item) || typeof item.stage !== "string" || typeof item.code !== "string") throw invalidReport()
       return { stage: item.stage, code: item.code }
     }) }
+}
+function parseHeaderEvidence(value: unknown): HeaderEvidence {
+  if (!isRecord(value) || !isRecord(value.values) ||
+    (value.truncated !== undefined && typeof value.truncated !== "boolean") ||
+    Object.keys(value.values).length > 128 || Object.entries(value.values).some(([name, values]) =>
+      name.length > 256 || !Array.isArray(values) || values.length > 16 ||
+      values.some(item => typeof item !== "string" || item.length > 4096))) throw invalidReport()
+  return { values: structuredClone(value.values) as Record<string, string[]>,
+    ...(value.truncated === undefined ? {} : { truncated: value.truncated }) }
 }
 function isVerificationStatus(value: unknown): value is Verification["status"] {
   return value === "passed" || value === "failed" || value === "not_applicable" || value === "indeterminate"
