@@ -18,7 +18,7 @@
 > [!NOTE]
 > LLM Test Studio is publicly available under Apache-2.0. See the [compatibility and data-upgrade policy](doc/compatibility-policy.md) before changing released contracts or upgrading stored data.
 
-New in [v0.2.0](doc/releases/v0.2.0.md): dataset evaluation, dataset download/cache management, and historical report comparison.
+New in [v0.2.1](doc/releases/v0.2.1.md): in-app updates, comparisons across up to 16 channels, and Kimi cache/TTL validation. Update the desktop app and runners before using the new task capabilities; see the release's upgrade instructions.
 
 ## Product proof
 
@@ -106,7 +106,7 @@ Desktop and CLI audit execution share the protocol runtime for `openai-chat`, `o
 
 CLI `audit run --seed 42 --inputs '{"prompt":"Hello"}'` accepts only inputs declared by selected Cases. Omit `--inputs` to use their declared defaults. `--all-cases` selects enabled automatic Cases; manual/disabled selections fail explicitly. `--dry-run` prepares requests without network calls or verification claims. Waiting is authored as `workflow.mode`, replacing `--no-wait`.
 
-The built-in catalog contains 1,099 Cases, 84 Suites and 32 Plans. The K3 Responses foundation Suite contains 230 enabled automatic Cases; see the [Kimi catalog](data/cases/kimi-k3/README.md) for applicability and coverage gaps. Models and credentials belong to Run binding. Empty assertions produce observation-only results and do not inflate verification pass rates. See [multi-protocol Cases and native text APIs](doc/design/multi-protocol-cases.md) for format changes and historical-data impact.
+The built-in catalog contains 1,122 Cases, 92 Suites and 34 Plans. The K3 Responses foundation Suite contains 230 enabled automatic Cases; see the [Kimi catalog](data/cases/kimi-k3/README.md) for applicability and coverage gaps. Models and credentials belong to Run binding. Empty assertions produce observation-only results and do not inflate verification pass rates. See [multi-protocol Cases and native text APIs](doc/design/multi-protocol-cases.md) for format changes and historical-data impact.
 
 <details>
 <summary><strong>CLI examples</strong></summary>
@@ -169,20 +169,21 @@ Avoid passing credentials directly as command arguments because shells may retai
 
 ## Built-in case library
 
-The repository currently includes 1,099 portable Cases, counted by authoring directory and unique Case ID:
+The repository currently includes 1,122 portable Cases, counted by authoring directory and unique Case ID:
 
 | Case directory | Cases | Focus |
 | --- | ---: | --- |
-| `openai-chat` | 499 | Chat compatibility, Kimi and GLM contracts, streaming, tools, reasoning, multimodal inputs, and usage |
+| `openai-chat` | 517 | Chat compatibility, Kimi and GLM contracts, streaming, tools, reasoning, multimodal inputs, and usage |
 | `openai-responses` | 208 | K3 native Responses parameters, tools, reasoning, structured output, caching, and rejection boundaries |
-| `kimi-cache-usage` | 20 | Separate cache token-usage and response-header conformance checks across three text protocols |
+| `kimi-cache-usage` | 20 | Cache usage, response headers, and TTL evidence across three text protocols |
+| `kimi-cache-ttl` | 2 | Delayed cache reads with JSON/SSE definitions across three text protocols |
 | `kimi-protocol` | 4 | Response structure, streaming integrity, reasoning output, and usage consistency |
 | `seedance` | 6 | Text, image, video, and mixed-reference video requests |
-| `wan-video` | 213 | Wan video creation, task polling, model-specific boundaries, and media fixture templates |
+| `wan-video` | 216 | Wan video creation, task polling, model-specific boundaries, and media fixture templates |
 | `minimax-video` | 149 | MiniMax H3 creation, polling, parameter rejection, and media-dependent scenarios |
-| **Total** | **1,099** | **784 enabled automatic Cases, 107 enabled manual Cases, and 208 disabled Cases** |
+| **Total** | **1,122** | **807 enabled automatic Cases, 107 enabled manual Cases, and 208 disabled Cases** |
 
-Kimi Chat Cases are included in `openai-chat`. Some Cases in that directory also define native `openai-responses` or `anthropic-messages` behavior under the same ID; these definitions are not counted again. The 84 Suites cover all six runtime protocols. The 32 built-in Plans include 18 performance presets (six per text protocol: quick check, baseline, sustained load, capacity steps, uncached input, and cached suffix), three input-token staircase Plans, and 11 functional or mixed Plans.
+Kimi Chat Cases are included in `openai-chat`. Some Cases in that directory also define native `openai-responses` or `anthropic-messages` behavior under the same ID; these definitions are not counted again. The 92 Suites cover all six runtime protocols. The 34 built-in Plans include 18 performance presets (six per text protocol: quick check, baseline, sustained load, capacity steps, uncached input, and cached suffix), three input-token staircase Plans, and 13 functional or mixed Plans.
 
 Built-in Cases are starting points, not a claim that every Case applies to every model. Counts include manual scenarios and disabled templates; only enabled automatic Cases can be selected for automated execution. Protocol compatibility is validated before a Plan can run.
 

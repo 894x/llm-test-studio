@@ -18,7 +18,7 @@
 > [!NOTE]
 > LLM Test Studio 已采用 Apache-2.0 许可证公开开源。修改已发布契约或升级存量数据前，请阅读[兼容性与数据升级政策](doc/compatibility-policy.md)。
 
-[v0.2.0](doc/releases/v0.2.0.md) 新增：数据集评测、数据集下载与缓存管理，以及历史报告对比。
+[v0.2.1](doc/releases/v0.2.1.md) 新增：软件内更新、最多 16 渠道对比，以及 Kimi 缓存与 TTL 验证。使用新任务能力前请同步更新桌面端和 runner，具体顺序见发布说明。
 
 ## 产品实证
 
@@ -106,7 +106,7 @@ go build -o llm-test-studio ./cmd/llm-test-studio
 
 CLI `audit run --seed 42 --inputs '{"prompt":"Hello"}'` 只接受所选 Case 声明的输入；省略 `--inputs` 时使用已声明默认值。`--all-cases` 选择已启用的自动 Case，手动或停用项会明确报错。`--dry-run` 仅准备请求，不联网，也不声称断言已通过。等待行为由 `workflow.mode` 定义，替代 `--no-wait`。
 
-内置目录包含 1,099 个 Case、84 个 Suite 和 32 个 Plan。K3 Responses 基础套件包含 230 个已启用自动 Case；适用范围和覆盖缺口见 [Kimi 目录](data/cases/kimi-k3/README.zh-CN.md)。模型和凭据属于 Run 绑定。空断言仅产生观察结果，不计入断言通过率。格式变化和历史数据影响见[多协议 Case 与原生文本接口](doc/design/multi-protocol-cases.md)。
+内置目录包含 1,122 个 Case、92 个 Suite 和 34 个 Plan。K3 Responses 基础套件包含 230 个已启用自动 Case；适用范围和覆盖缺口见 [Kimi 目录](data/cases/kimi-k3/README.zh-CN.md)。模型和凭据属于 Run 绑定。空断言仅产生观察结果，不计入断言通过率。格式变化和历史数据影响见[多协议 Case 与原生文本接口](doc/design/multi-protocol-cases.md)。
 
 <details>
 <summary><strong>CLI 示例</strong></summary>
@@ -169,20 +169,21 @@ go run ./cmd/llm-test-studio load run \
 
 ## 内置 Case 库
 
-仓库目前包含 1,099 个可移植 Case，按编写目录和唯一 Case ID 统计：
+仓库目前包含 1,122 个可移植 Case，按编写目录和唯一 Case ID 统计：
 
 | Case 目录 | 数量 | 重点 |
 | --- | ---: | --- |
-| `openai-chat` | 499 | Chat 兼容性、Kimi 和 GLM 契约、流式响应、工具调用、推理、多模态输入和用量 |
+| `openai-chat` | 517 | Chat 兼容性、Kimi 和 GLM 契约、流式响应、工具调用、推理、多模态输入和用量 |
 | `openai-responses` | 208 | K3 原生 Responses 参数、工具、推理、结构化输出、缓存和拒绝边界 |
-| `kimi-cache-usage` | 20 | 三种文本协议的缓存 Token 用量与响应头契约独立检查 |
+| `kimi-cache-usage` | 20 | 三种文本协议的缓存用量、响应头和 TTL 证据 |
+| `kimi-cache-ttl` | 2 | 三种文本协议的 JSON/SSE 延迟缓存读取 |
 | `kimi-protocol` | 4 | 响应结构、流式完整性、推理输出和用量一致性 |
 | `seedance` | 6 | 文本、图片、视频和混合参考视频请求 |
-| `wan-video` | 213 | Wan 视频创建、任务轮询、各模型参数边界和媒体素材模板 |
+| `wan-video` | 216 | Wan 视频创建、任务轮询、各模型参数边界和媒体素材模板 |
 | `minimax-video` | 149 | MiniMax H3 创建、轮询、参数拒绝和依赖媒体的场景 |
-| **合计** | **1,099** | **784 个已启用自动 Case、107 个已启用手动 Case、208 个已停用 Case** |
+| **合计** | **1,122** | **807 个已启用自动 Case、107 个已启用手动 Case、208 个已停用 Case** |
 
-Kimi Chat Case 已计入 `openai-chat`。该目录中的部分 Case 还在相同 ID 下定义了原生 `openai-responses` 或 `anthropic-messages` 行为，这些协议定义不重复计数。84 个 Suite 覆盖全部六种运行时协议。32 个内置 Plan 包括 18 个性能预设（三种文本协议各六种：快速检查、基准测试、持续负载、容量阶梯、无缓存输入和缓存后缀）、3 个输入 Token 阶梯计划，以及 11 个功能或混合计划。
+Kimi Chat Case 已计入 `openai-chat`。该目录中的部分 Case 还在相同 ID 下定义了原生 `openai-responses` 或 `anthropic-messages` 行为，这些协议定义不重复计数。92 个 Suite 覆盖全部六种运行时协议。34 个内置 Plan 包括 18 个性能预设（三种文本协议各六种：快速检查、基准测试、持续负载、容量阶梯、无缓存输入和缓存后缀）、3 个输入 Token 阶梯计划，以及 13 个功能或混合计划。
 
 内置 Case 是测试起点，不代表每个 Case 都适用于每个模型。统计包含手动场景和停用模板；自动执行仅允许选择已启用的自动 Case。Plan 执行前会验证协议兼容性。
 
