@@ -84,6 +84,10 @@ func Compare(details []Detail, baselineID string) (Comparison, error) {
 		row := &result.Rows[index]
 		values := observations[row.Key]
 		baseline, hasBaseline := values[baselineID]
+		baselineStatus := "not_run"
+		if hasBaseline {
+			baselineStatus = baseline.cell.Status
+		}
 		for _, detail := range details {
 			id := comparisonReportID(detail)
 			observation, exists := values[id]
@@ -99,7 +103,7 @@ func Compare(details []Detail, baselineID string) (Comparison, error) {
 					addComparisonDeltas(&cell, baseline.cell)
 				}
 			}
-			if id != baselineID && cell.Change != "same" {
+			if cell.Status != baselineStatus {
 				row.Different = true
 			}
 			row.Cells = append(row.Cells, cell)

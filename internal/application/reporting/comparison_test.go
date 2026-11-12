@@ -109,6 +109,9 @@ func TestComparisonDetectsDefinitionChangesWithTheSameCaseName(t *testing.T) {
 	if err != nil || comparison.Rows[0].Cells[1].Change != "conditions_changed" {
 		t.Fatalf("frozen definition revision: %#v, %v", comparison.Rows, err)
 	}
+	if comparison.Rows[0].Different {
+		t.Fatal("definition changes alone must not count as outcome differences")
+	}
 }
 
 func TestComparisonMetricDeltaUsesMatchingUnitsAndObservedSamples(t *testing.T) {
@@ -125,10 +128,31 @@ func TestComparisonMetricDeltaUsesMatchingUnitsAndObservedSamples(t *testing.T) 
 	if len(metrics) != 1 || metrics[0].Delta == nil || *metrics[0].Delta != 15 {
 		t.Fatalf("observed delta: %#v", metrics)
 	}
+	if comparison.Rows[0].Different || comparison.Rows[0].Cells[1].Change != "changed" {
+		t.Fatalf("matching functional outcomes with different timings: %#v", comparison.Rows)
+	}
 	right.Entries[0].Cases[0].Metrics["e2e_ms"] = domain.MetricValue{Value: 1, Unit: "s", Samples: 1}
 	comparison, err = Compare([]Detail{left, right}, left.Report.ID)
 	if err != nil || comparison.Rows[0].Cells[1].Metrics[0].Delta != nil {
 		t.Fatalf("unit mismatch: %#v, %v", comparison.Rows, err)
+	}
+}
+
+func TestPerformanceComparisonFiltersByOutcomeAndRetainsMetricChanges(t *testing.T) {
+	left := validArchivedQuickPerformanceReport()
+	right := left
+	right.ReportID = "42000000-0000-4000-8000-000000000090"
+	right.Metrics.TTFTP95 = left.Metrics.TTFTP95 + 10
+	details := []Detail{
+		{SchemaVersion: 1, Source: SourceQuickPerformance, Performance: &left},
+		{SchemaVersion: 1, Source: SourceQuickPerformance, Performance: &right},
+	}
+	comparison, err := Compare(details, left.ReportID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comparison.Rows[0].Different || comparison.Rows[0].Cells[1].Change != "changed" {
+		t.Fatalf("matching performance outcomes must retain metrics without passing the outcome filter: %#v", comparison.Rows)
 	}
 }
 
