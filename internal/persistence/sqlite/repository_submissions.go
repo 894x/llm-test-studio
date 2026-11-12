@@ -36,7 +36,7 @@ func (repository *Repository) CreateSubmission(
 	ctx context.Context,
 	record jobs.SubmissionRecord,
 ) (jobs.SubmissionRecord, error) {
-	if record.Validate() != nil || record.State != jobs.SubmissionPrepared {
+	if record.State != jobs.SubmissionPrepared {
 		return jobs.SubmissionRecord{}, jobs.ErrInvalid
 	}
 	document, err := marshalCanonical(record)
@@ -47,7 +47,7 @@ func (repository *Repository) CreateSubmission(
 	// caller cannot change mutable prepared values during admission.
 	record, err = decodeSubmissionRecord(document)
 	if err != nil {
-		return jobs.SubmissionRecord{}, err
+		return jobs.SubmissionRecord{}, jobs.ErrInvalid
 	}
 	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -102,23 +102,29 @@ func (repository *Repository) UpdateSubmission(
 	expected uint64,
 ) error {
 	validRevision := expected > 0 && next.Revision == expected+1
-	if next.Validate() != nil || !validRevision {
+	if !validRevision {
 		return jobs.ErrInvalid
 	}
-	document, err := marshalCanonical(next)
-	if err != nil || len(document) > maxSubmissionRecordBytes {
-		return jobs.ErrInvalid
+	// Only mutable delivery metadata is written below. Own the small receipt
+	// before validation; never serialize a caller-owned prepared payload again.
+	if next.Receipt != nil {
+		raw, err := marshalCanonical(next.Receipt)
+		if err != nil {
+			return jobs.ErrInvalid
+		}
+		receipt, err := jobcontract.DecodeReceipt(bytes.NewReader(raw))
+		if err != nil {
+			return jobs.ErrInvalid
+		}
+		next.Receipt = &receipt
 	}
-	next, err = decodeSubmissionRecord(document)
+	// Validate and compare complete owned documents before acquiring the write
+	// transaction. The conditional update below guards every observed column.
+	stored, err := queryStoredSubmission(ctx, repository.db, next.Prepared.Spec.JobID)
 	if err != nil {
 		return err
 	}
-	tx, err := repository.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin submission update: %w", err)
-	}
-	defer tx.Rollback()
-	previous, err := querySubmission(ctx, tx, next.Prepared.Spec.JobID)
+	previous, err := stored.decode()
 	if err != nil {
 		return err
 	}
@@ -128,15 +134,32 @@ func (repository *Repository) UpdateSubmission(
 	if err := previous.ValidateSuccessor(next); err != nil {
 		return err
 	}
+	document, err := submissionTransitionDocument(stored.document, next)
+	if err != nil {
+		return err
+	}
+	tx, err := repository.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin submission update: %w", err)
+	}
+	defer tx.Rollback()
 	result, err := tx.ExecContext(
 		ctx,
-		`UPDATE job_submissions
-		SET revision = ?, state = ?, document_json = ? WHERE job_id = ? AND revision = ?`,
+		`UPDATE job_submissions SET revision = ?, state = ?, document_json = ?
+        WHERE job_id = ? AND revision = ? AND document_json = ?
+        AND configuration_id = ? AND node_id = ? AND installation_id = ?
+        AND state = ? AND spec_sha256 = ?`,
 		next.Revision,
 		next.State,
 		document,
 		next.Prepared.Spec.JobID,
 		expected,
+		stored.document,
+		stored.configurationID,
+		stored.nodeID,
+		stored.installationID,
+		stored.state,
+		stored.digest,
 	)
 	if err != nil {
 		return classifySubmissionWrite("update submission record", err)
@@ -148,7 +171,14 @@ func (repository *Repository) UpdateSubmission(
 	if count != 1 {
 		return jobs.ErrConflict
 	}
-	return classifySubmissionWrite("commit submission update", tx.Commit())
+	if err := classifySubmissionWrite("commit submission update", tx.Commit()); err != nil {
+		return err
+	}
+	// Store only independently owned prior preparation and the validated small
+	// successor metadata. Never retain caller-owned mutable prepared values.
+	next.Prepared = previous.Prepared
+	rememberSubmission(document, next)
+	return nil
 }
 
 func (repository *Repository) ListPendingSubmissions(
@@ -185,7 +215,10 @@ func (repository *Repository) ListPendingSubmissions(
 			return jobs.SubmissionPage{}, err
 		}
 		size := len(stored.document)
-		if len(page.Records) == int(limit) || used+size > jobs.MaxSubmissionPageBytes {
+		// A single valid large submission must advance the cursor, while subsequent
+		// records still respect the normal aggregate page budget.
+		overBudget := len(page.Records) > 0 && used+size > jobs.MaxSubmissionPageBytes
+		if len(page.Records) == int(limit) || overBudget {
 			page.HasMore = true
 			break
 		}
@@ -222,6 +255,12 @@ func queryStoredSubmission(ctx context.Context, queryer rowQueryer, id string) (
 }
 
 func decodeSubmissionRecord(document []byte) (jobs.SubmissionRecord, error) {
+	if len(document) > 0 && len(document) <= maxSubmissionRecordBytes {
+		if record, found, err := cachedSubmission(document); found {
+			return record, err
+		}
+	}
+
 	corrupt := fmt.Errorf("%w: submission document", ErrCorrupt)
 	if len(document) > maxSubmissionRecordBytes {
 		return jobs.SubmissionRecord{}, corrupt
@@ -273,6 +312,9 @@ func decodeSubmissionRecord(document []byte) (jobs.SubmissionRecord, error) {
 	if err != nil || !bytes.Equal(canonical, document) {
 		return jobs.SubmissionRecord{}, corrupt
 	}
+	if rememberSubmission(document, record) {
+		return cloneSubmission(record)
+	}
 	return record, nil
 }
 
@@ -313,4 +355,31 @@ func classifySubmissionWrite(operation string, err error) error {
 		return fmt.Errorf("%w: %s", jobs.ErrConflict, operation)
 	}
 	return err
+}
+
+// The prepared document has already been verified and successor validation
+// proves it cannot change. Preserve those canonical bytes while updating only
+// delivery fields, rather than decoding and canonicalizing the plan again.
+func submissionTransitionDocument(document []byte, next jobs.SubmissionRecord) ([]byte, error) {
+	fields, err := submissionFields(document, []string{
+		"prepared", "spec_sha256", "revision", "state", "observation", "created_at", "updated_at", "receipt",
+	}, "receipt")
+	if err != nil {
+		return nil, ErrCorrupt
+	}
+	for name, value := range map[string]any{
+		"revision": next.Revision, "state": next.State, "observation": next.Observation,
+		"updated_at": next.UpdatedAt, "receipt": next.Receipt,
+	} {
+		raw, err := marshalCanonical(value)
+		if err != nil {
+			return nil, jobs.ErrInvalid
+		}
+		fields[name] = raw
+	}
+	encoded, err := json.Marshal(fields)
+	if err != nil || len(encoded) > maxSubmissionRecordBytes {
+		return nil, jobs.ErrInvalid
+	}
+	return encoded, nil
 }

@@ -2,6 +2,7 @@ package testspec
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,10 @@ func Decode(raw json.RawMessage) (Spec, error) {
 	var spec Spec
 	if len(raw) > MaxDocumentBytes {
 		return spec, errors.New("case spec exceeds the 4 MiB limit")
+	}
+	key := sha256.Sum256(raw)
+	if cached, found := decodedSpecs.lookup(key); found {
+		return cached, nil
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -32,7 +37,13 @@ func Decode(raw json.RawMessage) (Spec, error) {
 			return spec, fmt.Errorf("invalid case inputs: %w", err)
 		}
 	}
-	return spec, spec.Validate()
+	if err := spec.Validate(); err != nil {
+		return spec, err
+	}
+	if decodedSpecs.remember(key, spec, len(raw)) {
+		return cloneSpec(spec), nil
+	}
+	return spec, nil
 }
 
 func (spec Spec) Validate() error {

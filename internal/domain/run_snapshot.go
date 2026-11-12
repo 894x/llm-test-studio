@@ -296,3 +296,6 @@ func equalSnapshotMap(left, right map[string]json.RawMessage) bool {
 	}
 	return true
 }
+
+// Clone returns independently mutable snapshot data without revalidating content.
+func (snapshot RunSnapshot) Clone() RunSnapshot { return snapshot.clone() }

@@ -13,7 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/jobs"
+	"github.com/894x/llm-test-studio/internal/canonicaljson"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
 var (
@@ -150,6 +153,19 @@ func validateNextRevision(expected uint64, meta domain.EntityMeta) error {
 }
 
 func marshalCanonical(value any) ([]byte, error) {
+	switch value := value.(type) {
+	case jobcontract.JobSpec:
+		return value.CanonicalJSON()
+	case jobs.SubmissionRecord:
+		return marshalSubmissionCanonical(value)
+	case jobcontract.AcceptedEvent:
+		return marshalCanonicalFields(map[string]any{"spec": value.Spec, "snapshot": value.Snapshot})
+	case jobcontract.Event:
+		if value.Kind == jobcontract.EventAccepted && canonicaljson.Known(value.Payload) {
+			return marshalCanonicalFields(map[string]any{"contract": value.Contract, "job_id": value.JobID, "sequence": value.Sequence, "kind": value.Kind, "created_at": value.CreatedAt, "payload": value.Payload})
+		}
+	}
+
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return nil, err

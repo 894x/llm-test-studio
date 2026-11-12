@@ -75,7 +75,7 @@ func createRunTx(ctx context.Context, tx *sql.Tx, prepared preparedRunCreate) er
 			plan_id, plan_revision, status, snapshot_json, document_json
 		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, meta.ID, meta.SchemaVersion, meta.Revision, formatTime(meta.CreatedAt), formatTime(meta.UpdatedAt),
-		run.PlanID(), run.Snapshot().Plan.Revision, run.Status(), prepared.snapshot, prepared.document); err != nil {
+		run.PlanID(), run.PlanRevision(), run.Status(), prepared.snapshot, prepared.document); err != nil {
 		return classifyWriteError("create run revision", err)
 	}
 	return nil
@@ -194,7 +194,7 @@ func updateRunTx(ctx context.Context, tx *sql.Tx, expectedRevision uint64, run d
 		formatTime(meta.CreatedAt),
 		formatTime(meta.UpdatedAt),
 		run.PlanID(),
-		run.Snapshot().Plan.Revision,
+		run.PlanRevision(),
 		run.Status(),
 		snapshotDocument,
 		document,

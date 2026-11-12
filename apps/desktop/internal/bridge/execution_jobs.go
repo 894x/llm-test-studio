@@ -19,6 +19,7 @@ var (
 )
 
 const (
+	desktopCodeJobSubmissionTooLarge  = "job_submission_too_large"
 	desktopCodeJobInvalid             = "job_invalid"
 	desktopCodeJobNotFound            = "job_not_found"
 	desktopCodeJobConflict            = "job_conflict"

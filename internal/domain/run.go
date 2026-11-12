@@ -256,3 +256,6 @@ func (run *Run) UnmarshalJSON(data []byte) error {
 	*run = candidate
 	return nil
 }
+
+// PlanRevision reads immutable pin metadata without copying the complete snapshot.
+func (run Run) PlanRevision() uint64 { return run.planSnapshot.Plan.Revision }

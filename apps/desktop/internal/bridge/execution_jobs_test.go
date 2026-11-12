@@ -143,6 +143,7 @@ func TestDesktopJobErrorsKeepSafeDomainMeaning(t *testing.T) {
 		err  error
 		code string
 	}{
+		{err: jobcontract.ErrTooLarge, code: desktopCodeJobSubmissionTooLarge},
 		{err: jobs.ErrInvalid, code: desktopCodeJobInvalid},
 		{err: jobs.ErrConflict, code: desktopCodeJobConflict},
 		{err: jobs.ErrNotFound, code: desktopCodeJobNotFound},

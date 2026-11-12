@@ -162,17 +162,26 @@ func (preparer *Preparer) Build(
 }
 
 func (prepared PreparedComparison) Comparison() (domain.Comparison, error) {
+	comparison, _, err := prepared.FrozenRuns()
+	return comparison, err
+}
+
+// FrozenRuns retains the independently owned immutable run entities constructed
+// while checking common comparison pins, so acceptance need not rebuild them.
+func (prepared PreparedComparison) FrozenRuns() (domain.Comparison, []domain.Run, error) {
+	owned := make([]domain.Run, 0, len(prepared.Runs))
 	refs := make([]domain.ComparisonRunRef, 0, len(prepared.Runs))
 	var definitions []byte
 	for _, input := range prepared.Runs {
 		run, err := domain.NewRun(input.Meta, input.PlanID, input.Snapshot)
 		if err != nil {
-			return domain.Comparison{}, fmt.Errorf("invalid prepared comparison run: %w", err)
+			return domain.Comparison{}, nil, fmt.Errorf("invalid prepared comparison run: %w", err)
 		}
+		owned = append(owned, run)
 		snapshot := run.Snapshot()
 		wrongScope := snapshot.Plan != prepared.Plan || snapshot.Model.EntityRevisionRef != prepared.Model
 		if wrongScope || snapshot.QuickTask != nil {
-			return domain.Comparison{}, ErrNotReady
+			return domain.Comparison{}, nil, ErrNotReady
 		}
 		frozen, err := json.Marshal(struct {
 			Plan    *domain.Plan              `json:"plan"`
@@ -180,17 +189,18 @@ func (prepared PreparedComparison) Comparison() (domain.Comparison, error) {
 			Entries []domain.RunEntrySnapshot `json:"entries"`
 		}{Plan: snapshot.PlanDocument, Model: snapshot.Model, Entries: snapshot.Entries})
 		if err != nil {
-			return domain.Comparison{}, err
+			return domain.Comparison{}, nil, err
 		}
 		if definitions != nil && !bytes.Equal(definitions, frozen) {
-			return domain.Comparison{}, ErrNotReady
+			return domain.Comparison{}, nil, ErrNotReady
 		}
 		definitions = frozen
 		refs = append(refs, domain.ComparisonRunRef{
 			Channel: snapshot.Channel.EntityRevisionRef, RunID: input.Meta.ID,
 		})
 	}
-	return domain.NewComparison(prepared.Meta, prepared.Plan, prepared.Model, refs)
+	comparison, err := domain.NewComparison(prepared.Meta, prepared.Plan, prepared.Model, refs)
+	return comparison, owned, err
 }
 
 func closePreparedLeases(leases map[string]*credentials.Lease) {

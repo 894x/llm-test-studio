@@ -114,13 +114,10 @@ func (coordinator *Coordinator) Prepare(ctx context.Context, command PrepareComm
 	quickRun := command.Kind == jobcontract.KindRun && command.Payload.Run != nil &&
 		command.Payload.Run.Snapshot.QuickTask != nil
 	functionalProgress := quickRun && slices.Contains(info.Capabilities.Features, jobcontract.FeatureFunctionalProgress)
-	spec, err := (jobcontract.JobSpec{Contract: jobcontract.CurrentContract, JobID: command.JobID,
+	spec := jobcontract.JobSpec{Contract: jobcontract.CurrentContract, JobID: command.JobID,
 		NodeInstallationID: info.NodeInstallationID, EngineBuildID: info.EngineBuildID, Target: target,
 		Kind: command.Kind, Spec: command.Payload, Assets: command.Assets,
-		FunctionalProgress: functionalProgress}).Freeze()
-	if err != nil {
-		return SubmissionRecord{}, err
-	}
+		FunctionalProgress: functionalProgress}
 	if !supportsSubmission(info, spec) {
 		return SubmissionRecord{}, ErrUpgradeRequired
 	}
@@ -372,9 +369,13 @@ func leasedSubmission(spec jobcontract.JobSpec, leases map[string]*credentials.L
 	raw, err := json.Marshal(submission)
 	tooLarge := len(raw) > jobcontract.MaxSubmissionBytes
 	clear(raw)
-	if err != nil || tooLarge {
+	if err != nil {
 		submission.Clear()
 		return nil, ErrInvalid
+	}
+	if tooLarge {
+		submission.Clear()
+		return nil, jobcontract.ErrTooLarge
 	}
 	return submission, nil
 }

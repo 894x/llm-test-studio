@@ -171,13 +171,17 @@ func prepareJobAcceptance(
 	if err != nil {
 		return preparedJobAcceptance{}, err
 	}
+	runDocuments, err := canonicalRunSnapshots(specDocument)
+	if err != nil {
+		return preparedJobAcceptance{}, err
+	}
+	frozenRuns, err := spec.FrozenRuns()
+	if err != nil {
+		return preparedJobAcceptance{}, err
+	}
 	preparedRuns := make([]preparedRunCreate, 0, len(snapshot.Receipt.RunIDs))
-	for _, runInput := range spec.PreparedRuns() {
-		run, err := domain.NewRun(runInput.Meta, runInput.PlanID, runInput.Snapshot)
-		if err != nil {
-			return preparedJobAcceptance{}, err
-		}
-		prepared, err := prepareRunCreate(run)
+	for _, run := range frozenRuns {
+		prepared, err := prepareCanonicalJobRun(run, runDocuments[run.Meta().ID])
 		if err != nil {
 			return preparedJobAcceptance{}, err
 		}
@@ -185,7 +189,7 @@ func prepareJobAcceptance(
 	}
 	var preparedComparison *preparedComparisonCreate
 	if spec.Kind == jobcontract.KindComparison {
-		comparison, err := spec.Spec.Comparison.Comparison()
+		comparison, err := spec.Comparison()
 		if err != nil {
 			return preparedJobAcceptance{}, err
 		}

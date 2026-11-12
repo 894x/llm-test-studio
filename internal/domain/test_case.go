@@ -2,6 +2,7 @@ package domain
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -150,12 +151,17 @@ func (definitions ProtocolDefinitions) Validate() error {
 		if err := protocol.Validate(); err != nil {
 			return err
 		}
+		key := definitionValidationKey{protocol: protocol, digest: sha256.Sum256(raw)}
+		if validatedDefinitions.contains(key) {
+			continue
+		}
 		if _, err := decodeSafeJSONObject(raw); err != nil {
 			return fmt.Errorf("invalid %s definition: %w", protocol, err)
 		}
 		if _, err := testspec.Decode(raw); err != nil {
 			return fmt.Errorf("invalid %s definition: %w", protocol, err)
 		}
+		validatedDefinitions.remember(key)
 	}
 	return nil
 }

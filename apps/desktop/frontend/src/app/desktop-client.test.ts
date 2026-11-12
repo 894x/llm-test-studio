@@ -732,7 +732,7 @@ describe("Wails desktop client", () => {
     await expect(createDesktopClient().getJobPerformanceResult(JOB_ID)).rejects.toBeInstanceOf(DesktopDataError)
   })
 
-  it.each(["job_invalid", "job_not_found", "job_conflict", "job_unavailable", "job_confirmation_pending", "job_commit_unconfirmed", "job_query_unavailable", "job_commands_unavailable", "remote_node_upgrade_required"] as const)("keeps stable %s failures without automatic retry or fallback", async (code) => {
+  it.each(["job_submission_too_large", "job_invalid", "job_not_found", "job_conflict", "job_unavailable", "job_confirmation_pending", "job_commit_unconfirmed", "job_query_unavailable", "job_commands_unavailable", "remote_node_upgrade_required"] as const)("keeps stable %s failures without automatic retry or fallback", async (code) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding.LaunchJob.mockRejectedValueOnce(new Error(code))
     await expect(createDesktopClient().launchJob({ ...quickTaskCommand(), location: { kind: "remote", configuration_id: RUN_ID } })).rejects.toMatchObject({ code })

@@ -63,7 +63,9 @@ func (repository *Repository) JobEvents(
 		if len(document) > jobcontract.MaxEventBytes {
 			return jobhost.EventPage{}, fmt.Errorf("%w: oversized job event", ErrCorrupt)
 		}
-		if len(page.Events) > 0 && bytesRead+len(document) > jobcontract.MaxEventBytes {
+		// Keep ordinary event pages compact; one valid larger acceptance event
+		// may occupy its own page without blocking cursor advancement.
+		if len(page.Events) > 0 && bytesRead+len(document) > (8<<20)+(64<<10) {
 			byteCapped = true
 			break
 		}

@@ -110,6 +110,7 @@ export type DesktopErrorCode =
   | "remote_node_commit_unconfirmed"
   | "remote_node_upgrade_required"
   | "remote_node_identity_conflict"
+  | "job_submission_too_large"
   | "job_invalid"
   | "job_not_found"
   | "job_conflict"

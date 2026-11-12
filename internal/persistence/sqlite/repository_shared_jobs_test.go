@@ -287,7 +287,8 @@ func TestSharedJobPageAdvancesWhenValidSourcesTogetherExceedPageBudget(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	setPadding(jobcontract.MaxSubmissionBytes - len(base) - 128)
+	// Keep each of the two case definitions below its independent 4 MiB limit.
+	setPadding((8 << 20) - len(base) - 128)
 	if err := spec.Validate(); err != nil {
 		t.Fatalf("maximum fixture spec: %v", err)
 	}

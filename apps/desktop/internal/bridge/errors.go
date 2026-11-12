@@ -13,6 +13,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
 	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/runnerinstall"
 )
 
@@ -155,6 +156,8 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeJobNotFound}
 	case errors.Is(internal, jobs.ErrUnavailable):
 		return DesktopBindingError{Code: desktopCodeJobUnavailable}
+	case errors.Is(internal, jobcontract.ErrTooLarge):
+		return DesktopBindingError{Code: desktopCodeJobSubmissionTooLarge}
 	case errors.Is(internal, jobs.ErrInvalid):
 		return DesktopBindingError{Code: desktopCodeJobInvalid}
 	case errors.Is(internal, ErrDesktopNotStarted):
@@ -249,7 +252,7 @@ func isDesktopBindingCode(code string) bool {
 	case desktopCodeFileInputInvalid, desktopCodeFileInputTooLarge, desktopCodeFileInputLimit,
 		desktopCodeFileInputBusy, desktopCodeFileInputNotFound, desktopCodeFileInputUnavailable:
 		return true
-	case desktopCodeJobInvalid, desktopCodeJobNotFound, desktopCodeJobConflict, desktopCodeJobUnavailable,
+	case desktopCodeJobSubmissionTooLarge, desktopCodeJobInvalid, desktopCodeJobNotFound, desktopCodeJobConflict, desktopCodeJobUnavailable,
 		desktopCodeJobPending, desktopCodeJobCommitUnconfirmed, desktopCodeJobQueryUnavailable, desktopCodeJobCommandsUnavailable,
 		desktopCodeNotStarted,
 		desktopCodeStartupFailed,

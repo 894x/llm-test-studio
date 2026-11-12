@@ -161,7 +161,7 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 	wantCodes := map[string]struct{}{
 		desktopCodeBenchmarkInvalid: {}, desktopCodeBenchmarkUnavailable: {}, desktopCodeBenchmarkRuntime: {},
 		desktopCodeBenchmarkBusy: {}, desktopCodeBenchmarkNotFound: {}, desktopCodeBenchmarkFormat: {},
-		desktopCodeJobInvalid: {}, desktopCodeJobNotFound: {}, desktopCodeJobConflict: {},
+		desktopCodeJobSubmissionTooLarge: {}, desktopCodeJobInvalid: {}, desktopCodeJobNotFound: {}, desktopCodeJobConflict: {},
 		desktopCodeJobUnavailable: {}, desktopCodeJobPending: {}, desktopCodeJobCommitUnconfirmed: {},
 		desktopCodeJobQueryUnavailable: {}, desktopCodeJobCommandsUnavailable: {},
 		desktopCodeNotStarted:                {},

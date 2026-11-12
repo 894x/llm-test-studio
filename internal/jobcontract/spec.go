@@ -3,7 +3,6 @@ package jobcontract
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -22,14 +21,15 @@ import (
 )
 
 const (
-	CurrentContract    = 1
-	MaxSubmissionBytes = 8 << 20
+	CurrentContract = 1
+	// Allow sixteen full plans while keeping decoding and transport resource bounds.
+	MaxSubmissionBytes = 128 << 20
 	MaxSecrets         = 32
 	MaxSecretBytes     = 8 << 10
 	MaxAssets          = 128
 	MaxAssetBytes      = int64(1 << 30)
 	MaxJobAssetBytes   = int64(4 << 30)
-	MaxOwnedItems      = 32_768
+	MaxOwnedItems      = 16 * 32_768
 )
 
 var (
@@ -87,6 +87,7 @@ type Asset struct {
 }
 
 type JobSpec struct {
+	verification       *specVerification
 	Contract           int             `json:"contract"`
 	JobID              string          `json:"job_id"`
 	NodeInstallationID string          `json:"node_installation_id"`
@@ -126,6 +127,16 @@ func (submission *Submission) Clear() {
 }
 
 func (spec JobSpec) Validate() error {
+	if spec.verification != nil {
+		_, err := spec.validatedDocument()
+		return err
+	}
+	return spec.validate()
+}
+
+func (spec JobSpec) validate() error { return spec.validateOwned(nil) }
+
+func (spec JobSpec) validateOwned(owned *[]domain.Run) error {
 	if spec.Contract != CurrentContract {
 		return ErrUnsupported
 	}
@@ -156,11 +167,15 @@ func (spec JobSpec) Validate() error {
 		if spec.Spec.Run == nil {
 			return invalid("spec.run")
 		}
-		if err := validateRun(*spec.Spec.Run); err != nil {
+		run, err := freezeRun(*spec.Spec.Run)
+		if err != nil {
 			if errors.Is(err, ErrUnsupported) {
 				return err
 			}
 			return invalid("spec.run")
+		}
+		if owned != nil {
+			*owned = append(*owned, run)
 		}
 	case KindPerformance:
 		if spec.Spec.Performance == nil || spec.Spec.Performance.Validate() != nil {
@@ -174,11 +189,16 @@ func (spec JobSpec) Validate() error {
 		if len(input.Runs) > MaxSecrets {
 			return invalid("spec.comparison.runs")
 		}
-		if _, err := input.Comparison(); err != nil {
+		_, runs, err := input.FrozenRuns()
+		if err != nil {
 			return invalid("spec.comparison")
 		}
+		if owned != nil {
+			*owned = append(*owned, runs...)
+		}
+		// Comparison() has already validated each complete run and common pins.
 		for _, run := range input.Runs {
-			if err := validateRun(run); err != nil {
+			if err := validateRunFeatures(run); err != nil {
 				if errors.Is(err, ErrUnsupported) {
 					return err
 				}
@@ -191,13 +211,23 @@ func (spec JobSpec) Validate() error {
 	return validateAssets(spec.Assets)
 }
 
-func validateRun(input runs.PreparedRun) error {
+func freezeRun(input runs.PreparedRun) (domain.Run, error) {
+	if input.Meta.Revision != 1 {
+		return domain.Run{}, invalid("meta.revision")
+	}
+	run, err := domain.NewRun(input.Meta, input.PlanID, input.Snapshot)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if err := validateRunFeatures(input); err != nil {
+		return domain.Run{}, err
+	}
+	return run, nil
+}
+
+func validateRunFeatures(input runs.PreparedRun) error {
 	if input.Meta.Revision != 1 {
 		return invalid("meta.revision")
-	}
-	_, err := domain.NewRun(input.Meta, input.PlanID, input.Snapshot)
-	if err != nil {
-		return err
 	}
 	for _, entry := range input.Snapshot.Entries {
 		if entry.Performance != nil {
@@ -307,18 +337,25 @@ func (submission Submission) Validate() error {
 
 // Freeze validates and copies all mutable input before the host takes ownership.
 func (spec JobSpec) Freeze() (JobSpec, error) {
-	if err := spec.Validate(); err != nil {
-		return JobSpec{}, err
+	if spec.verification != nil && spec.Spec.Performance == nil {
+		fingerprint, err := specFingerprint(spec)
+		if err == nil && fingerprint == spec.verification.fingerprint {
+			cloned := cloneOwnedSpec(spec)
+			after, err := specFingerprint(cloned)
+			if err == nil && after == fingerprint {
+				return cloned, nil
+			}
+		}
 	}
-	raw, err := json.Marshal(spec)
+	raw, err := spec.validatedDocument()
 	if err != nil {
-		return JobSpec{}, invalid("spec")
+		return JobSpec{}, err
 	}
 	if len(raw) > MaxSubmissionBytes {
 		return JobSpec{}, ErrTooLarge
 	}
-	var frozen JobSpec
-	if err := decode(raw, &frozen); err != nil {
+	frozen, err := decodeOwnedSpec(raw)
+	if err != nil {
 		return JobSpec{}, err
 	}
 	slices.SortFunc(frozen.Assets, func(left, right Asset) int { return strings.Compare(left.Ref, right.Ref) })
@@ -326,28 +363,13 @@ func (spec JobSpec) Freeze() (JobSpec, error) {
 }
 
 func (spec JobSpec) Digest() (string, error) {
-	frozen, err := spec.Freeze()
+	spec.Assets = slices.Clone(spec.Assets)
+	slices.SortFunc(spec.Assets, func(left, right Asset) int { return strings.Compare(left.Ref, right.Ref) })
+	proof, err := spec.canonicalState()
 	if err != nil {
 		return "", err
 	}
-	raw, err := json.Marshal(frozen)
-	if err != nil {
-		return "", invalid("spec")
-	}
-	// RawMessage retains its object key order. Decode the complete document with
-	// UseNumber so native request objects are canonical without rounding tokens.
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	var normalized any
-	if err := decoder.Decode(&normalized); err != nil {
-		return "", invalid("spec")
-	}
-	canonical, err := json.Marshal(normalized)
-	if err != nil {
-		return "", invalid("spec")
-	}
-	digest := sha256.Sum256(canonical)
-	return hex.EncodeToString(digest[:]), nil
+	return proof.digest, nil
 }
 
 // DecodeSpec reads the single current non-secret job format with the same
@@ -363,11 +385,7 @@ func DecodeSpec(reader io.Reader) (JobSpec, error) {
 	if len(raw) > MaxSubmissionBytes {
 		return JobSpec{}, ErrTooLarge
 	}
-	var spec JobSpec
-	if err := decode(raw, &spec); err != nil {
-		return JobSpec{}, err
-	}
-	return spec, spec.Validate()
+	return decodeOwnedSpec(raw)
 }
 
 func DecodeSubmission(reader io.Reader) (Submission, error) {
@@ -433,3 +451,36 @@ func (err *InvalidError) Error() string { return fmt.Sprintf("%s: %s", ErrInvali
 func (err *InvalidError) Unwrap() error { return ErrInvalid }
 
 func invalid(field string) error { return &InvalidError{Field: field} }
+
+// Comparison reuses complete spec validation before constructing immutable
+// comparison metadata, instead of validating and encoding every run again.
+func (spec JobSpec) Comparison() (domain.Comparison, error) {
+	if spec.Kind != KindComparison || spec.Spec.Comparison == nil {
+		return domain.Comparison{}, invalid("kind")
+	}
+	if err := spec.Validate(); err != nil {
+		return domain.Comparison{}, err
+	}
+	input := spec.Spec.Comparison
+	refs := make([]domain.ComparisonRunRef, 0, len(input.Runs))
+	for _, run := range input.Runs {
+		refs = append(refs, domain.ComparisonRunRef{Channel: run.Snapshot.Channel.EntityRevisionRef, RunID: run.Meta.ID})
+	}
+	return domain.NewComparison(input.Meta, input.Plan, input.Model, refs)
+}
+
+// FrozenRuns exposes only domain entities whose snapshots are private and
+// immutable. Their getters return copies; no mutable job payload is exposed.
+func (spec JobSpec) FrozenRuns() ([]domain.Run, error) {
+	if spec.verification != nil {
+		fingerprint, err := specFingerprint(spec)
+		if err == nil && fingerprint == spec.verification.fingerprint {
+			return slices.Clone(spec.verification.runs), nil
+		}
+	}
+	owned := []domain.Run{}
+	if err := spec.validateOwned(&owned); err != nil {
+		return nil, err
+	}
+	return owned, nil
+}

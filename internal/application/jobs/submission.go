@@ -56,7 +56,14 @@ type PreparedJob struct {
 }
 
 func (prepared PreparedJob) Validate() error {
-	if prepared.Spec.Validate() != nil || prepared.Runner.Validate() != nil {
+	if prepared.Spec.Validate() != nil {
+		return ErrInvalid
+	}
+	return prepared.validateBinding()
+}
+
+func (prepared PreparedJob) validateBinding() error {
+	if prepared.Runner.Validate() != nil {
 		return ErrInvalid
 	}
 	spec, runner := prepared.Spec, prepared.Runner
@@ -106,7 +113,7 @@ type SubmissionRepository interface {
 }
 
 func NewSubmission(prepared PreparedJob, at time.Time) (SubmissionRecord, error) {
-	if err := prepared.Validate(); err != nil {
+	if err := prepared.validateBinding(); err != nil {
 		return SubmissionRecord{}, err
 	}
 	spec, err := prepared.Spec.Freeze()
@@ -120,16 +127,21 @@ func NewSubmission(prepared PreparedJob, at time.Time) (SubmissionRecord, error)
 	}
 	record := SubmissionRecord{Prepared: prepared, SpecSHA256: digest, Revision: 1,
 		State: SubmissionPrepared, Observation: ObservationNone, CreatedAt: at, UpdatedAt: at}
-	return record, record.Validate()
+	return record, record.validateState()
 }
 
 func (record SubmissionRecord) Validate() error {
-	validRevision := record.Revision > 0 && record.Revision <= math.MaxInt64
-	if record.Prepared.Validate() != nil || !validRevision {
-		return ErrInvalid
-	}
 	digest, err := record.Prepared.Spec.Digest()
 	if err != nil || digest != record.SpecSHA256 {
+		return ErrInvalid
+	}
+	return record.validateState()
+}
+
+// The caller has validated the complete spec (or just constructed its digest).
+func (record SubmissionRecord) validateState() error {
+	validRevision := record.Revision > 0 && record.Revision <= math.MaxInt64
+	if record.Prepared.validateBinding() != nil || !validRevision {
 		return ErrInvalid
 	}
 	validTimes := validTime(record.CreatedAt) && validTime(record.UpdatedAt) &&

@@ -72,6 +72,7 @@
     "remote_node_credential_unavailable": "Re-enter node credentials or check the system credential store.",
     "remote_node_busy": "A node operation is in progress. Refresh shortly.",
     "remote_node_commit_unconfirmed": "The save is not confirmed. Refresh the node list before continuing.",
+    "job_submission_too_large": "The job content or item count exceeds the submission capacity. Reduce the job size; for remote execution, ensure the node supports larger plans.",
     "job_invalid": "Invalid job input. Check the execution location and parameters.",
     "job_not_found": "No associated job was found in this query range. Open it from Job history; historical unmanaged runs cannot receive Job commands.",
     "job_conflict": "The job revision changed and the command was refused. Refresh the job before a new action.",
