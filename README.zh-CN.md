@@ -73,7 +73,7 @@ Case 目录是产品的中心，而不是藏在一次运行背后的配置页面
 
 ### 构建桌面应用
 
-要求：Go 1.26+ 并使用 Go 1.26.10 工具链、Node.js 24、pnpm 10.30.3 和 Wails v2.15.0。
+要求：Go 1.26+ 并使用 Go 1.26.11 工具链、Node.js 24、pnpm 10.30.3 和 Wails v2.15.0。
 
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0

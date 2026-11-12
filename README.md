@@ -73,7 +73,7 @@ Pushing a `v*` version tag runs the shared CI workflow against that tagged commi
 
 ### Build the desktop application
 
-Requirements: Go 1.26+ with the Go 1.26.10 toolchain, Node.js 24, pnpm 10.30.3, and Wails v2.15.0.
+Requirements: Go 1.26+ with the Go 1.26.11 toolchain, Node.js 24, pnpm 10.30.3, and Wails v2.15.0.
 
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0

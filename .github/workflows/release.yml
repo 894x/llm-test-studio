@@ -14,7 +14,7 @@ concurrency:
 
 env:
   NODE_OPTIONS: --max-old-space-size=4096
-  GO_VERSION: "1.26.10"
+  GO_VERSION: "1.26.11"
   WAILS_VERSION: v2.15.0
 
 jobs:
