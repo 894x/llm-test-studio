@@ -19,12 +19,8 @@ type fakeDocumentCatalog struct {
 	results []domain.Result
 }
 
-func (catalog *fakeDocumentCatalog) GetReport(context.Context, string) (domain.Report, error) {
-	return catalog.report, nil
-}
-
-func (catalog *fakeDocumentCatalog) ListResults(context.Context, string) ([]domain.Result, error) {
-	return append([]domain.Result(nil), catalog.results...), nil
+func (catalog *fakeDocumentCatalog) GetReportWithResults(context.Context, string) (domain.Report, []domain.Result, error) {
+	return catalog.report, append([]domain.Result(nil), catalog.results...), nil
 }
 
 func TestDetailAndExportsUseTheSameSealedReportAndRequestResults(t *testing.T) {

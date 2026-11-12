@@ -35,16 +35,18 @@ type Catalog interface {
 	ListReportProjections(context.Context) ([]ReportProjection, error)
 }
 
-// DocumentCatalog exposes the sealed report and its request-level results.
+// DocumentCatalog exposes a validated sealed report and its request-level
+// results from one consistent read. Implementations own document and relation
+// validation at the storage boundary.
 // Large provider payloads remain behind the redacted evidence/artifact boundary.
 type DocumentCatalog interface {
 	Catalog
-	GetReport(context.Context, string) (domain.Report, error)
-	ListResults(context.Context, string) ([]domain.Result, error)
+	GetReportWithResults(context.Context, string) (domain.Report, []domain.Result, error)
 }
 
 type QuickPerformanceCatalog interface {
 	ListQuickPerformanceReportSummaries(context.Context) ([]quicktest.PerformanceArchiveSummary, error)
+	// GetQuickPerformanceReport returns a fully validated archived document.
 	GetQuickPerformanceReport(context.Context, string) (quicktest.PerformanceReport, error)
 }
 
@@ -176,7 +178,7 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 	if quickCatalog, ok := service.catalog.(QuickPerformanceCatalog); ok && quickCatalog != nil {
 		performance, err := quickCatalog.GetQuickPerformanceReport(ctx, reportID)
 		if err == nil {
-			if _, validationErr := quicktest.ValidateArchivedPerformanceReport(performance); validationErr != nil || performance.ReportID != reportID {
+			if performance.ReportID != reportID {
 				return Detail{}, classified(ErrInconsistent, errors.New("quick performance report is inconsistent"))
 			}
 			return Detail{
@@ -194,19 +196,12 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 	if !ok || documents == nil {
 		return Detail{}, ErrUnavailable
 	}
-	report, err := documents.GetReport(ctx, reportID)
+	report, results, err := documents.GetReportWithResults(ctx, reportID)
 	if err != nil {
 		return Detail{}, classifyPortError(ctx, err)
 	}
 	if report.ID != reportID {
 		return Detail{}, classified(ErrInconsistent, errors.New("report catalog returned another report"))
-	}
-	if err := quicktest.ValidatePlanReport(report); err != nil {
-		return Detail{}, classified(ErrInconsistent, errors.New("report catalog returned an invalid report"))
-	}
-	results, err := documents.ListResults(ctx, report.RunID)
-	if err != nil {
-		return Detail{}, classifyPortError(ctx, err)
 	}
 	requestResults := make([]domain.Result, 0, len(results))
 	seen := make(map[string]struct{}, len(results))

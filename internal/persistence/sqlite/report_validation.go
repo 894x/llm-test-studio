@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/894x/llm-test-studio/internal/canonicaljson"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -43,6 +44,7 @@ func validateReportRunHistories(ctx context.Context, tx relationQueryer, current
 	seen := make(map[string]struct{}, len(currentRuns))
 	var activeRunID string
 	var previous domain.Run
+	var canonicalSnapshot json.RawMessage
 	var revisionCount uint64
 	var lastDocumentDigest [sha256.Size]byte
 	finishRun := func() error {
@@ -78,6 +80,7 @@ func validateReportRunHistories(ctx context.Context, tx relationQueryer, current
 			}
 			activeRunID = runID
 			previous = domain.Run{}
+			canonicalSnapshot = nil
 			revisionCount = 0
 			lastDocumentDigest = [sha256.Size]byte{}
 		}
@@ -85,37 +88,47 @@ func validateReportRunHistories(ctx context.Context, tx relationQueryer, current
 		if !exists || revision < 1 || uint64(revision) != revisionCount+1 {
 			return fmt.Errorf("%w: report run revision order", ErrCorrupt)
 		}
-		run, err := decodeRunDocument(document)
-		if err != nil {
-			return err
-		}
-		snapshot := run.Snapshot()
-		canonicalSnapshot, err := marshalCanonical(snapshot)
-		if err != nil || !bytes.Equal(canonicalSnapshot, snapshotDocument) ||
-			sha256.Sum256(snapshotDocument) != expected.snapshotDigest {
+		if sha256.Sum256(snapshotDocument) != expected.snapshotDigest {
 			return fmt.Errorf("%w: report run snapshot document", ErrCorrupt)
+		}
+		var run domain.Run
+		if revisionCount == 0 {
+			run, err = decodeRunDocument(document)
+			if err != nil {
+				return err
+			}
+			canonicalSnapshot, err = marshalCanonical(run.Snapshot())
+			if err != nil || !bytes.Equal(canonicalSnapshot, snapshotDocument) {
+				return fmt.Errorf("%w: report run snapshot document", ErrCorrupt)
+			}
+			canonicaljson.Remember(canonicalSnapshot)
+		} else {
+			// Revisions share one frozen snapshot. Reuse its validation and let
+			// the domain transition validate the changing metadata and failure.
+			run, err = nextReportRunRevision(
+				previous,
+				status,
+				updatedAt,
+				document,
+			)
+			if err != nil {
+				return err
+			}
+			want, err := marshalReportRunRevision(run, canonicalSnapshot)
+			if err != nil || !bytes.Equal(want, document) {
+				return fmt.Errorf("%w: report run revision transition", ErrCorrupt)
+			}
 		}
 		meta := run.Meta()
 		if int64(meta.SchemaVersion) != schemaVersion || int64(meta.Revision) != revision ||
 			formatTime(meta.CreatedAt) != createdAt || formatTime(meta.UpdatedAt) != updatedAt ||
-			run.PlanID() != planID || int64(snapshot.Plan.Revision) != planRevision ||
+			run.PlanID() != planID || int64(run.PlanRevision()) != planRevision ||
 			string(run.Status()) != status {
 			return fmt.Errorf("%w: report run history columns", ErrCorrupt)
 		}
 		if revisionCount == 0 {
 			if run.Status() != domain.RunQueued || formatTime(meta.CreatedAt) != expected.createdAt {
 				return fmt.Errorf("%w: report run initial revision", ErrCorrupt)
-			}
-		} else {
-			var want domain.Run
-			var transitionErr error
-			if failure := run.Failure(); run.Status() == domain.RunFailed && failure != nil {
-				want, transitionErr = previous.Fail(*failure, meta.UpdatedAt)
-			} else {
-				want, transitionErr = previous.Transition(run.Status(), meta.UpdatedAt)
-			}
-			if transitionErr != nil || !equalCanonicalDocuments(want, run) {
-				return fmt.Errorf("%w: report run revision transition", ErrCorrupt)
 			}
 		}
 		previous = run
@@ -135,6 +148,46 @@ func validateReportRunHistories(ctx context.Context, tx relationQueryer, current
 		return fmt.Errorf("%w: report run history membership", ErrCorrupt)
 	}
 	return nil
+}
+
+func nextReportRunRevision(previous domain.Run, status, updatedAt string, document []byte) (domain.Run, error) {
+	at, err := parseProjectionTimestamp(updatedAt)
+	if err != nil {
+		return domain.Run{}, storageCorrupt("report run revision timestamp")
+	}
+	var failure struct {
+		Failure *domain.RunFailure `json:"failure"`
+	}
+	if status == string(domain.RunFailed) {
+		if err := json.Unmarshal(document, &failure); err != nil {
+			return domain.Run{}, storageCorrupt("report run revision failure")
+		}
+	}
+	var run domain.Run
+	if failure.Failure != nil {
+		run, err = previous.Fail(*failure.Failure, at)
+	} else {
+		run, err = previous.Transition(domain.RunStatus(status), at)
+	}
+	if err != nil {
+		return domain.Run{}, storageCorrupt("report run revision transition")
+	}
+	return run, nil
+}
+
+// This is the existing persisted Run envelope, assembled from the validated
+// domain transition and the same canonical snapshot for every revision.
+func marshalReportRunRevision(run domain.Run, snapshot json.RawMessage) ([]byte, error) {
+	meta := run.Meta()
+	fields := map[string]any{
+		"id": meta.ID, "schema_version": meta.SchemaVersion, "revision": meta.Revision,
+		"created_at": meta.CreatedAt, "updated_at": meta.UpdatedAt,
+		"plan_id": run.PlanID(), "status": run.Status(), "plan_snapshot": snapshot,
+	}
+	if failure := run.Failure(); failure != nil {
+		fields["failure"] = failure
+	}
+	return marshalCanonicalFields(fields)
 }
 
 func reportProjectionPlaceholders(count int) string {

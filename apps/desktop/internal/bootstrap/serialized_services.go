@@ -48,8 +48,8 @@ func (query serializedReportingQuery) Snapshot(ctx context.Context) (reporting.S
 }
 
 func (query serializedReportingQuery) Detail(ctx context.Context, reportID string) (reporting.Detail, error) {
-	release := query.gate.enter()
-	defer release()
+	// Sealed report documents and their frozen definitions are read from one
+	// SQLite snapshot; they do not participate in authored catalog workflows.
 	documents, ok := query.query.(interface {
 		Detail(context.Context, string) (reporting.Detail, error)
 	})
@@ -60,8 +60,6 @@ func (query serializedReportingQuery) Detail(ctx context.Context, reportID strin
 }
 
 func (query serializedReportingQuery) Export(ctx context.Context, reportID string, format reporting.ExportFormat, watermark string) (reporting.ExportedDocument, error) {
-	release := query.gate.enter()
-	defer release()
 	documents, ok := query.query.(interface {
 		Export(context.Context, string, reporting.ExportFormat, string) (reporting.ExportedDocument, error)
 	})
@@ -72,8 +70,6 @@ func (query serializedReportingQuery) Export(ctx context.Context, reportID strin
 }
 
 func (query serializedReportingQuery) ExportLocalized(ctx context.Context, reportID string, format reporting.ExportFormat, watermark, locale string) (reporting.ExportedDocument, error) {
-	release := query.gate.enter()
-	defer release()
 	documents, ok := query.query.(interface {
 		ExportLocalized(context.Context, string, reporting.ExportFormat, string, string) (reporting.ExportedDocument, error)
 	})

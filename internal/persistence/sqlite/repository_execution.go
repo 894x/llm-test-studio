@@ -1197,21 +1197,8 @@ func (repository *Repository) GetReport(ctx context.Context, id string) (domain.
 		return domain.Report{}, err
 	}
 	defer tx.Rollback()
-	var row storedReportRow
-	err = row.scan(tx.QueryRowContext(ctx, `
-		SELECT id, schema_version, run_id, generated_at, document_json FROM reports WHERE id = ?
-	`, id))
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.Report{}, fmt.Errorf("%w: report", ErrNotFound)
-	}
+	report, _, err := readStoredReport(ctx, tx, id)
 	if err != nil {
-		return domain.Report{}, fmt.Errorf("get report: %w", err)
-	}
-	report, err := row.decode()
-	if err != nil {
-		return domain.Report{}, err
-	}
-	if err := validateReportStorage(ctx, tx, report); err != nil {
 		return domain.Report{}, err
 	}
 	if err := tx.Commit(); err != nil {

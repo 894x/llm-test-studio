@@ -18,54 +18,62 @@ type relationQueryer interface {
 }
 
 func validateReportStorage(ctx context.Context, queryer relationQueryer, report domain.Report) error {
+	_, err := readReportStorage(ctx, queryer, report)
+	return err
+}
+
+func readReportStorage(ctx context.Context, queryer relationQueryer, report domain.Report) (domain.Run, error) {
 	run, err := queryBoundedCurrentRun(ctx, queryer, report.RunID)
 	if err != nil {
-		return relationStorageError(ctx, "report run relation", err)
+		return domain.Run{}, relationStorageError(ctx, "report run relation", err)
 	}
 	if err := checkReportProjectionItemBudgets(report); err != nil {
-		return storageCorrupt(err.Error())
+		return domain.Run{}, storageCorrupt(err.Error())
 	}
 	document, err := marshalCanonical(run)
 	if err != nil {
-		return err
+		return domain.Run{}, err
 	}
 	snapshot, err := marshalCanonical(run.Snapshot())
 	if err != nil {
-		return err
+		return domain.Run{}, err
 	}
 	expected := reportRunExpectation{
 		id: run.Meta().ID, createdAt: formatTime(run.Meta().CreatedAt), revision: run.Meta().Revision,
 		documentDigest: sha256.Sum256(document), snapshotDigest: sha256.Sum256(snapshot),
 	}
 	if err := validateReportRunHistories(ctx, queryer, map[string]reportRunExpectation{report.RunID: expected}); err != nil {
-		return err
+		return domain.Run{}, err
 	}
 	if err := validateReportOriginForRun(ctx, queryer, run, report.ExecutionOrigin); err != nil {
-		return err
+		return domain.Run{}, err
 	}
 	if run.Status() != report.RunStatus || !equalCanonicalDocuments(run.Snapshot(), report.PlanSnapshot) {
-		return storageCorrupt("report run relation")
+		return domain.Run{}, storageCorrupt("report run relation")
 	}
 	if report.GeneratedAt.Before(run.Meta().UpdatedAt) {
-		return storageCorrupt("report generated before run termination")
+		return domain.Run{}, storageCorrupt("report generated before run termination")
 	}
 	if err := ctx.Err(); err != nil {
-		return err
+		return domain.Run{}, err
 	}
 	var sealed int
 	if err := queryer.QueryRowContext(ctx, `SELECT sealed FROM execution_runs WHERE id = ?`, report.RunID).Scan(&sealed); err != nil {
-		return relationStorageError(ctx, "report run seal", err)
+		return domain.Run{}, relationStorageError(ctx, "report run seal", err)
 	}
 	if sealed != 1 {
-		return storageCorrupt("report run seal")
+		return domain.Run{}, storageCorrupt("report run seal")
 	}
 	if err := validateReportAttachments(ctx, queryer, report); err != nil {
-		return err
+		return domain.Run{}, err
 	}
 	if err := validateReportResults(ctx, queryer, report); err != nil {
-		return err
+		return domain.Run{}, err
 	}
-	return validateReportEvidence(ctx, queryer, report)
+	if err := validateReportEvidence(ctx, queryer, report); err != nil {
+		return domain.Run{}, err
+	}
+	return run, nil
 }
 
 func validateReportAttachments(ctx context.Context, queryer relationQueryer, report domain.Report) error {
