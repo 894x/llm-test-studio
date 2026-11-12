@@ -82,7 +82,7 @@ func TestBuiltinKimiSuitePlansScheduleEveryCaseOnce(t *testing.T) {
 		id      string
 		entries int
 	}{
-		{name: "pro_regression", id: "28875399-9c8a-5358-b02c-ebceef9e6c0b", entries: 2},
+		{name: "pro_admission", id: "28875399-9c8a-5358-b02c-ebceef9e6c0b", entries: 5},
 		{name: "pro_extended", id: "7fe751dd-fc6f-5f5e-88d7-910e7afdcad9", entries: 1},
 		{name: "highspeed_regression", id: "9111af86-22fe-59b5-8a61-337dd65cc826", entries: 2},
 		{name: "highspeed_extended", id: "f1931c35-bb66-55e2-af3e-99c034af36e9", entries: 1},

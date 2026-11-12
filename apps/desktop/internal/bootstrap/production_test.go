@@ -198,13 +198,13 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	}
 	emptyBindings := len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels) == 0
 	validDefaultCounts := len(catalogSnapshot.Models) > 0 && len(catalogSnapshot.Plans) == wantPlans
-	validCatalogCounts := len(catalogSnapshot.TestCases) == 1117 && len(catalogSnapshot.Suites) == 89
+	validCatalogCounts := len(catalogSnapshot.TestCases) == 1117 && len(catalogSnapshot.Suites) == 94
 	validCatalog := catalogSnapshot.SchemaVersion == catalog.CurrentSnapshotSchemaVersion &&
 		emptyBindings && validDefaultCounts && validCatalogCounts
 	if !validCatalog {
 		t.Fatalf(
 			"initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, "+
-				"want 1117 file-backed cases and 89 scenario suites",
+				"want 1117 file-backed cases and 94 scenario suites",
 			len(catalogSnapshot.Models),
 			len(catalogSnapshot.Channels),
 			len(catalogSnapshot.ChannelModels),
@@ -284,8 +284,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	}
 	database := filepath.Join(configurationRoot, "llm-test-studio", "llm-test-studio.db")
 	assertProductionOperationalSchemaV1(t, database)
-	if len(firstSnapshot.Suites) != 89 {
-		t.Fatalf("file suites = %d, want 89", len(firstSnapshot.Suites))
+	if len(firstSnapshot.Suites) != 94 {
+		t.Fatalf("file suites = %d, want 94", len(firstSnapshot.Suites))
 	}
 
 	second, err := initialize(context.Background())
@@ -309,13 +309,13 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 			len(secondSnapshot.TestCases),
 		)
 	}
-	validSuiteCounts := len(firstSnapshot.Suites) == 89 && len(secondSnapshot.Suites) == 89
+	validSuiteCounts := len(firstSnapshot.Suites) == 94 && len(secondSnapshot.Suites) == 94
 	wantPlans := discoveredBuiltinPlanCount(t)
 	builtinPlans := len(firstSnapshot.Plans) == wantPlans && len(secondSnapshot.Plans) == wantPlans
 	if !validSuiteCounts || !builtinPlans {
 		t.Fatalf(
 			"suite/plan counts across restart = %d/%d suites, %d/%d plans, "+
-				"want 89 scenario suites and every discovered built-in plan",
+				"want 94 scenario suites and every discovered built-in plan",
 			len(firstSnapshot.Suites),
 			len(secondSnapshot.Suites),
 			len(firstSnapshot.Plans),

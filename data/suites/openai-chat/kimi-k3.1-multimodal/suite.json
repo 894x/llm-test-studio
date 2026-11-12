@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "key": "kimi-k3.1.multimodal",
+  "name": "Kimi K3.1 Chat 多模态套件（Pro / Highspeed）",
+  "protocol": "openai-chat",
+  "description": "图片与视频专项：12 个用例覆盖内置图片数字识别、视频数字顺序识别、对象与字符串输入、必填字段及图片格式拒绝；不含缓存和大输出边界。Pro 与 Highspeed 需分别选择模型运行，与扩展及完整设计套件有交集，运行会产生费用；固定样本不代表完整视觉能力或全部边界覆盖。",
+  "cases": [
+    {
+      "case_id": "ff13a4bb-172c-5ccf-801d-45a3e6f07981"
+    },
+    {
+      "case_id": "081b554f-dfc9-5b7f-a739-4614aec0fd71"
+    },
+    {
+      "case_id": "a61aee6a-4587-55e1-8aab-c30f24460e2e"
+    },
+    {
+      "case_id": "a375b0dc-0b46-5c02-81f6-c81968705ad2"
+    },
+    {
+      "case_id": "307e3cd9-ee95-5449-91a3-47fa9380a84a"
+    },
+    {
+      "case_id": "c9887ab8-c528-51e4-8ae2-0bcb7949f407"
+    },
+    {
+      "case_id": "61536328-32d8-5dfa-8bb9-3a8d53f2f050"
+    },
+    {
+      "case_id": "dfb578da-90f2-50bb-9c62-467e79babc24"
+    },
+    {
+      "case_id": "d74cf9a1-07ca-53f1-b2c2-928bcbe38f14"
+    },
+    {
+      "case_id": "f257eb4f-111d-54d9-814f-62f5fa45f49f"
+    },
+    {
+      "case_id": "f7c58c0b-d366-59eb-a0dc-c88d0718d917"
+    },
+    {
+      "case_id": "659b1a21-9f93-55f7-abc8-10427f929e23"
+    }
+  ],
+  "inputs": []
+}

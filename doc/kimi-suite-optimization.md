@@ -10,10 +10,36 @@
 | 日常检查 | Kimi K3 Chat 日常检查 | 7 个短请求，覆盖基础响应、流式、用量、JSON、工具及 `reasoning_effort=low`。 |
 | 日常检查 | Kimi K3.1 Chat 日常检查（Pro / Highspeed） | 同一组 7 个 Case；分别选择 Pro 或 Highspeed 运行，不含动态工具、多模态和缓存。 |
 | 日常检查 | Kimi K3 Responses 日常检查 | 6 个 Case；部分请求的最大输出预算为 2048 tokens。使用支持 Responses 的模型和渠道。 |
+| 图片与视频 | Kimi K3 Chat 多模态套件、Kimi K3.1 Chat 多模态套件（Pro / Highspeed） | 分别包含 10 / 12 个既有 Case，含识别结果和异常输入检查；不含缓存及大输出边界。 |
 | 完整回归 | K3 Chat 官方基础、K3 Responses 官方基础、K3.1 对应模型完整设计 | 包含日常或专项场景，且可能包含图片、视频、缓存及大输出预算，运行前检查用例与费用；名称不表示官方契约全部覆盖。 |
 | 按需专项 | 参数拒绝、扩展、KVV | 用于定位特定能力；与完整套件有交集，连续运行会重复请求。KVV 观察项包含未独立确认的行为，不能直接视作官方契约。 |
 
 Highspeed 的既有完整套件排除三个仅适用于 Pro 的动态工具场景，共用日常套件也不包含这些场景。Pro 和 Highspeed 共用 Case 定义不代表一次运行能够验证两个模型：需要分别选择模型执行。不同协议继续使用各自的请求和断言。
+
+## 多模态专项套件与 Pro 回归计划（2026-11-11）
+
+本次范围为 Kimi `POST /v1/chat/completions` 的 `kimi-k3`、`kimi-k3.1-pro` 和 `kimi-k3.1-pro-highspeed` 既有非流式图片、视频用例的独立套件入口，以及 Pro 基础与参数回归计划引用。只复用现有固定素材、请求和断言，不新增 Case，不扩展为多模态全参数验收；流式、多图、多视频、文件上传／`ms://`、格式／大小上限、Responses 和 Messages 不在此次目录整理范围。2026-11-11 核对的[官方 Chat 文档](https://platform.kimi.com/docs/api/chat)说明 `content` 数组通过 `type` 区分文本、图片、视频，图片／视频地址支持对象 `url` 与字符串形式。
+
+成员按以下既有主张选择；`must.*` 用于 K3，`k31.must.*` 用于 K3.1，后两项拒绝检查仅用于 K3.1：
+
+| 请求区域／形状 | 既有 Case key | 请求与通过条件 | 成员数（K3 / K3.1） | 层级与限制 |
+| --- | --- | --- | ---: | --- |
+| `content[].image_url` 对象／字符串 | `must.image_url_object`、`must.image_url_string` | 内置 PNG；HTTP 200 且提取数字等于 `7` | 2 / 2 | T3 按需；仅证明固定素材识别和这两种输入形状 |
+| `content[].video_url` 对象／字符串 | `must.video_url_object`、`must.video_url_string` | 内置 MP4；HTTP 200 且提取数字顺序等于 `374` | 2 / 2 | T3 按需；仅证明固定视频数字顺序识别 |
+| `content[].type`、`text`、`image_url`、`video_url` 及两种对象的 `url` 必填 | `must.multimodal_type_required`、`must.multimodal_text_required`、`must.multimodal_image_url_required`、`must.multimodal_video_url_required`、`must.image_url_object_url_required`、`must.video_url_object_url_required` | 每项独立缺少一个必填字段；HTTP 400 且 `error.message` 非空 | 6 / 6 | T2；不代表全部错误类型或消息顺序边界 |
+| 图片地址／MIME 的既有拒绝预期 | `k31.image_public_url_rejected`、`k31.image_svg_rejected` | 公网 URL 或 SVG data URL；HTTP 400 且 `error.message` 非空 | 0 / 2 | T2；保留已有预期，不增加供应商实测证据 |
+
+共 10 / 12 项全部为已启用的自动用例，单独 Case 的非默认状态保持。完整基础／扩展套件仍保留这些成员，连续运行会重复请求。它们是固定样本与形状检查，不是通用视觉能力评分，也不是图片／视频契约的完整边界覆盖；文件引用、其他素材格式、大小／数量边界和流式组合仍未由本专项验证。
+
+`Kimi K3.1 Pro 基础与参数回归计划` 保留名称和身份，由 r2 更新为 r3，在原基础、参数拒绝两项之后追加 `kimi-k3.1.multimodal`。三项均使用 `single` 模式，各 Case 执行一次；新增 12 个不重复 Case，不引入扩展套件中的缓存和大输出边界，但新运行的图片／视频请求会增加费用。Highspeed 的现有计划保持原成员，可单独选择共用多模态套件并绑定 Highspeed 模型。
+
+随后 r4 在这三个套件项之后追加既有 `kimi.partial`（「Kimi · Partial 综合回归」），当时共四项。新增项含 10 条 JSON 格式检查（8 条 Partial、2 条对照）及 8 条 KVV 续写格式检查，共 18 条，沿用 `single` 模式逐条执行一次。请求、断言及前三项身份和顺序保持；后续新运行会增加对应调用费用，需要支持 `json_prefix_assertions` 的执行端。格式通过不代表语义或隐藏推理续写正确，本次仅做本地目录、调度和生成一致性验证，未增加供应商实测证据。
+
+2026-11-12 的 r5 保持原计划 ID，改名为「Kimi K3.1 Pro 完整准入计划」，再追加 `openai-chat.kimi.cache`（「Kimi 缓存与 TTL 综合对账」）。当前顺序为基础、参数拒绝、多模态、Partial、缓存与 TTL，共五项，均以 `single` 逐用例执行一次。缓存新增 20 条 Case，含读取序列共 28 次请求；原四项及其他计划保持，新增调用费用随新运行产生。用户覆盖不自动改名或追加，历史名称与报告不回写；降级引用限制见[兼容性说明](compatibility-policy.md)。名称不代表供应商全部契约均已覆盖，Partial 语义和 TTL 实际过期等限制仍见各专项说明。验证仅含本地目录、调度和资产保持检查，未执行供应商请求。
+
+两个新套件由 `data/suites/openai-chat/kimi-multimodal.suite-profiles.json` 保存显式、按序的稳定 Case ID 引用，经场景生成器输出。所有既有 Case 请求、断言、ID、旧套件成员及计划前两项身份保持；用户同 ID 计划覆盖继续优先，已保存的覆盖不会自动追加本次内置项。历史快照和报告不改写，无数据迁移、弃用或移除安排。降级到缺少新套件的版本前，用户另存计划应先移除新增引用或提供对应 Suite 文件；旧二进制自带的 Pro 计划仍是原成员。
+
+验证范围为 T0：生成器预览／写入／一致性检查、目录加载和 Suite 引用、计划逐用例调度及现有协议／断言回归。供应商请求未执行，现有覆盖矩阵的缺口和文档冲突继续有效。
 
 ## 工具场景输出预算（2026-11-11）
 
