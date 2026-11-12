@@ -101,11 +101,20 @@ func (spec Spec) validateWorkflow() error {
 		return errors.New("workflow mode must be submit, wait, or sequence")
 	}
 	seen := map[string]bool{"initial": true}
+	var delayMS uint64
 	for _, step := range spec.Workflow.Steps {
 		if !validName(step.ID) || seen[step.ID] {
 			return errors.New("workflow step IDs must be unique identifiers; initial is reserved")
 		}
-		if err := validateTemplate(step.Request.Body, spec.Inputs, seen); err != nil {
+		if step.DelayMS > MaxSequenceDelayMS || delayMS > MaxSequenceDelayMS-step.DelayMS {
+			return errors.New("sequence delays cannot exceed 24 hours in total")
+		}
+		delayMS += step.DelayMS
+		if step.ReuseRequestFrom != "" {
+			if !seen[step.ReuseRequestFrom] || len(step.Request.Body) != 0 {
+				return errors.New("reuse_request_from requires a preceding step and excludes request.body")
+			}
+		} else if err := validateTemplate(step.Request.Body, spec.Inputs, seen); err != nil {
 			return fmt.Errorf("step %s: %w", step.ID, err)
 		}
 		seen[step.ID] = true

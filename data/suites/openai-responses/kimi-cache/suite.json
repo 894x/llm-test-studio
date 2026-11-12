@@ -3,38 +3,8 @@
   "key": "openai-responses.kimi.cache",
   "name": "Kimi 缓存与 TTL 综合对账 · openai-responses",
   "protocol": "openai-responses",
-  "description": "K3 / K3.1 Pro 缓存专项 T3：共 20 条，先执行 10 条 usage 对账，再执行 10 条 MSH 响应头对账，各 Case 仅引用一次。覆盖默认/5m/1h、JSON/SSE 冷写入与重复读取，两组结果独立；响应头检查要求 MSH 两档头完整、合法并与同次 usage 一致。Responses/Messages 的 MSH 必返属于提供方兼容性扩展验收。运行产生费用；不验证 TTL 跨时间保留或实际过期。",
+  "description": "K3 / K3.1 Pro 缓存专项 T3：10 条用例，同次请求合并 usage 与 MSH 响应头对账。覆盖默认/5m/1h、JSON/SSE 冷写入与重复读取；两档头须完整、合法，合计等于同次 usage 写入总量，返回的 TTL 分项逐档相等。保留输入、输出、缓存读写和流终态校验，不校验 total_tokens。读取序列各两次请求，一轮共 14 次。MSH 必返属于目标提供方兼容性扩展验收。运行产生费用；不验证 TTL 跨时间保留或实际过期。",
   "cases": [
-    {
-      "case_id": "c69198ce-66ee-4324-8346-6e3bba2992ac"
-    },
-    {
-      "case_id": "15ff3310-338d-458b-8bbe-7d2390a1f881"
-    },
-    {
-      "case_id": "5db3e48f-f7f4-472f-af33-74e08454c7a4"
-    },
-    {
-      "case_id": "158c6ed7-6d9e-4046-b48c-83a31a5ac6be"
-    },
-    {
-      "case_id": "2dc03162-a742-4d1d-9e3f-2afd3f232f29"
-    },
-    {
-      "case_id": "f20d65f3-6948-4b6c-bea1-93ffbcaf8f42"
-    },
-    {
-      "case_id": "15b19757-bec4-4689-b35f-1489889ae5f9"
-    },
-    {
-      "case_id": "ecfab6b6-6883-462a-a86c-1d0538402e6e"
-    },
-    {
-      "case_id": "42d8ac5e-ea87-4add-9cf0-a07fb6f2010b"
-    },
-    {
-      "case_id": "5781dcbc-0106-4e12-9d9f-79205d7a8386"
-    },
     {
       "case_id": "40d19361-970c-5b21-bc8c-746db48a0035"
     },

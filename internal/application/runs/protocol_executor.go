@@ -96,6 +96,13 @@ func (executor *ProtocolExecutor) executePhase(
 	phaseOffset := time.Since(started)
 	settings := request.Entry.Settings
 	settings.TimeoutMS = request.LoadProfile().RequestTimeoutMS
+	if err := settings.Validate(); err != nil {
+		return err
+	}
+	loadProfile := request.LoadProfile()
+	for _, spec := range specs {
+		loadProfile.RequestTimeoutMS = max(loadProfile.RequestTimeoutMS, spec.ExecutionTimeoutMS(settings.TimeoutMS))
+	}
 	randomItemID := request.Entry.EntryID
 	if phase == "warmup" {
 		randomItemID += ":warmup"
@@ -130,7 +137,7 @@ func (executor *ProtocolExecutor) executePhase(
 		state.send(scheduled.Index, draft)
 		return schedulerObservation(scheduled.Index, draft, finishedOffset-startedOffset)
 	}
-	outcome, runErr := load.Run(runContext, request.LoadProfile(), composite, load.Options{
+	outcome, runErr := load.Run(runContext, loadProfile, composite, load.Options{
 		StopSending: request.StopSending, RandomSeed: uint32(seed),
 		OnProgress: request.OnProgress,
 	})

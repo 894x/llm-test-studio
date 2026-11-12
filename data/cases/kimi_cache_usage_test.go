@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	casebundle "github.com/894x/llm-test-studio/data/cases"
+	suitebundle "github.com/894x/llm-test-studio/data/suites"
 	"github.com/894x/llm-test-studio/internal/casecodec"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -22,6 +23,66 @@ import (
 	"github.com/894x/llm-test-studio/internal/protocols"
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
+
+func TestKimiCombinedCacheSuitesUseOneProbePerScenario(t *testing.T) {
+	paths, err := fs.Glob(casebundle.Bundle, "kimi-cache-usage/Kimi-cache-headers-*/case.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	probes := map[string]domain.TestCase{}
+	for _, path := range paths {
+		raw, err := fs.ReadFile(casebundle.Bundle, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		item, err := casecodec.DecodeFilesystemCase(path, raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		probes[item.ID] = item
+	}
+	for _, proto := range []domain.Protocol{
+		domain.ProtocolOpenAIChat, domain.ProtocolOpenAIResponses, domain.ProtocolAnthropicMessages,
+	} {
+		t.Run(string(proto), func(t *testing.T) {
+			raw, err := fs.ReadFile(suitebundle.Bundle, string(proto)+"/kimi-cache/suite.json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var suite struct {
+				Cases []struct {
+					CaseID string `json:"case_id"`
+				} `json:"cases"`
+			}
+			if err := json.Unmarshal(raw, &suite); err != nil {
+				t.Fatal(err)
+			}
+			if len(suite.Cases) != 10 {
+				t.Fatalf("combined suite has %d cases, want 10", len(suite.Cases))
+			}
+			seen := map[string]bool{}
+			requests := 0
+			for _, ref := range suite.Cases {
+				item, ok := probes[ref.CaseID]
+				if !ok || seen[ref.CaseID] || !item.SupportsProtocol(proto) {
+					t.Fatalf("combined suite repeats or lacks a merged probe: %s", ref.CaseID)
+				}
+				seen[ref.CaseID] = true
+				spec, err := item.SpecFor(proto)
+				if err != nil {
+					t.Fatal(err)
+				}
+				requests++
+				if spec.Workflow != nil {
+					requests += len(spec.Workflow.Steps)
+				}
+			}
+			if requests != 14 {
+				t.Fatalf("combined suite makes %d requests, want 14", requests)
+			}
+		})
+	}
+}
 
 func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 	paths, err := fs.Glob(casebundle.Bundle, "kimi-cache-usage/*/case.json")
@@ -48,15 +109,21 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 			read := strings.Contains(item.Key, ".read_")
 			stream := strings.HasSuffix(item.Key, "_stream")
 			headers := strings.Contains(item.Key, ".headers.")
-			faults := []string{"", "missing_write", "negative_write", "fractional_write"}
+			faults := []string{
+				"", "missing_write", "negative_write", "fractional_write",
+				"missing_input", "negative_read", "missing_output", "fractional_output",
+			}
 			if read {
-				faults = append(faults, "no_hit", "rewrite")
+				faults = append(faults, "no_hit", "rewrite", "body_mismatch_repeat", "wrong_ttl_prime")
 			} else {
 				faults = append(faults, "zero_write")
 			}
 			headerFaults := []string{
 				"missing_header", "missing_header_5m", "missing_header_1h", "header_mismatch",
 				"negative_header", "fractional_header", "duplicate_header",
+			}
+			if read {
+				headerFaults = append(headerFaults, "header_mismatch_repeat")
 			}
 			faults = append(faults, headerFaults...)
 			faults = append(faults,
@@ -67,8 +134,11 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 				faults = append(faults,
 					"wrong_total", "missing_total", "negative_total", "invalid_total",
 					"top_level_ttl", "both_ttl", "top_level_invalid",
-					"top_level_wrong_ttl", "nested_wrong_ttl",
+					"top_level_wrong_ttl", "nested_wrong_ttl", "write_over_input",
 				)
+				if read {
+					faults = append(faults, "read_over_input")
+				}
 			}
 			if stream {
 				faults = append(faults, "missing_usage", "interrupted")
@@ -114,7 +184,7 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 						wantPassed = true
 					}
 					if fault == "no_body_ttl" || fault == "omit_zero_bucket" {
-						wantPassed = headers || proto != domain.ProtocolAnthropicMessages
+						wantPassed = proto != domain.ProtocolAnthropicMessages
 					}
 					if slices.Contains([]string{"wrong_total", "missing_total", "negative_total", "invalid_total"}, fault) {
 						wantPassed = true
@@ -226,6 +296,12 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	if fixture.fault == "no_hit" {
 		read = 0
 	}
+	if fixture.fault == "partial_hit" && fixture.calls > 1 {
+		read = 511
+	}
+	if fixture.fault == "warm_initial" && fixture.calls == 1 {
+		read = 1
+	}
 	if fixture.fault == "rewrite" && fixture.calls > 1 {
 		write = 1
 	}
@@ -233,7 +309,9 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	if ttl == "1h" {
 		short, long = 0, write
 	}
-	if fixture.fault == "wrong_ttl" {
+	wrongTTL := fixture.fault == "wrong_ttl"
+	wrongPrimingTTL := fixture.fault == "wrong_ttl_prime" && fixture.calls == 1
+	if wrongTTL || wrongPrimingTTL {
 		short, long = long, short
 		if short == long {
 			short = 1
@@ -256,6 +334,10 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	switch fixture.fault {
 	case "header_mismatch":
 		w.Header().Set(protocol.MSHCacheWriteHeader5m, "7")
+	case "header_mismatch_repeat":
+		if fixture.calls > 1 {
+			w.Header().Set(protocol.MSHCacheWriteHeader5m, "7")
+		}
 	case "negative_header":
 		w.Header().Set(protocol.MSHCacheWriteHeader5m, "-1")
 	case "fractional_header":
@@ -282,6 +364,10 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		cacheCreation[selected] = 1.5
 	case "body_sum_mismatch":
 		cacheCreation[selected] = write + 1
+	case "body_mismatch_repeat":
+		if fixture.calls > 1 {
+			cacheCreation[selected] = write + 1
+		}
 	case "omit_zero_bucket":
 		for key, value := range cacheCreation {
 			if value == 0 {
@@ -318,6 +404,31 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			usage["total_tokens"] = "unavailable"
 		}
 	}
+	input, output := "input_tokens", "output_tokens"
+	if fixture.protocol == domain.ProtocolOpenAIChat {
+		input, output = "prompt_tokens", "completion_tokens"
+	}
+	readField := "cached_tokens"
+	if fixture.protocol == domain.ProtocolAnthropicMessages {
+		readField = "cache_read_input_tokens"
+	}
+	switch fixture.fault {
+	case "missing_input":
+		delete(usage, input)
+	case "negative_read":
+		details[readField] = -1
+	case "missing_output":
+		delete(usage, output)
+	case "fractional_output":
+		usage[output] = 1.5
+	case "write_over_input":
+		usage[input] = 1
+	case "read_over_input":
+		if fixture.calls > 1 {
+			usage[input] = 1
+		}
+	}
+
 	switch fixture.fault {
 	case "no_body_ttl":
 		delete(details, "cache_creation")
@@ -414,8 +525,12 @@ func (fixture *kimiCacheHTTP) respond(w http.ResponseWriter, usage map[string]an
 		root["content"], root["stop_reason"] = []any{}, nil
 		emit(map[string]any{"type": "message_start", "message": root})
 		if fixture.fault != "interrupted" {
+			outputUsage := map[string]any{}
+			if value, exists := usage["output_tokens"]; exists {
+				outputUsage["output_tokens"] = value
+			}
 			emit(map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": "end_turn"},
-				"usage": map[string]any{"output_tokens": 1}})
+				"usage": outputUsage})
 			emit(map[string]any{"type": "message_stop"})
 		}
 	}

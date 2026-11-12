@@ -103,6 +103,7 @@ func completeTaskCapabilities() RunnerCapabilities {
 			"normal_workload", "random_input", "assets", FeaturePerformanceAffinity, FeatureCaseDescriptions,
 			FeatureCacheWriteHeaders,
 			FeatureJSONPrefixAssertions,
+			FeatureSequenceSteps,
 		},
 	}
 }

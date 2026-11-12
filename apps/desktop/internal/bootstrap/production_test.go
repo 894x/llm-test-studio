@@ -198,13 +198,13 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	}
 	emptyBindings := len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels) == 0
 	validDefaultCounts := len(catalogSnapshot.Models) > 0 && len(catalogSnapshot.Plans) == wantPlans
-	validCatalogCounts := len(catalogSnapshot.TestCases) == 1120 && len(catalogSnapshot.Suites) == 95
+	validCatalogCounts := len(catalogSnapshot.TestCases) == 1122 && len(catalogSnapshot.Suites) == 98
 	validCatalog := catalogSnapshot.SchemaVersion == catalog.CurrentSnapshotSchemaVersion &&
 		emptyBindings && validDefaultCounts && validCatalogCounts
 	if !validCatalog {
 		t.Fatalf(
 			"initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, "+
-				"want 1120 file-backed cases and 95 scenario suites",
+				"want 1122 file-backed cases and 98 scenario suites",
 			len(catalogSnapshot.Models),
 			len(catalogSnapshot.Channels),
 			len(catalogSnapshot.ChannelModels),
@@ -224,9 +224,9 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 			runnable++
 		}
 	}
-	if runnable != 805 || disabled != 208 || manual != 107 {
+	if runnable != 807 || disabled != 208 || manual != 107 {
 		t.Fatalf(
-			"built-in case policy counts = runnable:%d disabled:%d manual:%d, want 805/208/107",
+			"built-in case policy counts = runnable:%d disabled:%d manual:%d, want 807/208/107",
 			runnable,
 			disabled,
 			manual,
@@ -284,8 +284,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	}
 	database := filepath.Join(configurationRoot, "llm-test-studio", "llm-test-studio.db")
 	assertProductionOperationalSchemaV1(t, database)
-	if len(firstSnapshot.Suites) != 95 {
-		t.Fatalf("file suites = %d, want 94", len(firstSnapshot.Suites))
+	if len(firstSnapshot.Suites) != 98 {
+		t.Fatalf("file suites = %d, want 98", len(firstSnapshot.Suites))
 	}
 
 	second, err := initialize(context.Background())
@@ -302,20 +302,20 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		t.Fatalf("second catalog snapshot: %v", err)
 	}
 
-	if len(firstSnapshot.TestCases) != 1120 || len(secondSnapshot.TestCases) != 1120 {
+	if len(firstSnapshot.TestCases) != 1122 || len(secondSnapshot.TestCases) != 1122 {
 		t.Fatalf(
-			"case counts across restart = %d/%d, want 1120/1120",
+			"case counts across restart = %d/%d, want 1122/1122",
 			len(firstSnapshot.TestCases),
 			len(secondSnapshot.TestCases),
 		)
 	}
-	validSuiteCounts := len(firstSnapshot.Suites) == 95 && len(secondSnapshot.Suites) == 95
+	validSuiteCounts := len(firstSnapshot.Suites) == 98 && len(secondSnapshot.Suites) == 98
 	wantPlans := discoveredBuiltinPlanCount(t)
 	builtinPlans := len(firstSnapshot.Plans) == wantPlans && len(secondSnapshot.Plans) == wantPlans
 	if !validSuiteCounts || !builtinPlans {
 		t.Fatalf(
 			"suite/plan counts across restart = %d/%d suites, %d/%d plans, "+
-				"want 95 scenario suites and every discovered built-in plan",
+				"want 98 scenario suites and every discovered built-in plan",
 			len(firstSnapshot.Suites),
 			len(secondSnapshot.Suites),
 			len(firstSnapshot.Plans),

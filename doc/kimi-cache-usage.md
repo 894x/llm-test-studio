@@ -1,5 +1,62 @@
 # Kimi 缓存写入与用量对账
 
+## 2026-11-12 多步骤延迟验证
+
+新增三协议独立入口 `<protocol>.kimi.cache-ttl`，名称为「Kimi 1h 缓存延迟验证」。
+每个入口有 JSON/SSE 两条非默认 Case，共 4 次请求；顺序至少 12 分钟，并发至少
+6 分钟。已有综合套件和准入计划不自动加入这些长耗时用例。
+如手动加入带耗时 SLA 的计划，需要把 6 分钟等待计入 E2E 预算。
+
+每条先以唯一随机前缀冷写 1h，完整接收响应后静默等待 360 秒，再用
+`reuse_request_from: "initial"` 原样重发。要求首次读取 0、写入为正且落在 1h 档，
+延迟读取量**等于首次写入量**且不重写；同时检查请求体相等、实际等待量、usage
+与 header 逐档一致及 JSON/SSE 协议完整性。等待期间没有命中探测，避免刷新 TTL。
+
+本地使用虚拟时钟和三协议 HTTP/SSE fixture 验证执行与故障断言，没有发送供应商
+请求。这些用例只证明超过 5 分钟仍可复用，不证明完整 1 小时。上游未返回缓存 ID，
+不能仅凭相同前缀和相同 token 数认证物理缓存身份。
+
+新字段、超时、取消与 runner 要求见[多步骤 Case](multi-step-cases.md)；范围见
+[覆盖矩阵](../data/cases/kimi-cache-ttl/coverage-matrix.md)。以下历史章节所述
+「未验证跨时间保留」适用于当时的即时重复用例，长耗时入口提供了独立执行能力。
+
+## 2026-11-12 同次响应合并 usage 与 header 验收
+
+`<protocol>.kimi.cache` 的 Chat、Responses、Messages 三个综合入口由 20 条缩为
+10 条 Case：默认/5m/1h 写入及 5m/1h 重复读取，各含 JSON/SSE。每条在同次响应
+上同时校验 usage 和 MSH header，不再为两组检查重复发请求；一轮从 28 次降为
+14 次请求。Chat 准入计划的第五项仍引用该入口，计划本身无需改版。
+
+合并复用原 `kimi.cache.headers.*` 的稳定 ID/key，补齐对应 usage 的输入、输出、
+缓存读写计数、上界和 Messages 原生 TTL 拆分断言，并保留严格的 header 与流终态
+校验。`usage.total_tokens` 继续不参与验收。
+
+| 同次响应的验收项 | 当前规则 | 本地验证 |
+| --- | --- | --- |
+| 两档 MSH header | 均存在、合法非负整数；两档之和等于该请求 usage 缓存写入总量 | 缺失、负数、小数、重复、错和失败 |
+| TTL 分项一致 | usage 返回的 5m/1h 分项分别等于对应 header；Chat/Responses 同时返回顶层及 details 时均校验 | 分项错值、错档、错类型失败；Messages 原生拆分不得缺失 |
+| 冷写入及读序列 | 写入为正，选中档等于 usage 写入量、另一档为 0；读序列首次请求也核验档位；第二次读取为正且写入及两档 header 均为 0 | 首次错 TTL、第二次 header 或 usage 分项不一致失败 |
+| 原生 usage | 输入、输出、缓存读写为非负整数；保留原有适用上界 | 缺输入、缺输出、输出小数、负读取、读写超过输入失败 |
+| 流式及证据 | 使用最终 usage，正常终止，保存后可重判同一断言 | 既有 HTTP/SSE 故障及 JSON 往返回归 |
+
+范围仍为 `kimi-k3` / `kimi-k3.1-pro`，按需 T3。2026-11-12 复核的
+[官方缓存文档](https://platform.kimi.com/docs/guide/context-caching)明确了三协议
+usage 字段及 Messages TTL 拆分，并以 Chat 为例说明 MSH 两档响应头。
+Responses/Messages 必返相同响应头及 Chat/Responses 扩展 TTL 分项属于用户
+要求的目标提供方兼容性验收，不扩大为通用供应商契约。
+Chat/Responses 扩展 TTL 对象可省略；返回时必须逐档与 header 相等，省略零档
+只在对应 header 为 0 时接受。实际 TTL 过期、跨时间保留和续期仍未验证。
+
+v0.2.0 两类独立 Suite 的路径、key、身份和成员继续保留；usage 独立入口及其
+Case 定义不变，响应头独立入口复用增强后的合并 Case，因此新运行也执行补齐的
+usage 检查。用户覆盖、冻结快照、历史报告及其结论不改写；Case/Suite/Plan、
+runner、CLI/API 与数据库格式不变，无数据迁移、弃用或移除安排。
+降级使用对应旧版内置定义；对综合入口的旧版引用限制沿用下文说明。
+
+验证为本地 HTTP/SSE、目录加载、三协议各 10 条唯一成员与 14 次请求、manifest
+生成一致性和差异检查，未执行真实付费供应商请求。下文保留此前分组及串行运行的
+历史记录，其中 20 条/28 次和分离验收的综合入口描述由本节替代。
+
 ## 2026-11-12 移除总 token 数验收
 
 本次只调整 `kimi-k3` / `kimi-k3.1-pro` 缓存专项的 Chat Completions 和 Responses

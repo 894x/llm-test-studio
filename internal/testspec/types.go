@@ -36,11 +36,13 @@ type Workflow struct {
 	Steps []Step `json:"steps,omitempty"`
 }
 
-// Steps contain complete request body templates. $response nodes reference an
-// earlier step's response through a JSON Pointer; request order is explicit.
+// Steps either render a request template or replay a preceding rendered request.
+// DelayMS waits after the previous response has finished, before sending this step.
 type Step struct {
-	ID      string  `json:"id"`
-	Request Request `json:"request"`
+	ID               string  `json:"id"`
+	Request          Request `json:"request,omitzero"`
+	DelayMS          uint64  `json:"delay_ms,omitempty"`
+	ReuseRequestFrom string  `json:"reuse_request_from,omitempty"`
 }
 
 type Assertion struct {

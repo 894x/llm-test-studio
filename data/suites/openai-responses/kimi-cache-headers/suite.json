@@ -3,7 +3,7 @@
   "key": "openai-responses.kimi.cache-headers",
   "name": "Kimi 缓存响应头对账 · openai-responses",
   "protocol": "openai-responses",
-  "description": "K3 / K3.1 Pro 可选 T3 兼容性专项：三协议独立要求 MSH 两档响应头完整、合法并与同次 usage 一致。非通用 usage 成功条件；运行产生费用，不加入日常套件。",
+  "description": "K3 / K3.1 Pro 可选 T3 兼容性专项：保留原响应头套件 key 和成员；每条同时校验 usage 与 MSH 两档头的总量和分项一致，复用综合对账用例。非通用供应商必返契约；运行产生费用，不加入日常套件。",
   "cases": [
     {
       "case_id": "40d19361-970c-5b21-bc8c-746db48a0035"

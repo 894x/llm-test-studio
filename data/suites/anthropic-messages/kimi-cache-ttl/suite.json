@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "key": "anthropic-messages.kimi.cache-ttl",
+  "name": "Kimi 1h 缓存延迟验证 — anthropic-messages",
+  "protocol": "anthropic-messages",
+  "description": "可选长耗时专项：JSON/SSE 各冷写一次，等待 6 分钟后原样重发，并比较读取量与首次写入量、usage 与 MSH 头。共 2 Case / 4 请求；顺序执行至少 12 分钟。只验证超过 5 分钟的保留，不证明完整 1 小时。",
+  "cases": [
+    {
+      "case_id": "5d9a1004-a0d1-5d13-81cf-bd8fd5a695bc"
+    },
+    {
+      "case_id": "aa3efd1a-0977-5a71-abc1-2fba0022f492"
+    }
+  ],
+  "inputs": []
+}

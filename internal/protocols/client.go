@@ -103,10 +103,7 @@ func (client *Client) Execute(ctx context.Context, execution Execution) (testspe
 	if len(inputs.Files) != 0 && execution.Assets == nil {
 		return testspec.Result{}, testspec.ErrFileInputsUnsupported
 	}
-	timeout := execution.Settings.TimeoutMS
-	if timeout == 0 {
-		timeout = 600_000
-	}
+	timeout := execution.Spec.ExecutionTimeoutMS(execution.Settings.TimeoutMS)
 	runContext, cancel := context.WithTimeout(call.ctx, time.Duration(timeout)*time.Millisecond)
 	defer cancel()
 	observation := state.module.Execute(runContext, runtime.Execution{

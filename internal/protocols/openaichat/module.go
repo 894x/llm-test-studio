@@ -66,22 +66,25 @@ func (*Module) Execute(ctx context.Context, execution runtime.Execution) testspe
 	if execution.Spec.Workflow != nil {
 		steps = append(steps, execution.Spec.Workflow.Steps...)
 	}
-	responses := map[string]json.RawMessage{}
+	sequence := runtime.NewSequence(execution)
 	for _, step := range steps {
 		observation.HTTPStatus = nil
 		observation.Response = nil
 		observation.Text = nil
 		observation.Usage = nil
 		observation.StreamCompleted = nil
-		random := execution.Random
-		random.MemberID += "/" + step.ID
-		body, err := testspec.Render(testspec.RenderInput{
-			Request: step.Request, Declarations: execution.Spec.Inputs,
-			Values: execution.Inputs, Random: random, Responses: responses,
-		})
+		delete(observation.Metrics, "sequence_wait_ms")
+		body, waitedMS, err := sequence.Prepare(ctx, step)
 		if err != nil {
-			runtime.AddIssue(&observation, step.ID, "request_generation_failed")
+			code := "request_generation_failed"
+			if ctx.Err() != nil {
+				code = runtime.ErrorCode(ctx)
+			}
+			runtime.AddIssue(&observation, step.ID, code)
 			break
+		}
+		if step.DelayMS > 0 {
+			observation.Metrics["sequence_wait_ms"] = waitedMS
 		}
 		request := runtime.Request{
 			Method: http.MethodPost, Path: protocol.OpenAIChatPath, Body: body, Assets: execution.Assets,
@@ -89,11 +92,18 @@ func (*Module) Execute(ctx context.Context, execution runtime.Execution) testspe
 		if execution.Spec.Operation == "models.list" {
 			request = runtime.Request{Method: http.MethodGet, Path: protocol.OpenAIModelsPath}
 		}
-		response, err := execution.Transport.Send(ctx, request)
+		requestContext, cancel := sequence.RequestContext(ctx)
+		response, err := execution.Transport.Send(requestContext, request)
 		runtime.ObserveCacheWriteHeaders(response.HTTP, &observation)
 		if err != nil {
-			runtime.AddIssue(&observation, step.ID, runtime.ErrorCode(ctx))
+			runtime.AddIssue(&observation, step.ID, runtime.ErrorCode(requestContext))
+			cancel()
 			observation.Exchanges = append(observation.Exchanges, runtime.Exchange(step.ID, request, response))
+			break
+		}
+		if response.HTTP == nil || response.HTTP.Body == nil {
+			cancel()
+			runtime.AddIssue(&observation, step.ID, "response_unavailable")
 			break
 		}
 		status := response.HTTP.StatusCode
@@ -106,6 +116,7 @@ func (*Module) Execute(ctx context.Context, execution runtime.Execution) testspe
 		} else {
 			parseJSON(response, &observation)
 		}
+		cancel()
 		exchange := runtime.Exchange(step.ID, request, response)
 		exchange.Response = append(json.RawMessage{}, observation.Response...)
 		exchange.Events = events
@@ -115,7 +126,7 @@ func (*Module) Execute(ctx context.Context, execution runtime.Execution) testspe
 			exchange.Metrics[key] = value
 		}
 		observation.Exchanges = append(observation.Exchanges, exchange)
-		responses[step.ID] = append(json.RawMessage{}, observation.Response...)
+		sequence.RecordResponse(step.ID, observation.Response)
 	}
 	observation.Metrics["e2e_ms"] = runtime.Milliseconds(started)
 	return observation
