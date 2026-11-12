@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react"
+import { Fragment, useEffect, useId, useState } from "react"
 import { useTranslation } from "react-i18next"
 import ChevronDownIcon from "lucide-react/dist/esm/icons/chevron-down.mjs"
 import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right.mjs"
@@ -274,13 +274,28 @@ function AssertionTable({ assertions }: { assertions: AssertionResult[] }) {
   const { t } = useTranslation("reports")
   return <ScrollArea><Table aria-label={t("protocolDesign.assertions")}>
     <TableHeader><TableRow><TableHead>{t("protocolDesign.rule")}</TableHead><TableHead>{t("protocolDesign.expected")}</TableHead><TableHead>{t("protocolDesign.actual")}</TableHead><TableHead>{t("protocolDesign.verification")}</TableHead></TableRow></TableHeader>
-    <TableBody>{assertions.map(assertion => <Fragment key={assertion.id}><TableRow>
-      <TableCell className="max-w-60 whitespace-normal text-xs"><div>{assertion.id}</div><div className="break-all font-mono text-[10px] text-muted-foreground">{assertion.source}{assertion.pointer} {assertion.operator}</div></TableCell>
+    <TableBody>{assertions.map(assertion => <AssertionRow key={assertion.id} assertion={assertion} />)}</TableBody>
+  </Table></ScrollArea>
+}
+
+function AssertionRow({ assertion }: { assertion: AssertionResult }) {
+  const [expanded, setExpanded] = useState(false)
+  const detailID = useId()
+  const children = assertion.children
+  return <><TableRow>
+      <TableCell className="max-w-60 whitespace-normal text-xs">
+        {children?.length ? <Button type="button" variant="ghost" size="sm"
+          className="h-auto min-h-7 max-w-full justify-start px-1 text-left text-xs whitespace-normal"
+          aria-expanded={expanded} aria-controls={detailID} onClick={() => setExpanded(open => !open)}>
+          {expanded ? <ChevronDownIcon aria-hidden="true" /> : <ChevronRightIcon aria-hidden="true" />}
+          <span className="min-w-0 [overflow-wrap:anywhere]">{assertion.id}</span>
+        </Button> : <div>{assertion.id}</div>}
+        <div className="break-all font-mono text-[10px] text-muted-foreground">{assertion.source}{assertion.pointer} {assertion.operator}</div>
+      </TableCell>
       <TableCell className="max-w-60 whitespace-pre-wrap break-all font-mono text-[11px]">{boundedJSON(assertion.expected, 512)}</TableCell>
       <TableCell className="max-w-60 whitespace-pre-wrap break-all font-mono text-[11px]">{boundedJSON(assertion.actual, 512)}{assertion.reason ? <div className="text-muted-foreground">{assertion.reason}</div> : null}</TableCell>
       <TableCell><VerificationBadge status={assertion.status} /></TableCell>
-    </TableRow>{assertion.children?.length ? <TableRow><TableCell colSpan={4} className="pl-4"><AssertionTable assertions={assertion.children} /></TableCell></TableRow> : null}</Fragment>)}</TableBody>
-  </Table></ScrollArea>
+    </TableRow>{expanded && children?.length ? <TableRow id={detailID}><TableCell colSpan={4} className="pl-4"><AssertionTable assertions={children} /></TableCell></TableRow> : null}</>
 }
 function JSONEvidence({ label, value, copyable = false }: { label: string; value: unknown; copyable?: boolean }) {
   const { t } = useTranslation("reports")
