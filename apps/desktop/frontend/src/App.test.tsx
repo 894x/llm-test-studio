@@ -2213,6 +2213,48 @@ describe("desktop run workspace", () => {
     expect(client.getComparisons).toHaveBeenCalledTimes(1)
   })
 
+  it.each(["already ready", "finishes while open", "archives after completion"])("loads archived comparison reports without a generation event when the comparison %s", async phase => {
+    vi.useFakeTimers()
+    window.history.replaceState(null, "", "#reports")
+    const client = desktopClient()
+    const left = protocolReportFixture()
+    const right = protocolReportFixture("failed")
+    right.report.id = reportID(20)
+    right.report.run_id = reportID(21)
+    right.report.channel = { id: reportID(22), name: "渠道 B" }
+    const reports: ReportSnapshot = { schema_version: 1, reports: [
+      ...protocolReportSnapshot(left).reports, ...protocolReportSnapshot(right).reports,
+    ] }
+    const ready: ComparisonSnapshot = { schema_version: 1, comparisons: [{
+      id: COMMAND_ID, created_at: JOB_TIME, status: "completed", plan_id: reportID(31),
+      plan_name: "渠道一致性", model_id: left.report.model.id, model_name: left.report.model.name,
+      channels: [left, right].map(detail => ({ channel_id: detail.report.channel.id, channel_name: detail.report.channel.name,
+        run_id: detail.report.run_id, run_status: detail.report.run_status, report_ready: true,
+        passed: detail.report.conclusion.passed, verdict: detail.report.conclusion.verdict, metrics: {} })),
+    }] }
+    const running: ComparisonSnapshot = { ...ready, comparisons: ready.comparisons.map(comparison => ({ ...comparison,
+      status: "running", channels: comparison.channels.map(channel => ({ ...channel, run_status: "running", report_ready: false })),
+    })) }
+    const archiving: ComparisonSnapshot = { ...ready, comparisons: ready.comparisons.map(comparison => ({ ...comparison,
+      channels: comparison.channels.map(channel => ({ ...channel, report_ready: false })),
+    })) }
+    vi.mocked(client.getReports).mockResolvedValueOnce({ schema_version: 1, reports: [] }).mockResolvedValue(reports)
+    vi.mocked(client.getComparisons).mockResolvedValueOnce(phase === "already ready" ? ready : phase === "finishes while open" ? running : archiving).mockResolvedValue(ready)
+    vi.mocked(client.compareReports).mockResolvedValue(reportComparisonFixture(left, right))
+    render(<App client={client} />)
+    await act(async () => { await vi.dynamicImportSettled() })
+    fireEvent.click(screen.getByRole("button", { name: "查看渠道对比报告：test-model" }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(screen.getByRole("table", { name: "报告对比结果" })).toHaveTextContent("Reject invalid parameter")
+    expect(screen.queryByText("等待报告生成")).not.toBeInTheDocument()
+    expect(client.getReports).toHaveBeenCalledTimes(2)
+    expect(client.getReportDetail).toHaveBeenCalledTimes(phase === "already ready" ? 1 : 0)
+    expect(client.launchJob).not.toHaveBeenCalled()
+    expect(client.controlJob).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(client.getReports).toHaveBeenCalledTimes(2)
+  })
+
   it("keeps ordinary reports available while comparisons load or fail and retries independently", async () => {
     const user = userEvent.setup()
     const client = desktopClient()

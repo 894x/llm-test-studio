@@ -320,7 +320,10 @@ function AppWorkspace({
     return () => { active = false; window.clearTimeout(timer) }
   }, [page, overviewActive, client, resources])
 
-  const shouldPollComparisons = (page === "reports" || (page === "runs" && showComparisons)) && (comparisonRunning || pendingComparisonIDs.length > 0 || retryComparisonPoll)
+  const comparisonAwaitingReports = !!comparisons?.comparisons.some(comparison => comparison.channels.some(channel =>
+    !isRunActive(channel.run_status) && !channel.report_ready && reportGeneration[channel.run_id]?.phase !== "failed"))
+  const shouldPollComparisons = (page === "reports" || (page === "runs" && showComparisons)) &&
+    (comparisonRunning || comparisonAwaitingReports || pendingComparisonIDs.length > 0 || retryComparisonPoll)
   useEffect(() => {
     if (!shouldPollComparisons) return
     let active = true
@@ -363,6 +366,23 @@ function AppWorkspace({
       throw error
     }
   }, [resources, updateReports, retryReports])
+
+  const readyComparisonRuns = JSON.stringify([...new Set(comparisons?.comparisons.flatMap(comparison =>
+    comparison.channels.filter(channel => channel.report_ready).map(channel => channel.run_id)) ?? [])].sort())
+  useEffect(() => {
+    if (page !== "reports") return
+    const runIDs: string[] = JSON.parse(readyComparisonRuns)
+    if (!runIDs.length) return
+    let active = true
+    // Comparison reads also confirm readiness when a generation event was missed.
+    // Reconcile once per ready set; older reports may be outside the bounded catalog.
+    void resources.reports.load().then(current => {
+      if (!active || runIDs.every(id => current.reports.some(report => report.run_id === id))) return
+      resources.reports.invalidate()
+      return refreshReports()
+    }).catch(() => { /* The report resource exposes failures and owns retry state. */ })
+    return () => { active = false }
+  }, [page, readyComparisonRuns, resources, refreshReports])
 
   useEffect(() => {
     let active = true
