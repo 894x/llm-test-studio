@@ -3,8 +3,8 @@ package suitebundle
 
 import "embed"
 
-// Bundle contains every built-in suite definition. The files are read directly
-// by the catalog and are never seeded into SQLite.
+// Bundle contains selectable suites and retired schema-1 documents for resolving
+// saved plan references. Compatibility documents are excluded from catalog lists.
 //
-//go:embed */*/suite.json
+//go:embed */*/suite.json compatibility/*/*/*.json
 var Bundle embed.FS

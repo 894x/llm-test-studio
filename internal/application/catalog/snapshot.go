@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -312,7 +313,24 @@ func (service *Service) buildSnapshot(
 					summary.CaseCount = 1
 				}
 			case domain.PlanTargetSuite:
-				if target, exists := suiteByID[entry.TargetID]; exists {
+				target, exists := suiteByID[entry.TargetID]
+				if !exists {
+					// Retired suites can still be referenced by saved plans without
+					// appearing in the selectable Suite list.
+					var err error
+					target, err = service.repository.GetSuite(ctx, entry.TargetID)
+					if err != nil && !errors.Is(err, ErrNotFound) {
+						return Snapshot{}, service.portError(ctx, err)
+					}
+					if err == nil {
+						if target.ID != entry.TargetID || target.Validate() != nil {
+							return Snapshot{}, fmt.Errorf("%w: invalid referenced suite %q", ErrCorrupt, entry.TargetID)
+						}
+						suiteByID[entry.TargetID] = target
+						exists = true
+					}
+				}
+				if exists {
 					summary.TargetKey = target.Key
 					summary.TargetName = target.Name
 					summary.CaseCount = len(target.Cases)

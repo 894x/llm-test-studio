@@ -162,7 +162,7 @@ func (service *Service) Find(ctx context.Context, id string) (Entry, error) {
 			return entry, nil
 		}
 	}
-	return Entry{}, fs.ErrNotExist
+	return service.findCompatibility(ctx, id)
 }
 
 func (service *Service) SaveSuite(ctx context.Context, group, directory string, suite domain.Suite) error {
