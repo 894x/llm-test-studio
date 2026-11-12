@@ -17,7 +17,7 @@
 | 时长 | `parameters.duration` | [2.1～2.6](https://help.aliyun.com/zh/model-studio/legacy-wan-text-to-video-api-reference) | integer | optional | 5 | 2..15 | 1、16 | [2,15] | 直接影响费用 | 下界成功；越界 HTTP 400 | Wan 2.6 | T1/T2 | wan26.t2v.min_duration, duration_below_min, duration_above_max | covered |
 | 尺寸 | `parameters.size` | [2.1～2.6](https://help.aliyun.com/zh/model-studio/legacy-wan-text-to-video-api-reference) | enum | optional | 1920*1080 | 720P/1080P 枚举 | 480P size | documented pixel enums | legacy 使用 size | 非法尺寸 HTTP 400 | Wan 2.6 | T1 | wan26.t2v.size_invalid | covered |
 | 时长 | `parameters.duration` | [2.1～2.6](https://help.aliyun.com/zh/model-studio/legacy-wan-text-to-video-api-reference) | fixed enum | optional | 5 | 5、10 | 6 | {5,10} | 直接影响费用 | 5 秒成功；6 秒 HTTP 400 | Wan 2.5 | T1/T2 | wan25.t2v.duration_5, duration_invalid | covered |
-| 尺寸 | `parameters.size` | [2.1～2.6](https://help.aliyun.com/zh/model-studio/legacy-wan-text-to-video-api-reference) | enum | optional | 1920*1080 | 480P/720P/1080P enums | unknown enum | documented pixel enums | none | 480P 代表值成功 | Wan 2.5 | T2 | wan25.t2v.duration_5 | partial: 未逐档枚举 |
+| 尺寸 | `parameters.size` | [2.1～2.6](https://help.aliyun.com/zh/model-studio/legacy-wan-text-to-video-api-reference) | enum | optional | 1920*1080 | 480P/720P/1080P enums | unknown enum | documented pixel enums | none | 每档 16:9 代表值成功；产物像素不作 oracle | Wan 2.5 | T2 | wan25.t2v.size_480p, size_720p, size_1080p | covered |
 | 固定时长 | `parameters.duration` | [2.1～2.6](https://help.aliyun.com/zh/model-studio/legacy-wan-text-to-video-api-reference) | fixed integer | optional | 5 | 5 | 4 | fixed 5 | 不支持修改 | 5 秒成功；非 5 HTTP 400 | Wan 2.2 | T1/T2 | wan22.t2v.duration_5, duration_invalid | covered |
 | 尺寸 | `parameters.size` | [2.1～2.6](https://help.aliyun.com/zh/model-studio/legacy-wan-text-to-video-api-reference) | enum | optional | 1920*1080 | 480P/1080P enums | 720P size | documented pixel enums | none | 720P HTTP 400 | Wan 2.2 | T1 | wan22.t2v.size_invalid | covered |
 | 固定时长与尺寸 | `parameters.duration`, `size` | [2.1～2.6](https://help.aliyun.com/zh/model-studio/legacy-wan-text-to-video-api-reference) | fixed + enum | optional | 5、1280*720 | duration 5；480P/720P sizes | duration 4；1080P size | fixed 5 | Turbo 不支持 1080P | 代表值成功；非法值 HTTP 400 | Wan 2.1 Turbo | T1/T2 | wan21.turbo.duration_5, duration_invalid, size_invalid | covered |
@@ -29,8 +29,8 @@
 
 ## 审计摘要
 
-- 跨版本总览 22 行：covered 13，partial 6，deferred 3，missing 0，documentation conflict 0。Wan 3.0 的 39 行专项矩阵单独统计，不与本总览相加。
-- Wan 用例共 213 个：96 个自动 Case（Wan3 74、Wan2.x 22），117 个 Wan3 禁用模板；全部非 default。Wan3 的 191 个实际 Case 见具体 Case 矩阵。
+- 跨版本总览 22 行：covered 14，partial 5，deferred 3，missing 0，documentation conflict 0。Wan 3.0 的 39 行专项矩阵单独统计，不与本总览相加。Wan 2.5 尺寸行于 2026-11-12 按当前官方文档逐档补齐（480P/720P/1080P 各一条 16:9 代表值）。
+- Wan 用例共 216 个：99 个自动 Case（Wan3 74、Wan2.x 25），117 个 Wan3 禁用模板；全部非 default。Wan3 的 191 个实际 Case 见具体 Case 矩阵。
 - 真实执行分层：负向 admission 用例为 T1；最小时长/固定时长业务成功用例为 T2；最大时长成功与素材用例保留为 T3/T2 延后项。
 - 本地验证为 T0：JSON 严格解析、模型适用范围、请求头覆盖、Prompt 长度生成、model 注入模式、usage 预期、异步轮询状态机、HTTP(S) 结果 URL、业务成功、创建/终态双阶段 `InvalidParameter` 参数拒绝，以及欠费/鉴权误判保护；错误码分类依据[百炼 API 错误码](https://help.aliyun.com/zh/model-studio/error-code/)。
 - 未执行真实 provider 调用；未知或未文档化行为不在覆盖声明内。

@@ -1,0 +1,67 @@
+{
+  "schema_version": 2,
+  "id": "45338fe4-290f-4fe7-9b74-7598d9248881",
+  "key": "wan25.t2v.size_1080p",
+  "name": "Wan 2.5 · 尺寸档位 1080P",
+  "dimension": "compatibility",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definitions": {
+    "wan-video": {
+      "inputs": {
+        "prompt": {
+          "type": "string",
+          "default": "一只小猫在月光下奔跑"
+        }
+      },
+      "request": {
+        "body": {
+          "input": {
+            "prompt": {
+              "$input": "prompt"
+            }
+          },
+          "parameters": {
+            "size": "1920*1080",
+            "duration": 5,
+            "seed": 0,
+            "prompt_extend": false,
+            "watermark": false
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "task",
+          "operator": "equals",
+          "pointer": "/status",
+          "value": "SUCCEEDED"
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "operator": "http_url",
+          "pointer": "/output/video_url"
+        }
+      ],
+      "workflow": {
+        "mode": "wait"
+      }
+    }
+  }
+}

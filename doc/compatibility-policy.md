@@ -1,5 +1,20 @@
 # Compatibility and data upgrades / 兼容性与数据升级
 
+## Wan 2.5 视频尺寸分档套件（待发布，2026-11-12）
+
+新增内置 Suite `wan-video.wan2.5-t2v-size-tiers` 及三个新 Case
+（`wan25.t2v.size_480p` / `size_720p` / `size_1080p`），逐档验收
+wan2.5-t2v-preview 的 `parameters.size` 480P / 720P / 1080P 合法枚举
+（各取 16:9 代表值，固定时长 5 秒），补齐覆盖矩阵中「未逐档枚举」的缺口。
+
+影响边界为内置目录新增条目。既有 Case/Suite/Plan 身份、成员、用户覆盖、
+冻结快照和历史报告均不变；Case schema 2、Suite schema 1 及数据库格式不变，
+无迁移、弃用或移除安排。降级版本不含新增条目；引用本 Suite 的另存计划在
+旧版需移除引用或提供对应文件，无需数据库恢复或格式转换。
+
+验证限定为 T0 本地目录加载、套件引用与输入绑定、目录计数回归；未执行真实
+供应商请求。逐档用例为按需付费项，不进入默认计划。
+
 ## Kimi 缓存总量校验调整（待发布，2026-11-12）
 
 在已发布 v0.2.0 的缓存 Case 基础上，Chat/Responses 的 10 个 usage Case 移除

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "key": "wan-video.wan2.5-t2v-size-tiers",
+  "name": "Wan 2.5 文生视频尺寸分档套件",
+  "protocol": "wan-video",
+  "description": "wan2.5-t2v-preview 的 parameters.size 三档逐档验收：480P（832*480）、720P（1280*720）、1080P（1920*1080）各一条 16:9 代表值，固定时长 5 秒。每条要求 HTTP 2xx、任务终态 SUCCEEDED 且返回 HTTP(S) video_url；不校验产物的实际像素尺寸。档位直接影响单价，费用随档位上升，按需运行。依据：https://help.aliyun.com/zh/model-studio/legacy-wan-text-to-video-api-reference；2026-11-12。",
+  "cases": [
+    {
+      "case_id": "d95188fa-2b9c-4ea9-9eac-50f2afde430a"
+    },
+    {
+      "case_id": "43f5760f-1cb5-44c3-ac5a-14bae95357fc"
+    },
+    {
+      "case_id": "45338fe4-290f-4fe7-9b74-7598d9248881"
+    }
+  ],
+  "inputs": []
+}
