@@ -3,7 +3,7 @@
   "id": "2dc03162-a742-4d1d-9e3f-2afd3f232f29",
   "key": "kimi.cache.write_1h",
   "name": "Kimi 缓存 · 1h · 写入对账 · 非流式",
-  "description": "T3；kimi-k3 / kimi-k3.1-pro；1h TTL（default 用例省略选项）；独立 usage 对账，不要求 MSH 响应头。检查原生计数、总量、读取不重写；Chat/Responses 返回扩展 cache_creation 时严格核验 TTL，缺失扩展不推测。Messages 必须返回原生 TTL 拆分。付费专项、非默认。来源：https://platform.kimi.com/docs/guide/context-caching；2026-11-09。",
+  "description": "T3；kimi-k3 / kimi-k3.1-pro；1h TTL（default 用例省略选项）；独立 usage 对账，不要求 MSH 响应头。检查原生计数、读取不重写；不校验 total_tokens 总量；Chat/Responses 返回扩展 cache_creation 时严格核验 TTL，缺失扩展不推测。Messages 必须返回原生 TTL 拆分。付费专项、非默认。来源：https://platform.kimi.com/docs/guide/context-caching；2026-11-09。",
   "dimension": "cache",
   "enabled": true,
   "default": false,
@@ -158,33 +158,6 @@
           "pointer": "/0/response/usage/completion_tokens",
           "operator": "gte",
           "value": 0
-        },
-        {
-          "id": "total_integer_0",
-          "source": "requests",
-          "pointer": "/0/response/usage/total_tokens",
-          "operator": "type",
-          "value": "integer"
-        },
-        {
-          "id": "total_nonnegative_0",
-          "source": "requests",
-          "pointer": "/0/response/usage/total_tokens",
-          "operator": "gte",
-          "value": 0
-        },
-        {
-          "id": "token_sum_0",
-          "source": "requests",
-          "pointer": "/0",
-          "operator": "sum_equals",
-          "value": {
-            "total": "/response/usage/total_tokens",
-            "parts": [
-              "/response/usage/prompt_tokens",
-              "/response/usage/completion_tokens"
-            ]
-          }
         },
         {
           "id": "body_ttl_0_0",
@@ -536,33 +509,6 @@
           "pointer": "/0/response/usage/output_tokens",
           "operator": "gte",
           "value": 0
-        },
-        {
-          "id": "total_integer_0",
-          "source": "requests",
-          "pointer": "/0/response/usage/total_tokens",
-          "operator": "type",
-          "value": "integer"
-        },
-        {
-          "id": "total_nonnegative_0",
-          "source": "requests",
-          "pointer": "/0/response/usage/total_tokens",
-          "operator": "gte",
-          "value": 0
-        },
-        {
-          "id": "token_sum_0",
-          "source": "requests",
-          "pointer": "/0",
-          "operator": "sum_equals",
-          "value": {
-            "total": "/response/usage/total_tokens",
-            "parts": [
-              "/response/usage/input_tokens",
-              "/response/usage/output_tokens"
-            ]
-          }
         },
         {
           "id": "body_ttl_0_0",

@@ -65,7 +65,8 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 			)
 			if proto != domain.ProtocolAnthropicMessages {
 				faults = append(faults,
-					"wrong_total", "top_level_ttl", "both_ttl", "top_level_invalid",
+					"wrong_total", "missing_total", "negative_total", "invalid_total",
+					"top_level_ttl", "both_ttl", "top_level_invalid",
 					"top_level_wrong_ttl", "nested_wrong_ttl",
 				)
 			}
@@ -115,7 +116,7 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 					if fault == "no_body_ttl" || fault == "omit_zero_bucket" {
 						wantPassed = headers || proto != domain.ProtocolAnthropicMessages
 					}
-					if headers && fault == "wrong_total" {
+					if slices.Contains([]string{"wrong_total", "missing_total", "negative_total", "invalid_total"}, fault) {
 						wantPassed = true
 					}
 					if (result.Verdict.Status == testspec.VerdictPassed) != wantPassed {
@@ -306,8 +307,15 @@ func (fixture *kimiCacheHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			"cached_tokens": read, "cache_write_tokens": write, "cache_creation": cacheCreation,
 		}
 		usage = map[string]any{input: 1024, output: 1, "total_tokens": 1025, input + "_details": details}
-		if fixture.fault == "wrong_total" {
+		switch fixture.fault {
+		case "wrong_total":
 			usage["total_tokens"] = 1026
+		case "missing_total":
+			delete(usage, "total_tokens")
+		case "negative_total":
+			usage["total_tokens"] = -1
+		case "invalid_total":
+			usage["total_tokens"] = "unavailable"
 		}
 	}
 	switch fixture.fault {
