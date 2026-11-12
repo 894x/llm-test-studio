@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { ChevronLeft } from "lucide-react"
 import DownloadIcon from "lucide-react/dist/esm/icons/download.mjs"
+import FileChartColumnIcon from "lucide-react/dist/esm/icons/file-chart-column.mjs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { publicDesktopErrorMessage } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -50,7 +51,7 @@ export function BenchmarkReportInspector({ run, result, onOpen }: { run: Benchma
       <InspectorRow label={t("progress", result)} value={t(`statuses.${result.status}`)} />
       <InspectorRow label={t("created")} value={formatReportTimestamp(run.created_at, i18n.resolvedLanguage ?? i18n.language)} />
       {result.finished_at ? <InspectorRow label={t("finished")} value={formatReportTimestamp(result.finished_at, i18n.resolvedLanguage ?? i18n.language)} /> : null}</dl>
-    {onOpen ? <div className="px-4 py-3"><Button size="sm" onClick={onOpen}>{t("report")}</Button></div> : null}
+    {onOpen ? <div className="px-4 py-3"><TooltipProvider><Tooltip><TooltipTrigger asChild><Button size="icon-sm" aria-label={t("report")} onClick={onOpen}><FileChartColumnIcon aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{t("report")}</TooltipContent></Tooltip></TooltipProvider></div> : null}
   </div>
 }
 

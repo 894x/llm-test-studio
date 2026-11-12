@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
+import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
 import { useTranslation } from "react-i18next"
 
 import {
@@ -28,7 +29,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Spinner } from "@/components/ui/spinner"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 
@@ -214,17 +215,17 @@ export function NewRunSheet({
 
   const trigger = <SheetTrigger asChild>
     <Button size={iconOnly ? "icon-sm" : "sm"} disabled={commandPending} aria-label={triggerLabel ?? t("newRun.title")}>
-      <PlusIcon />
+      {iconOnly ? <PlayIcon aria-hidden="true" /> : <PlusIcon />}
       {!iconOnly && (triggerLabel ?? t("newRun.title"))}
     </Button>
   </SheetTrigger>
 
   return (
     <Sheet open={open} onOpenChange={next => { setOpen(next); if (next) loadCatalog() }}>
-      {iconOnly ? <Tooltip>
+      {iconOnly ? <TooltipProvider><Tooltip>
         <TooltipTrigger asChild>{trigger}</TooltipTrigger>
         <TooltipContent side="bottom">{triggerLabel ?? t("newRun.title")}</TooltipContent>
-      </Tooltip> : trigger}
+      </Tooltip></TooltipProvider> : trigger}
       <SheetContent className="sm:max-w-[420px]">
         <SheetHeader>
           <SheetTitle>{t("newRun.title")}</SheetTitle>

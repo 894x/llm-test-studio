@@ -791,7 +791,7 @@ export function PlansWorkspace({
       }
       inspectorFooter={selected ? (
         <div className="px-4 py-3">
-          <NewRunSheet key={`${selected.id}:${selected.revision}`} plans={[{ id: selected.id, name: selected.name, description: selected.protocol, caseCount: selected.case_count, runCount: 0 }]} catalog={catalog} commandPending={commandPending} triggerLabel={t("plans.run")} onStartRun={onStartPlan} />
+          <NewRunSheet key={`${selected.id}:${selected.revision}`} plans={[{ id: selected.id, name: selected.name, description: selected.protocol, caseCount: selected.case_count, runCount: 0 }]} catalog={catalog} commandPending={commandPending} iconOnly triggerLabel={t("plans.run")} onStartRun={onStartPlan} />
         </div>
       ) : undefined}
       inspectorLabel={t("plans.details")}

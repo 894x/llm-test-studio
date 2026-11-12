@@ -1,3 +1,10 @@
+import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
+import ShieldCheckIcon from "lucide-react/dist/esm/icons/shield-check.mjs"
+import Trash2Icon from "lucide-react/dist/esm/icons/trash-2.mjs"
+import XIcon from "lucide-react/dist/esm/icons/x.mjs"
+import PackageIcon from "lucide-react/dist/esm/icons/package.mjs"
+import ExternalLinkIcon from "lucide-react/dist/esm/icons/external-link.mjs"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { RefreshButton } from "@/components/ui/refresh-button"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -50,7 +57,7 @@ export function DatasetWorkspace({ client, onTest }: { client: Partial<Benchmark
   const runtimeReady = inventory?.runtime.state === "ready"
   const download = selected?.download
   return <PageFrame title={t("datasetManager.title")} description={t("datasetManager.description")} inspectorLabel={t("datasetManager.details")}
-    actions={<><RefreshButton label={t("refresh")} refreshing={pending} onClick={() => void refresh()} /><Button size="sm" disabled={!selected} onClick={() => onTest(selected!.dataset.id)}>{t("datasetManager.test")}</Button></>}
+    actions={<><RefreshButton label={t("refresh")} refreshing={pending} onClick={() => void refresh()} /><TooltipProvider><Tooltip><TooltipTrigger asChild><Button aria-label={t("datasetManager.test")} size="icon-sm" disabled={!selected} onClick={() => onTest(selected!.dataset.id)}><PlayIcon aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{t("datasetManager.test")}</TooltipContent></Tooltip></TooltipProvider></>}
     inspector={selected ? <div className="min-w-0 [overflow-wrap:anywhere]">
       <InspectorHeader title={selected.dataset.name} subtitle={t(`datasetManager.categories.${selected.dataset.category}`, { defaultValue: selected.dataset.category })} />
       <div className="space-y-4 px-4 pb-4"><p className="text-xs leading-relaxed">{t(`datasetDescriptions.${selected.dataset.id}`, { defaultValue: selected.dataset.description })}</p>
@@ -62,14 +69,14 @@ export function DatasetWorkspace({ client, onTest }: { client: Partial<Benchmark
           <InspectorRow label={t("datasetManager.verified")} value={download!.verified_at ? new Date(download!.verified_at).toLocaleString(locale) : "—"} />
           <InspectorRow label={t("datasetManager.checksum")} value={download!.cache_sha256 || "—"} />
         </dl>
-        <a href={selected.dataset.source_url} target="_blank" rel="noreferrer" className="inline-block text-xs underline underline-offset-4">{t("datasetManager.source")}</a>
+        <TooltipProvider><Tooltip><TooltipTrigger asChild><Button asChild variant="ghost" size="icon-sm"><a href={selected.dataset.source_url} target="_blank" rel="noreferrer" aria-label={t("datasetManager.source")}><ExternalLinkIcon aria-hidden="true" /></a></Button></TooltipTrigger><TooltipContent>{t("datasetManager.source")}</TooltipContent></Tooltip></TooltipProvider>
         {download!.error_code ? <p role="alert" className="text-xs text-destructive">{t(`datasetManager.errors.${download!.error_code}`)}</p> : null}
         {isDatasetBusy(download!.state) ? <p role="status" className="flex items-center gap-2 text-xs"><Spinner />{t("datasetManager.transferred", { size: formatDatasetBytes(download!.bytes, locale) })}</p> : null}
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" disabled={!runtimeReady || commandPending || isDatasetBusy(download!.state) || download!.state === "ready"} onClick={() => void manage(selected.dataset.id, "download")}><DownloadIcon />{t("datasetManager.download")}</Button>
-          {isDatasetBusy(download!.state) ? <Button size="sm" variant="secondary" disabled={commandPending || download!.state === "removing"} onClick={() => void manage(selected.dataset.id, "cancel")}>{t("datasetManager.cancel")}</Button> : null}
-          <Button size="sm" variant="secondary" disabled={commandPending || download!.state !== "ready"} onClick={() => void manage(selected.dataset.id, "verify")}>{t("datasetManager.verify")}</Button>
-          <AlertDialog><AlertDialogTrigger asChild><Button size="sm" variant="secondary" disabled={commandPending || isDatasetBusy(download!.state) || download!.state === "missing"}>{t("datasetManager.remove")}</Button></AlertDialogTrigger>
+          <TooltipProvider><Tooltip><TooltipTrigger asChild><Button aria-label={t("datasetManager.download")} size="icon-sm" disabled={!runtimeReady || commandPending || isDatasetBusy(download!.state) || download!.state === "ready"} onClick={() => void manage(selected.dataset.id, "download")}><DownloadIcon aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{t("datasetManager.download")}</TooltipContent></Tooltip></TooltipProvider>
+          {isDatasetBusy(download!.state) ? <TooltipProvider><Tooltip><TooltipTrigger asChild><Button aria-label={t("datasetManager.cancel")} size="icon-sm" variant="secondary" disabled={commandPending || download!.state === "removing"} onClick={() => void manage(selected.dataset.id, "cancel")}><XIcon aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{t("datasetManager.cancel")}</TooltipContent></Tooltip></TooltipProvider> : null}
+          <TooltipProvider><Tooltip><TooltipTrigger asChild><Button aria-label={t("datasetManager.verify")} size="icon-sm" variant="secondary" disabled={commandPending || download!.state !== "ready"} onClick={() => void manage(selected.dataset.id, "verify")}><ShieldCheckIcon aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{t("datasetManager.verify")}</TooltipContent></Tooltip></TooltipProvider>
+          <AlertDialog><TooltipProvider><Tooltip><TooltipTrigger asChild><AlertDialogTrigger asChild><Button aria-label={t("datasetManager.remove")} size="icon-sm" variant="secondary" disabled={commandPending || isDatasetBusy(download!.state) || download!.state === "missing"}><Trash2Icon aria-hidden="true" /></Button></AlertDialogTrigger></TooltipTrigger><TooltipContent>{t("datasetManager.remove")}</TooltipContent></Tooltip></TooltipProvider>
             <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{t("datasetManager.removeTitle")}</AlertDialogTitle><AlertDialogDescription>{t("datasetManager.removeHint", { name: selected.dataset.name })}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t("datasetManager.keep")}</AlertDialogCancel><AlertDialogAction onClick={() => void manage(selected.dataset.id, "remove")}>{t("datasetManager.remove")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
           </AlertDialog>
         </div>
@@ -77,7 +84,7 @@ export function DatasetWorkspace({ client, onTest }: { client: Partial<Benchmark
     </div> : <p className="p-4 text-xs text-muted-foreground">{t("datasetManager.choose")}</p>}>
     <div className="shrink-0 space-y-3 px-4 pb-3">
       <p className="text-xs text-muted-foreground">{t("datasetManager.autoHint")}</p>
-      {inventory && !runtimeReady ? <div className="flex flex-wrap items-center gap-3 text-xs"><span>{t(`runtime.${inventory.runtime.state}`)}</span><Button size="sm" variant="secondary" disabled={commandPending || inventory.runtime.state === "preparing"} onClick={() => void prepare()}>{inventory.runtime.state === "preparing" ? <Spinner /> : null}{t("runtime.prepare")}</Button><span className="text-muted-foreground">{t("runtime.hint")}</span></div> : null}
+      {inventory && !runtimeReady ? <div className="flex flex-wrap items-center gap-3 text-xs"><span>{t(`runtime.${inventory.runtime.state}`)}</span><TooltipProvider><Tooltip><TooltipTrigger asChild><Button aria-label={t("runtime.prepare")} size="icon-sm" variant="secondary" disabled={commandPending || inventory.runtime.state === "preparing"} onClick={() => void prepare()}>{inventory.runtime.state === "preparing" ? <Spinner /> : <PackageIcon aria-hidden="true" />}</Button></TooltipTrigger><TooltipContent>{t("runtime.prepare")}</TooltipContent></Tooltip></TooltipProvider><span className="text-muted-foreground">{t("runtime.hint")}</span></div> : null}
       {error || commandError ? <Alert variant="destructive"><AlertDescription>{commandError || t("loadError")}<Button size="sm" variant="ghost" onClick={() => void refresh()}>{t("retry")}</Button></AlertDescription></Alert> : null}
       <div className="flex min-w-0 gap-2"><Input value={query} onChange={event => setQuery(event.target.value)} aria-label={t("searchDatasets")} placeholder={t("searchDatasets")} />
         <SearchableSelect aria-label={t("datasetManager.status")} value={filter} onValueChange={setFilter} className="w-32 shrink-0" options={[{ value: "all", label: t("datasetManager.all") }, ...["missing", "ready", "downloading", "failed", "invalid"].map(value => ({ value, label: t(`datasetManager.states.${value}`) }))]} />

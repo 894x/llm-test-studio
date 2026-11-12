@@ -64,14 +64,10 @@ export function CatalogEditor({
   const title = t(copyBuiltinPlan ? "plans.saveAs" : item ? "editor.editTitle" : "editor.newTitle", { noun })
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      {trigger || kind === "plan" ? <SheetTrigger asChild>
-        {trigger ?? <Button size="sm" variant={item ? "outline" : "default"} disabled={pending}>
-          {!item ? <PlusIcon data-icon="inline-start" /> : null}{title}
-        </Button>}
-      </SheetTrigger> : <TooltipProvider><Tooltip><TooltipTrigger asChild><SheetTrigger asChild>
+      {trigger ? <SheetTrigger asChild>{trigger}</SheetTrigger> : <TooltipProvider><Tooltip><TooltipTrigger asChild><SheetTrigger asChild>
         <Button size="icon-sm" variant={item ? "outline" : "default"} aria-label={title}
           disabled={pending || (kind === "mapping" && (!catalog.models.length || !catalog.channels.length))}>
-          {item ? <PencilIcon aria-hidden="true" /> : <PlusIcon aria-hidden="true" />}
+          {copyBuiltinPlan ? <CopyIcon aria-hidden="true" /> : item ? <PencilIcon aria-hidden="true" /> : <PlusIcon aria-hidden="true" />}
         </Button>
       </SheetTrigger></TooltipTrigger><TooltipContent>{title}</TooltipContent></Tooltip></TooltipProvider>}
       <SheetContent className={kind === "case" || kind === "suite" ? "data-[side=right]:w-full data-[side=right]:sm:max-w-3xl" : kind === "plan" ? "data-[side=right]:w-full data-[side=right]:sm:max-w-2xl" : "sm:max-w-lg"} onEscapeKeyDown={(event) => {
@@ -103,10 +99,9 @@ export function DeleteCatalogButton({
   const noun = t(`editor.noun.${kind}`)
   return (
     <AlertDialog>
-      {kind === "plan" ? <AlertDialogTrigger asChild><Button size="sm" variant="destructive" disabled={pending}>{t("editor.delete", { noun })}</Button></AlertDialogTrigger> :
-        <TooltipProvider><Tooltip><TooltipTrigger asChild><AlertDialogTrigger asChild>
+      <TooltipProvider><Tooltip><TooltipTrigger asChild><AlertDialogTrigger asChild>
           <Button size="icon-sm" variant="destructive" disabled={pending} aria-label={t("editor.delete", { noun })}><Trash2Icon aria-hidden="true" /></Button>
-        </AlertDialogTrigger></TooltipTrigger><TooltipContent>{t("editor.delete", { noun })}</TooltipContent></Tooltip></TooltipProvider>}
+        </AlertDialogTrigger></TooltipTrigger><TooltipContent>{t("editor.delete", { noun })}</TooltipContent></Tooltip></TooltipProvider>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("editor.deleteTitle", { noun })}</AlertDialogTitle>
