@@ -223,7 +223,7 @@ func TestRunDryRunSupportsWanVideoSuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if len(written.Results) != 92 {
+	if len(written.Results) != 95 {
 		t.Fatalf("results count = %d", len(written.Results))
 	}
 	for _, result := range written.Results {
