@@ -112,7 +112,7 @@ export function EntryCaseTable({
               </Tooltip></TooltipProvider></TableCell>
               <TableCell className="py-1 text-[11px] [overflow-wrap:anywhere]">{caseItem.dimension ?? "—"}</TableCell>
               <TableCell className="py-1"><CaseSeverityBadge severity={caseItem.severity} /></TableCell>
-              <TableCell className="py-1"><VerificationBadges status={caseItem.verification.status} checks={caseItem.verification_checks} /></TableCell>
+              <TableCell className="py-1"><VerificationBadges status={caseItem.verification.status} checks={caseItem.verification_checks} summaryOnly /></TableCell>
               {columns.map(column => <TableCell key={column.id} className="py-1 text-xs tabular-nums">{caseColumn(caseItem, column)}</TableCell>)}
               <TableCell className="py-1 pr-3 text-[11px]"><VerificationCounts summary={caseItem.verification} compact /></TableCell>
             </TableRow>
