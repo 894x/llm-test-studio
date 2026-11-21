@@ -142,10 +142,7 @@ func (state *streamState) consume(event map[string]any, response runtime.Respons
 	choices, hasChoices := event["choices"].([]any)
 	_, hasUsage := event["usage"].(map[string]any)
 	emptyChoices := hasChoices && len(choices) == 0
-	usageOnly := emptyChoices && hasUsage
-	if state.finished && usageOnly {
-		observation.Metrics[protocol.StreamFinalUsageMetric]++
-	}
+	var finishedInEvent bool
 	if len(choices) > 0 {
 		id, _ := event["id"].(string)
 		model, _ := event["model"].(string)
@@ -189,6 +186,7 @@ func (state *streamState) consume(event map[string]any, response runtime.Respons
 		}
 		if finish, ok := choice["finish_reason"].(string); ok && finish != "" {
 			state.finished = true
+			finishedInEvent = true
 			observation.Metrics["stream_finish_count"]++
 		}
 		for _, name := range []string{"content", "reasoning_content"} {
@@ -206,6 +204,10 @@ func (state *streamState) consume(event map[string]any, response runtime.Respons
 			state.text.WriteString(text)
 		}
 		mergeDelta(message, delta)
+	}
+	separateFinalUsage := emptyChoices && state.finished
+	if hasUsage && (separateFinalUsage || finishedInEvent) {
+		observation.Metrics[protocol.StreamFinalUsageMetric]++
 	}
 }
 

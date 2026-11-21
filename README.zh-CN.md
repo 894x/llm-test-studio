@@ -18,7 +18,7 @@
 > [!NOTE]
 > LLM Test Studio 已采用 Apache-2.0 许可证公开开源。修改已发布契约或升级存量数据前，请阅读[兼容性与数据升级政策](doc/compatibility-policy.md)。
 
-[v0.2.1](doc/releases/v0.2.1.md) 新增：软件内更新、最多 16 渠道对比，以及 Kimi 缓存与 TTL 验证。使用新任务能力前请同步更新桌面端和 runner，具体顺序见发布说明。
+[v0.2.2](doc/releases/v0.2.2.md) 更新：兼容 Chat 流式最终用量位置，统一报告状态标签。远程 runner 需单独更新才能使用解析修复；现有数据格式和历史结论保持不变。
 
 ## 产品实证
 

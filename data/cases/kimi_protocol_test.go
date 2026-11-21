@@ -63,7 +63,7 @@ func TestKimiProtocolCasesThroughHTTP(t *testing.T) {
 			if stream {
 				faults = append(faults, "interrupted", "invalid_event", "long_stream")
 				if proto == domain.ProtocolOpenAIChat {
-					faults = append(faults, "missing_finish", "after_done")
+					faults = append(faults, "missing_finish", "after_done", "merged_usage")
 					if usage {
 						faults = append(faults, "usage_only_initial")
 					}
@@ -127,7 +127,7 @@ func TestKimiProtocolCasesThroughHTTP(t *testing.T) {
 
 func kimiProtocolExpectedPass(fault string) bool {
 	switch fault {
-	case "valid", "zero", "optional_absent", "null_usage", "partial_usage", "long_stream":
+	case "valid", "zero", "optional_absent", "null_usage", "partial_usage", "long_stream", "merged_usage":
 		return true
 	default:
 		return false
@@ -349,6 +349,10 @@ func (fixture kimiProtocolHTTP) events(root map[string]any) []map[string]any {
 		if fixture.fault == "usage_only_initial" {
 			first["usage"] = usage["usage"]
 			delete(usage, "usage")
+		}
+		if fixture.fault == "merged_usage" {
+			last["usage"] = usage["usage"]
+			return []map[string]any{first, last}
 		}
 		if fixture.fault == "optional_absent" {
 			for _, event := range []map[string]any{first, last, usage} {

@@ -24,7 +24,7 @@ OpenAPI 的许多响应属性没有列入 `required`；Chat 的思考计数还�
 | Responses output_tokens_details.reasoning_tokens | Responses / OpenAPI | 完整性探针要求 object + 非负整数；允许显式 0 | 同上；计数不得超过 output_tokens | 两个 thinking_usage | implemented / live not run |
 | Messages output_tokens_details.thinking_tokens | Messages / OpenAPI；Anthropic 语义 | 完整性探针要求 object + 非负整数；允许显式 0 | 同上；计数不得超过 output_tokens；捕获被 sanitizer 删除的明细 | 两个 thinking_usage | implemented / live not run |
 | 用量算术 | Chat / Responses | input + output = total；思考已包含于输出，不重复相加 | 正确、总数不符、思考大于输出分别验证；Messages 不虚构 total_tokens | 两个 thinking_usage | implemented / live not run |
-| SSE 终态、事件形状 | 三协议；既有解析器 | 必须完成且 issues 为空；保存的事件按协议检查类型；Responses sequence_number 为整数 | 正常流、断流、错误事件字段拒绝；Chat 显式 include_usage，要求恰好一次 finish，拒绝 finish 后内容及 DONE 后数据；严格用量 Case 要求恰好一个最终 usage 块 | 两个 `_stream` | implemented / live not run |
+| SSE 终态、事件形状 | 三协议；既有解析器 | 必须完成且 issues 为空；保存的事件按协议检查类型；Responses sequence_number 为整数 | 正常流、断流、错误事件字段拒绝；Chat 显式 include_usage，要求恰好一次 finish，拒绝 finish 后内容及 DONE 后数据；严格用量 Case 要求恰好一个最终 usage 块，可合并 finish chunk 或随后独立返回 | 两个 `_stream` | implemented / live not run |
 | 全部 SSE 事件的无损性及字段出现时刻 | 既有 evidence 保存上限 | 原始 events 仅保存前 256 条；合并后的 response 保留最终 usage | 本补充检查保留事件及合并结果，不声称检查所有事件或严格证明最终事件才含明细 | 无 | deferred：需要完整事件验证能力 |
 | 网关转发计数精确保真 | 上游与下游对照 | 单侧响应只能证明字段存在、类型与内部关系 | 验证 255 未被改成 0、总输出未同步错误扩大，需可控上游或双侧证据 | 无 | deferred：专项上游夹具，非在线探针可独立证明 |
 

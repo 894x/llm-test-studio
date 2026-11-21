@@ -18,7 +18,7 @@
 > [!NOTE]
 > LLM Test Studio is publicly available under Apache-2.0. See the [compatibility and data-upgrade policy](doc/compatibility-policy.md) before changing released contracts or upgrading stored data.
 
-New in [v0.2.1](doc/releases/v0.2.1.md): in-app updates, comparisons across up to 16 channels, and Kimi cache/TTL validation. Update the desktop app and runners before using the new task capabilities; see the release's upgrade instructions.
+New in [v0.2.2](doc/releases/v0.2.2.md): Chat streaming final-usage compatibility and consistent report status badges. Update remote runners separately to use the parser fix; existing data formats and historical conclusions remain unchanged.
 
 ## Product proof
 

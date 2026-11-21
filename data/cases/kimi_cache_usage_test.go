@@ -148,7 +148,9 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 			if stream {
 				faults = append(faults, "missing_usage", "interrupted")
 				if proto == domain.ProtocolOpenAIChat {
-					faults = append(faults, "usage_only_initial")
+					faults = append(faults,
+						"usage_only_initial", "merged_usage", "duplicate_usage", "after_finish", "after_done",
+					)
 				}
 			}
 			for _, fault := range faults {
@@ -181,7 +183,7 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					wantPassed := fault == ""
+					wantPassed := fault == "" || fault == "merged_usage"
 					if fault == "missing_write_repeat" || fault == "missing_write_warm_prime" {
 						wantPassed = headers && proto != domain.ProtocolAnthropicMessages
 					}
@@ -543,19 +545,39 @@ func (fixture *kimiCacheHTTP) respond(w http.ResponseWriter, usage map[string]an
 	case domain.ProtocolOpenAIChat:
 		root["object"] = "chat.completion.chunk"
 		root["choices"] = []any{map[string]any{"index": 0, "delta": message, "finish_reason": "stop"}}
-		if fixture.fault != "usage_only_initial" {
+		if fixture.fault != "usage_only_initial" && fixture.fault != "merged_usage" {
 			delete(root, "usage")
+		}
+		if fixture.fault == "usage_only_initial" {
+			root["choices"].([]any)[0].(map[string]any)["finish_reason"] = nil
+			emit(root)
+			delete(root, "usage")
+			root["choices"] = []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}}
 		}
 		emit(root)
 		if fixture.fault == "interrupted" {
 			return
+		}
+		if fixture.fault == "merged_usage" {
+			_, _ = io.WriteString(w, "data: [DONE]\n\n")
+			return
+		}
+		if fixture.fault == "after_finish" {
+			root["choices"] = []any{map[string]any{"index": 0, "delta": message}}
+			emit(root)
 		}
 		root["choices"], root["usage"] = []any{}, usage
 		if fixture.fault == "usage_only_initial" {
 			delete(root, "usage")
 		}
 		emit(root)
+		if fixture.fault == "duplicate_usage" {
+			emit(root)
+		}
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		if fixture.fault == "after_done" {
+			emit(root)
+		}
 	case domain.ProtocolOpenAIResponses:
 		emit(map[string]any{"type": "response.created", "sequence_number": 0, "response": map[string]any{
 			"id": "cache_fixture", "object": "response", "status": "in_progress", "output": []any{},

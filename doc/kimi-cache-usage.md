@@ -270,7 +270,7 @@ MSH 响应头在官方文档以 Chat 为例说明，Responses/Messages 的必返
 | 扩展 TTL | Chat/Responses 顶层或各自 details 下 `cache_creation` | 可缺失；一旦返回必须为 object，所选档等于写入量，另档为零或省略；零写入允许省略零档；错误类型/负数/错档/错和均失败 | usage | 观测型兼容性断言，不伪造官方必返契约 |
 | 两个 MSH 头 | 非负十进制整数，两个字段均必须存在 | 缺失、负数、小数、重复及歧义值失败；两档和等于该请求原生写入总量；冷写入只在请求档位增加 | headers | 三协议可选专项，区别缺失和显式0 |
 | 分离结果 | usage 不依赖 MSH 头及其解析指标 | usage 正确而头缺失/格式错误/错和时，usage 通过、headers 失败；其他协议错误仍失败 | 两组本地 fixture | 不以另一组兜底通过 |
-| 流终态 | SSE 正常终止，Chat finish 后单独最终 usage | 缺最终 usage、提前中断、DONE 后数据及 finish 后内容失败 | 两组 case | 沿用既有流指标与 runner 能力门禁 |
+| 流终态 | SSE 正常终止，Chat 最终 usage 可与 finish chunk 合并或在其后单独返回 | 缺最终 usage、提前中断、DONE 后数据及 finish 后内容失败 | 两组 case | 沿用既有流指标与 runner 能力门禁 |
 | 读序列 | 同次执行两次请求完全相同 | 不能因第二步缺头继承第一步指标；不能改前缀证明命中 | 两组 case | 显式本地故障场景 |
 
 兼容性：既有 10 个 usage Case 的 ID、key、schema 3 和三个 usage Suite 的 key/成员
@@ -303,7 +303,7 @@ Responses/Messages 的 sequence 仍保留所有协议诊断；缓存响应头格
 
 ## 契约与范围
 
-核验日期：2026-11-03。主要来源：[上下文缓存最佳实践](https://platform.kimi.com/docs/guide/context-caching)；Chat 最终用量块的 `choices=[]`、finish 后顺序及 `include_usage` 契约另见 [Chat Completions API](https://platform.kimi.com/docs/api/chat)。
+核验日期：2026-11-03；最终 usage 放置规则于 2026-11-21 复核。主要来源：[上下文缓存最佳实践](https://platform.kimi.com/docs/guide/context-caching)；[Chat Completions API](https://platform.kimi.com/docs/api/chat) 描述 `include_usage` 与 finish 后 `choices=[]` 的统计块。项目还按用户指定的兼容策略接受 usage 与 finish chunk 合并；这是已观察到的渠道行为，不将其表述为 Kimi 官方新增承诺。
 
 本次补充 `kimi-k3`、`kimi-k3.1-pro` 的 Chat Completions 缓存 usage 与 MSH 用量头核验，以及 Responses / Messages 的原生 usage 核验。Case 不绑定模型；运行时选择对应模型和协议。暂不据此承诺 Highspeed 的 Cache Write 支持。新探针属于 T3、非默认 Case，独立套件按需运行。
 
@@ -320,7 +320,7 @@ Responses/Messages 的 sequence 仍保留所有协议诊断；缓存响应头格
 | Chat/Responses 原生输入/读/写计数 | usage 子字段，整数 | 0与正数分开 | 缺失、负数、小数在本地故障响应中必须失败；读写各自≤输入 | 类型、非负、上界；冷写入>0；第二次读取>0、写入=0 |
 | Chat MSH 两档响应头 | 两个十进制非负整数字符串；本补充要求均存在，无写入时为0 | selected>0/other=0；重复读取两者=0 | 缺失不补0；重复、非法字符、小数、负数、超2^53−1明确失败 | 解析指标后 `sum_equals` 严格对账 usage；通过 `cache_write_headers` 能力门禁 |
 | Messages 创建量及两档拆分 | `cache_creation_input_tokens` 和两个 `cache_creation` 子计数，非负整数 | 0、正数与两档独立 | 原生input不含读写，不能直接用其作写入上界 | 两档之和=创建量；非选中档=0；读取不重写 |
-| `stream` 与 Chat `stream_options.include_usage` | 可选bool；新流式定义均显式true | 流式/非流式分别定义 | Chat必须请求include_usage；缺最终usage、未终止流在模拟中失败 | 所有stream完成；Chat最终独立usage chunk恰好一次；非流式原生JSON |
+| `stream` 与 Chat `stream_options.include_usage` | 可选bool；新流式定义均显式true | 流式/非流式分别定义 | Chat必须请求include_usage；缺最终usage、未终止流在模拟中失败 | 所有stream完成；Chat最终usage恰好一次，可合并finish chunk或随后单独返回；非流式原生JSON |
 
 所有新 Case 绑定 K3 / K3.1 Pro，执行层级 T3；矩阵中的故障响应是本地模拟验证断言强度，不是向 Provider 发送非法请求。
 
@@ -341,7 +341,19 @@ Responses/Messages 的 sequence 仍保留所有协议诊断；缓存响应头格
 
 两个 MSH 数值头保存到现有 `metrics.msh_usage_cache_write_tokens_5m/1h`；各请求保存在 `exchanges[].metrics`，原始 usage 保持原状。零值与缺失分开：缺失不补零，重复、非整数、负数或超出精确数值范围的头产生协议问题，不持久化原始头值或其他响应头。沿用 `sum_equals` 和 `expected_from` 进行对账。
 
-Chat SSE 另记录 `stream_final_usage_count`：只计 finish 之后、`choices=[]` 且含 usage 对象的独立 chunk。流式探针要求恰好一次最终用量，并拒绝 DONE 后数据和 finish 后新增内容；不能用早期 chunk 中的 usage 冒充最终 usage。该计数独立于原始事件证据的 256 条保存上限。
+Chat SSE 另记录 `stream_final_usage_count`：含 usage 对象的 chunk 若同时携带非空 `finish_reason`，或在 finish 之后以 `choices=[]` 单独返回，均计一次。与结束 chunk 合并时允许该 chunk 同时带最后一段正文；早期 usage、null 或非对象 usage 不计作最终用量。流式探针仍要求恰好一次最终用量，并拒绝 DONE 后数据和 finish 后新增内容。该计数独立于原始事件证据的 256 条保存上限。
+
+2026-11-21 的兼容范围限于 OpenAI Chat SSE 最终用量位置，适用于 Kimi K3 / K3.1 Pro 及同解析器的兼容渠道；Responses、Messages、请求参数、缓存命中和 TTL 断言不变。本地回归矩阵如下，均为 T0 模拟，无新增供应商调用：
+
+| 分区 / 边界 | 预期 | 验证位置 |
+| --- | --- | --- |
+| finish 后独立 usage / usage 合并 finish（stop、length、tool_calls） | 最终用量计数 1；合并正文与空 delta 均接受 | `TestStreamFinalUsagePlacement`；缓存及协议 HTTP/SSE 测试 |
+| 缺失、提前 usage、null、非对象 usage | 最终用量计数 0；严格用量用例失败 | 解析与缓存 HTTP/SSE 测试 |
+| 独立 usage 重复 / 合并后又独立返回 | 最终用量计数 2；恰好一次断言失败 | 解析与缓存 HTTP/SSE 测试 |
+| 合并 usage 后缺 DONE / finish 后继续内容 / DONE 后数据 | 完成标记为 false 或对应异常指标为正；终态校验失败 | 解析与缓存 HTTP/SSE 测试 |
+| 证据保存与读取 | JSON 往返后保留 usage 和指标，仍按同一断言通过 | 缓存及协议 HTTP/SSE 测试 |
+
+本次扩展现有指标的识别范围，没有新增文件、任务、报告或数据库格式。已发布 v0.2.0 / v0.2.1 的输入及独立 usage 形式继续支持；旧记录的指标和结论不回算。执行器决定新运行的指标值，远程运行需更新对应 runner；旧 runner 会沿用旧规则。无迁移、弃用或移除安排，降级会恢复旧版较严格的识别规则；其他数据降级限制见[兼容性政策](compatibility-policy.md)。
 
 依赖上述指标的任务要求 runner 声明 `cache_write_headers` 能力；旧 runner 在提交前拒绝此类任务，普通旧任务不增加要求。Case 使用已有 schema 3，Suite 使用 schema 1；没有数据库字段、迁移链或报告结构变化。新增指标使用既有开放数值映射。旧 schema 2 Case、无这些头的旧证据和历史报告保持原义，无新增弃用或移除时间。旧程序不支持新用例的执行语义；降级时恢复新用例加入前的目录和匹配工作区备份，备份后的写入不在恢复范围。
 
