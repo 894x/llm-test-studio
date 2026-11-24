@@ -187,16 +187,10 @@ func TestKimiCacheUsageCasesThroughHTTP(t *testing.T) {
 					if fault == "missing_write_repeat" || fault == "missing_write_warm_prime" {
 						wantPassed = headers && proto != domain.ProtocolAnthropicMessages
 					}
-					if fault == "missing_write_header" {
-						wantPassed = headers && proto != domain.ProtocolAnthropicMessages
-					}
 					if fault == "top_level_ttl" || fault == "both_ttl" {
 						wantPassed = true
 					}
 					if !headers && slices.Contains(headerFaults, fault) {
-						wantPassed = true
-					}
-					if headers && slices.Contains([]string{"missing_header", "missing_header_5m", "missing_header_1h"}, fault) {
 						wantPassed = true
 					}
 					if fault == "no_body_ttl" || fault == "omit_zero_bucket" {

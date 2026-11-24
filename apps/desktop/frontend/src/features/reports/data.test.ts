@@ -24,6 +24,22 @@ describe("current protocol report contract", () => {
     requests[0].observation.exchanges[0].request_headers = { values: { Authorization: "unvalidated" } }
     expect(() => parseReportDetail(invalid)).toThrow()
   })
+  it("accepts the MSH check alongside both existing checks and rejects duplicates", () => {
+    const source = protocolReportFixture("failed")
+    const passed = { status: "passed" as const, passed: 1, failed: 0, observed: 0, indeterminate: 0 }
+    const failed = { ...passed, status: "failed" as const, passed: 0, failed: 1 }
+    const checks = source.entries[0].cases[0].verification_checks = [
+      { id: "cache_io", verification: passed },
+      { id: "cache_ttl", verification: passed },
+      { id: "cache_msh_headers", verification: failed },
+    ]
+    const parsed = parseReportDetail(source)
+    if (parsed.source !== "run") throw new Error("run expected")
+    expect(parsed.entries[0].cases[0].verification_checks).toEqual(checks)
+    checks[1] = checks[2]
+    expect(() => parseReportDetail(source)).toThrow()
+  })
+
   it("preserves dimension statistics from Core and accepts earlier details without the additive fields", () => {
     const source = protocolReportFixture()
     const statistic = { dimension: "parameters", case_count: 5, passed_case_count: 1, failed_case_count: 1,

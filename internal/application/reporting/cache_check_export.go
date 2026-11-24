@@ -22,13 +22,27 @@ func htmlVerificationChecks(checks []VerificationCheck, locale string) []htmlVer
 		if locale == "en-US" {
 			prefix = "Cache reads/writes: "
 		}
-		if check.ID == "cache_ttl" {
+		switch check.ID {
+		case "cache_ttl":
 			prefix = "TTL 对账"
 			if locale == "en-US" {
 				prefix = "TTL reconciliation: "
 			}
+		case "cache_msh_headers":
+			prefix = "MSH 响应头"
+			if locale == "en-US" {
+				prefix = "MSH response headers: "
+			}
 		}
 		label := prefix + localizedVerdict(string(check.Verification.Status), locale)
+		if check.PresenceOnly && check.Verification.Status == testspec.VerdictPassed {
+			label = "MSH 头齐全（旧规则）"
+			if locale == "en-US" {
+				label = "MSH headers present (legacy check)"
+			}
+			rows = append(rows, htmlVerificationCheck{Label: label, Class: "muted"})
+			continue
+		}
 		if check.ID == "cache_ttl" && check.Verification.Status == testspec.VerdictIndeterminate {
 			label = "TTL 证据不足"
 			if locale == "en-US" {

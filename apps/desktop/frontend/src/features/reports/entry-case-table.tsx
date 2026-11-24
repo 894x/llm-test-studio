@@ -148,20 +148,26 @@ export function VerificationBadges({ status, checks, assertions, summaryOnly = f
   summaryOnly?: boolean
 }) {
   const { t } = useTranslation("reports")
-  const recorded = checks?.map(check => ({ id: check.id, status: check.verification.status })) ??
-    assertions?.filter(item => item.id === "cache_io" || item.id === "cache_ttl").map(item => ({ id: item.id, status: item.status })) ?? []
-  if (recorded.length !== 2) return <VerificationBadge status={status} />
+  const recorded = checks?.map(check => ({ id: check.id, status: check.verification.status, presenceOnly: check.presence_only === true })) ??
+    assertions?.filter(item => isCacheVerificationCheckID(item.id)).map(item => ({
+      id: item.id, status: item.status, presenceOnly: item.id === "cache_msh_headers" && Boolean(item.children?.length) &&
+        item.children?.every(child => child.id.startsWith("msh_") && child.id.endsWith("_exists")) === true,
+    })) ?? []
+  if (!recorded.some(item => item.id === "cache_io") || !recorded.some(item => item.id === "cache_ttl")) {
+    return <VerificationBadge status={status} />
+  }
   if (summaryOnly) return <VerificationBadge status={status}
     label={status === "indeterminate" && recorded.some(item => item.status === "passed")
       ? t("protocolDesign.partialPassed") : undefined} />
-  return <span className="inline-flex min-w-0 max-w-full flex-wrap gap-1"
-    aria-label={recorded.map(item => t(`protocolDesign.cacheChecks.${item.id}.${item.status}`)).join("，")}>
+  const label = (item: typeof recorded[number]) => item.presenceOnly && item.status === "passed"
+    ? t("protocolDesign.mshPresenceOnly") : t(`protocolDesign.cacheChecks.${item.id}.${item.status}`)
+  return <span className="inline-flex min-w-0 max-w-full flex-wrap gap-1" aria-label={recorded.map(label).join("，")}>
     {recorded.map(item => <Badge key={item.id} variant="outline"
-      className={`h-auto min-h-5 max-w-full whitespace-normal text-left [overflow-wrap:anywhere] ${item.status === "passed"
+      className={`h-auto min-h-5 max-w-full whitespace-normal text-left [overflow-wrap:anywhere] ${item.presenceOnly && item.status === "passed" ? "text-muted-foreground" : item.status === "passed"
         ? "border-outcome-pass/25 bg-outcome-pass/10 text-outcome-pass"
         : item.status === "failed" ? "border-destructive/25 bg-destructive/5 text-destructive"
           : "border-warning/25 bg-warning-soft text-warning-strong"}`}>
-      {t(`protocolDesign.cacheChecks.${item.id}.${item.status}`)}
+      {label(item)}
     </Badge>)}
   </span>
 }

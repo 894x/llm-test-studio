@@ -38,6 +38,7 @@ func TestKimiCacheTTLEvidenceShapes(t *testing.T) {
 		readOnly bool
 	}{
 		{name: "both", pass: true},
+		{name: "zero_msh_with_positive_usage"},
 		{name: "header_only", pass: true},
 		{name: "official", pass: true},
 		{name: "usage_only", pass: true},
@@ -45,6 +46,7 @@ func TestKimiCacheTTLEvidenceShapes(t *testing.T) {
 		{name: "usage_only_both_locations", pass: true},
 		{name: "usage_only_zero_bucket_omitted", pass: true},
 		{name: "partial_headers_with_usage", pass: true},
+		{name: "missing_repeat_header_with_usage", pass: true, readOnly: true},
 		{name: "no_ttl"},
 		{name: "empty_usage_ttl"},
 		{name: "null_usage_ttl"},
@@ -71,6 +73,7 @@ func TestKimiCacheTTLEvidenceShapes(t *testing.T) {
 			t.Fatal(err)
 		}
 		read := strings.Contains(item.Key, ".read_")
+		headersRequired := strings.Contains(item.Key, ".headers.")
 		for _, proto := range item.Protocols() {
 			spec, err := item.SpecFor(proto)
 			if err != nil {
@@ -126,6 +129,33 @@ func TestKimiCacheTTLEvidenceShapes(t *testing.T) {
 						if shape.name == "usage_only_zero_write_omitted" {
 							wantPass = proto != domain.ProtocolAnthropicMessages
 						}
+						headerStatus := testspec.VerdictPassed
+						switch {
+						case strings.HasPrefix(shape.name, "usage_only"):
+							headerStatus = testspec.VerdictFailed
+						case shape.name == "official" && proto == domain.ProtocolAnthropicMessages:
+							headerStatus = testspec.VerdictFailed
+						case shape.name == "zero_msh_with_positive_usage":
+							headerStatus = testspec.VerdictFailed
+						case shape.name == "no_ttl", shape.name == "empty_usage_ttl", shape.name == "null_usage_ttl",
+							shape.name == "partial_headers_with_usage", shape.name == "partial_headers_without_usage",
+							shape.name == "missing_repeat_header_with_usage", shape.name == "malformed_header_with_usage":
+							headerStatus = testspec.VerdictFailed
+						}
+						if headersRequired {
+							checks := result.Verdict.Assertions
+							if len(checks) != 3 || checks[2].ID != "cache_msh_headers" || checks[2].Status != headerStatus {
+								t.Fatalf("unexpected MSH check for %s, want %s", shape.name, headerStatus)
+							}
+							if headerStatus == testspec.VerdictFailed && result.Verdict.Status != testspec.VerdictFailed {
+								t.Fatalf("MSH failure must fail the case, got %s", result.Verdict.Status)
+							}
+							if wantPass && headerStatus == testspec.VerdictFailed &&
+								(checks[0].Status != testspec.VerdictPassed || checks[1].Status != testspec.VerdictPassed) {
+								t.Fatalf("missing MSH headers changed cache IO or TTL: %s, %s", checks[0].Status, checks[1].Status)
+							}
+							wantPass = wantPass && headerStatus == testspec.VerdictPassed
+						}
 						if (result.Verdict.Status == testspec.VerdictPassed) != wantPass {
 							failed := []string{}
 							for _, a := range result.Verdict.Assertions {
@@ -136,9 +166,9 @@ func TestKimiCacheTTLEvidenceShapes(t *testing.T) {
 							t.Fatalf("verdict=%s, want pass=%t; failed=%v; issues=%v",
 								result.Verdict.Status, wantPass, failed, result.Observation.Issues)
 						}
-						if shape.name == "no_ttl" || shape.name == "empty_usage_ttl" ||
+						if !headersRequired && (shape.name == "no_ttl" || shape.name == "empty_usage_ttl" ||
 							shape.name == "partial_headers_without_usage" || shape.name == "usage_only_missing_selected" ||
-							(shape.name == "usage_only_omitted_write_incomplete_ttl" && proto != domain.ProtocolAnthropicMessages) {
+							(shape.name == "usage_only_omitted_write_incomplete_ttl" && proto != domain.ProtocolAnthropicMessages)) {
 							if result.Verdict.Status != testspec.VerdictIndeterminate {
 								t.Fatalf("missing TTL evidence = %s, want indeterminate", result.Verdict.Status)
 							}
@@ -173,7 +203,7 @@ func TestKimiCacheTTLEvidenceShapes(t *testing.T) {
 								t.Fatal("omitted first-read count was replaced with a synthetic zero")
 							}
 						}
-						if !wantPass || !strings.HasPrefix(shape.name, "usage_only") {
+						if !strings.HasPrefix(shape.name, "usage_only") {
 							return
 						}
 						for _, exchange := range restored.Observation.Exchanges {
@@ -189,7 +219,7 @@ func TestKimiCacheTTLEvidenceShapes(t *testing.T) {
 }
 
 func configureKimiTTLShape(fixture *kimiCacheHTTP, shape string) {
-	fixture.mutateHeaders = func(headers http.Header, _ int) {
+	fixture.mutateHeaders = func(headers http.Header, call int) {
 		switch {
 		case strings.HasPrefix(shape, "usage_only"),
 			shape == "no_ttl", shape == "empty_usage_ttl", shape == "null_usage_ttl":
@@ -200,6 +230,11 @@ func configureKimiTTLShape(fixture *kimiCacheHTTP, shape string) {
 			headers.Del(protocol.MSHCacheWriteHeader1h)
 		case shape == "partial_headers_with_usage", shape == "partial_headers_without_usage":
 			headers.Del(protocol.MSHCacheWriteHeader1h)
+		case shape == "missing_repeat_header_with_usage" && call > 1:
+			headers.Del(protocol.MSHCacheWriteHeader1h)
+		case shape == "zero_msh_with_positive_usage" && call == 1:
+			headers.Set(protocol.MSHCacheWriteHeader5m, "0")
+			headers.Set(protocol.MSHCacheWriteHeader1h, "0")
 		case shape == "malformed_header_with_usage":
 			headers.Set(protocol.MSHCacheWriteHeader5m, "invalid")
 		}

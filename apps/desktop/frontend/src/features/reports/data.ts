@@ -52,13 +52,19 @@ export interface ReportResult {
 }
 export type ReportDistribution = Readonly<Record<string, unknown>>
 export type ReportEntryStatus = "completed" | "failed" | "cancelled" | "not_started"
+export type CacheVerificationCheckID = "cache_io" | "cache_ttl" | "cache_msh_headers"
+
+export function isCacheVerificationCheckID(id: unknown): id is CacheVerificationCheckID {
+  return id === "cache_io" || id === "cache_ttl" || id === "cache_msh_headers"
+}
+
 export interface ReportCaseDetail {
   case_id: string; revision: number; key: string; name: string; protocol: CatalogProtocol
   dimension?: string
   severity: CatalogCaseSeverity
   verification: VerificationSummary; metrics: Record<string, ReportMetric>
   summary_result?: ReportResult; request_results: ReportResult[]
-  verification_checks?: { id: "cache_io" | "cache_ttl"; verification: VerificationSummary }[]
+  verification_checks?: { id: CacheVerificationCheckID; verification: VerificationSummary; presence_only?: boolean }[]
 }
 export interface ReportEntryDetail {
   performance?: QuickPerformanceReport
@@ -312,13 +318,15 @@ function parseCase(value: unknown): ReportCaseDetail {
     ...(value.verification_checks === undefined ? {} : { verification_checks: parseVerificationChecks(value.verification_checks) }) }
 }
 function parseVerificationChecks(value: unknown): NonNullable<ReportCaseDetail["verification_checks"]> {
-  if (!Array.isArray(value) || value.length !== 2) throw invalidReport()
+  if (!Array.isArray(value) || value.length < 2 || value.length > 3) throw invalidReport()
   const checks = value.map(item => {
-    if (!isRecord(item) || (item.id !== "cache_io" && item.id !== "cache_ttl")) throw invalidReport()
-    return { id: item.id, verification: parseSummary(item.verification) }
+    if (!isRecord(item) || !isCacheVerificationCheckID(item.id) ||
+      (item.presence_only !== undefined && (item.id !== "cache_msh_headers" || item.presence_only !== true))) throw invalidReport()
+    return { id: item.id, verification: parseSummary(item.verification), ...(item.presence_only === true ? { presence_only: true } : {}) }
   })
-  if (checks[0].id === checks[1].id) throw invalidReport()
-  return checks as NonNullable<ReportCaseDetail["verification_checks"]>
+  const ids = new Set(checks.map(check => check.id))
+  if (ids.size !== checks.length || !ids.has("cache_io") || !ids.has("cache_ttl")) throw invalidReport()
+  return checks
 }
 function parseSummary(value: unknown): VerificationSummary {
   if (!isRecord(value) || !isVerificationStatus(value.status) ||

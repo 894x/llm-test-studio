@@ -3,7 +3,7 @@
   "id": "672f0f6b-119b-5c19-807f-028c3ce22317",
   "key": "kimi.cache.headers.write_default_stream",
   "name": "Kimi 缓存 usage 与响应头 · default · 写入对账 · 流式",
-  "description": "T3；kimi-k3 / kimi-k3.1-pro；省略 TTL 使用默认 5m，要求正写入；JSON/SSE 同时兼容完整 MSH 响应头与 usage.cache_creation 两种 TTL 证据，Chat/Responses 也接受 details 下扩展。至少一套分项可核对；所有已返回分项必须与原生写入总量及请求档位一致，零值非选中档可省略。Chat/Responses 首轮可省略零读取字段但保留未返回事实；明确命中且完整 TTL 分项证明零写入时，可省略零写入字段。检查输入/输出/读写非负整数及原有上界，不检查 total_tokens；SSE 要求正常终态与最终 usage。缓存读写与 TTL 分别判定：TTL 证据缺失记未验证，数值冲突或非法仍失败。兼容验收不伪造缺失字段或推断未知 TTL，不认证物理缓存身份。付费专项、非默认。来源：https://platform.kimi.com/docs/guide/context-caching；2026-11-12。",
+  "description": "T3；kimi-k3 / kimi-k3.1-pro；省略 TTL 使用默认 5m，要求正写入；JSON/SSE 每一步都必须返回合法的 5m 和 1h MSH 缓存写入响应头，数值须与原生 usage 及请求档位对账；TTL 可使用响应头或 usage.cache_creation 分项对账，Chat/Responses 也接受 details 下扩展。所有已返回分项必须与原生写入总量及请求档位一致，零值非选中档可省略。Chat/Responses 首轮可省略零读取字段但保留未返回事实；明确命中且完整 TTL 分项证明零写入时，可省略零写入字段。检查输入/输出/读写非负整数及原有上界，不检查 total_tokens；SSE 要求正常终态与最终 usage。缓存读写与 TTL 分别判定：TTL 证据缺失记未验证，数值冲突或非法仍失败。兼容验收不伪造缺失字段或推断未知 TTL，不认证物理缓存身份。付费专项、非默认。来源：https://platform.kimi.com/docs/guide/context-caching；2026-11-12。",
   "dimension": "cache",
   "enabled": true,
   "default": false,
@@ -736,6 +736,45 @@
               "failure_status": "indeterminate"
             }
           ]
+        },
+        {
+          "id": "cache_msh_headers",
+          "all": [
+            {
+              "id": "msh_0_header_5m_exists",
+              "source": "requests",
+              "pointer": "/0/metrics/msh_usage_cache_write_tokens_5m",
+              "operator": "exists"
+            },
+            {
+              "id": "msh_0_header_1h_exists",
+              "source": "requests",
+              "pointer": "/0/metrics/msh_usage_cache_write_tokens_1h",
+              "operator": "exists"
+            },
+            {
+              "id": "msh_0_header_5m_matches",
+              "any": [
+                {
+                  "id": "msh_0_header_5m_matches_reported",
+                  "source": "requests",
+                  "pointer": "/0/metrics/msh_usage_cache_write_tokens_5m",
+                  "operator": "equals",
+                  "expected_from": {
+                    "source": "requests",
+                    "pointer": "/0/response/usage/prompt_tokens_details/cache_write_tokens"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "msh_0_header_1h_matches",
+              "source": "requests",
+              "pointer": "/0/metrics/msh_usage_cache_write_tokens_1h",
+              "operator": "equals",
+              "value": 0
+            }
+          ]
         }
       ]
     },
@@ -1445,6 +1484,45 @@
               "failure_status": "indeterminate"
             }
           ]
+        },
+        {
+          "id": "cache_msh_headers",
+          "all": [
+            {
+              "id": "msh_0_header_5m_exists",
+              "source": "requests",
+              "pointer": "/0/metrics/msh_usage_cache_write_tokens_5m",
+              "operator": "exists"
+            },
+            {
+              "id": "msh_0_header_1h_exists",
+              "source": "requests",
+              "pointer": "/0/metrics/msh_usage_cache_write_tokens_1h",
+              "operator": "exists"
+            },
+            {
+              "id": "msh_0_header_5m_matches",
+              "any": [
+                {
+                  "id": "msh_0_header_5m_matches_reported",
+                  "source": "requests",
+                  "pointer": "/0/metrics/msh_usage_cache_write_tokens_5m",
+                  "operator": "equals",
+                  "expected_from": {
+                    "source": "requests",
+                    "pointer": "/0/response/usage/input_tokens_details/cache_write_tokens"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "msh_0_header_1h_matches",
+              "source": "requests",
+              "pointer": "/0/metrics/msh_usage_cache_write_tokens_1h",
+              "operator": "equals",
+              "value": 0
+            }
+          ]
         }
       ]
     },
@@ -1902,6 +1980,45 @@
                 }
               ],
               "failure_status": "indeterminate"
+            }
+          ]
+        },
+        {
+          "id": "cache_msh_headers",
+          "all": [
+            {
+              "id": "msh_0_header_5m_exists",
+              "source": "requests",
+              "pointer": "/0/metrics/msh_usage_cache_write_tokens_5m",
+              "operator": "exists"
+            },
+            {
+              "id": "msh_0_header_1h_exists",
+              "source": "requests",
+              "pointer": "/0/metrics/msh_usage_cache_write_tokens_1h",
+              "operator": "exists"
+            },
+            {
+              "id": "msh_0_header_5m_matches",
+              "any": [
+                {
+                  "id": "msh_0_header_5m_matches_reported",
+                  "source": "requests",
+                  "pointer": "/0/metrics/msh_usage_cache_write_tokens_5m",
+                  "operator": "equals",
+                  "expected_from": {
+                    "source": "requests",
+                    "pointer": "/0/response/usage/cache_creation_input_tokens"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "msh_0_header_1h_matches",
+              "source": "requests",
+              "pointer": "/0/metrics/msh_usage_cache_write_tokens_1h",
+              "operator": "equals",
+              "value": 0
             }
           ]
         }

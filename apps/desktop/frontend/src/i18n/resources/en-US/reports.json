@@ -503,6 +503,7 @@
     "headersNotRecorded": "Headers were not captured for this record.",
     "headersTruncated": "Some headers were omitted due to size limits.",
     "partialPassed": "Warning",
+    "mshPresenceOnly": "MSH headers present (legacy check)",
     "cacheChecks": {
       "cache_io": {
         "passed": "Cache reads/writes passed",
@@ -515,6 +516,12 @@
         "failed": "TTL reconciliation failed",
         "indeterminate": "Insufficient TTL evidence",
         "not_applicable": "TTL not evaluated"
+      },
+      "cache_msh_headers": {
+        "passed": "MSH response headers passed",
+        "failed": "MSH response headers failed",
+        "indeterminate": "MSH response headers unverified",
+        "not_applicable": "MSH response headers not evaluated"
       }
     }
   }

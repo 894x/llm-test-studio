@@ -349,9 +349,9 @@ func localizedCaseSeverity(severity domain.CaseSeverity, locale string) string {
 func localizedVerdict(verdict, locale string) string {
 	if locale == "en-US" {
 		switch verdict {
-		case "pass":
+		case "pass", "passed":
 			return "Passed"
-		case "fail":
+		case "fail", "failed":
 			return "Failed"
 		case "cancelled":
 			return "Cancelled"
@@ -359,10 +359,12 @@ func localizedVerdict(verdict, locale string) string {
 		return verdict
 	}
 	switch verdict {
-	case "pass":
+	case "pass", "passed":
 		return "通过"
 	case "fail":
 		return "未通过"
+	case "failed":
+		return "失败"
 	case "cancelled":
 		return "已取消"
 	}

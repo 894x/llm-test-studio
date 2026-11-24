@@ -1,5 +1,22 @@
 # Kimi 缓存写入与用量对账
 
+## 综合对账的 MSH 响应头验收
+
+Kimi K3 / K3.1 Pro 的综合对账套件有 10 个用例，覆盖 Chat、Responses 和
+Messages 的 JSON/SSE 响应。每个用例新增独立的 `cache_msh_headers` 必过项。
+每一步响应都必须分别包含单个合法的 `Msh-Usage-Cache-Write-Tokens-5m` 和
+`Msh-Usage-Cache-Write-Tokens-1h`。显式零通过存在性校验。缺少任一档、重复、
+负数或其他不合法值时，MSH 检查失败。MSH 还需要匹配该步的原生 usage
+写入量和请求档位。例如，默认写入报告 3712 个写入 token 时，5m、1h
+响应头值 0/0 判失败。重复读取且没有重写时，合法的 0/0 仍可通过。
+TTL 对账继续检查已返回的 body 分项及各来源一致性。旧报告的存在性结论
+显示为「MSH 头齐全（旧规则）」。
+
+缓存读写和 TTL 保留各自的结论。仅凭 body 分项可以通过 TTL 对账，但综合用例
+仍须通过 MSH 检查。独立的 6 分钟延迟验证继续按下文的双来源证据规则验收。
+MSH 必返是本套件的渠道扩展验收要求。缓存计数及 TTL 的官方字段见
+[Kimi 缓存文档](https://platform.kimi.com/docs/guide/context-caching)（2026-11-24 查阅）。
+
 ## 分项结论与缺少 TTL 证据
 
 现有 12 个 Case 的三协议 JSON/SSE 定义分别输出 `cache_io`（缓存读写）和
@@ -29,8 +46,7 @@ body 分项可由完整 header 佐证；没有任何完整来源才是证据不�
 
 范围为现有综合对账 10 Case 与延迟验证 2 Case，三协议 JSON/SSE，目标为
 `kimi-k3` / `kimi-k3.1-pro`；来源于 2026-11-12 核对的
-[官方缓存文档](https://platform.kimi.com/docs/guide/context-caching)。下文早期章节的
-MSH 必返、首轮零读取必返及仅 SSE 可省略零写入限制由本节替代。
+[官方缓存文档](https://platform.kimi.com/docs/guide/context-caching)。本节描述分项证据、首轮零读取及省略零写入的规则；综合套件另外执行上文的 MSH 必过检查。
 
 | 协议 | 原生写入总量 | TTL 证据 |
 | --- | --- | --- |

@@ -503,6 +503,7 @@
     "headersNotRecorded": "此记录未采集头信息。",
     "headersTruncated": "部分头信息因大小限制未记录。",
     "partialPassed": "警告",
+    "mshPresenceOnly": "MSH 头齐全（旧规则）",
     "cacheChecks": {
       "cache_io": {
         "passed": "缓存读写通过",
@@ -515,6 +516,12 @@
         "failed": "TTL 对账失败",
         "indeterminate": "TTL 证据不足",
         "not_applicable": "TTL 未评估"
+      },
+      "cache_msh_headers": {
+        "passed": "MSH 响应头通过",
+        "failed": "MSH 响应头失败",
+        "indeterminate": "MSH 响应头未验证",
+        "not_applicable": "MSH 响应头未评估"
       }
     }
   }

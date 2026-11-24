@@ -18,6 +18,21 @@ it("shows cache IO success and missing TTL as separate authoritative warning out
   expect(screen.queryByText("失败")).not.toBeInTheDocument()
 })
 
+it("displays the MSH result beside cache IO and TTL in the execution header", () => {
+  const result: ReportResult = { id: "msh", execution_status: "completed", metrics: {},
+    verification: { status: "failed", assertions: [
+      { id: "cache_io", status: "passed" },
+      { id: "cache_ttl", status: "passed" },
+      { id: "cache_msh_headers", status: "failed" },
+    ] },
+  }
+  render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ExecutionDetails results={[result]} /></I18nextProvider>)
+  const summary = screen.getByText("MSH 响应头失败").closest("summary")!
+  expect(within(summary).getByText("缓存读写通过")).toHaveClass("text-outcome-pass")
+  expect(within(summary).getByText("TTL 对账通过")).toHaveClass("text-outcome-pass")
+  expect(within(summary).getByText("MSH 响应头失败")).toHaveClass("text-destructive")
+})
+
 it("places separate recorded request and response headers before the bodies", () => {
   const result: ReportResult = { id: "headers", execution_status: "completed", metrics: {},
     verification: { status: "passed", assertions: [] }, observation: {
