@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/credentials"
@@ -42,10 +43,12 @@ type Preparer struct {
 
 // PreparedComparison freezes the whole group before any child is accepted.
 type PreparedComparison struct {
-	Meta  domain.EntityMeta        `json:"meta"`
-	Plan  domain.EntityRevisionRef `json:"plan"`
-	Model domain.EntityRevisionRef `json:"model"`
-	Runs  []runs.PreparedRun       `json:"runs"`
+	Meta               domain.EntityMeta        `json:"meta"`
+	Plan               domain.EntityRevisionRef `json:"plan"`
+	Model              domain.EntityRevisionRef `json:"model"`
+	Runs               []runs.PreparedRun       `json:"runs"`
+	ProtocolComparison bool                     `json:"protocol_comparison,omitempty"`
+	ProtocolSuite      bool                     `json:"protocol_suite,omitempty"`
 }
 
 func NewPreparer(dependencies PreparationDependencies) (*Preparer, error) {
@@ -72,6 +75,9 @@ func (preparer *Preparer) Build(
 	}
 	if err := ctx.Err(); err != nil {
 		return PreparedComparison{}, nil, err
+	}
+	if command.Protocols != nil {
+		return preparer.buildProtocols(ctx, command)
 	}
 	validIDs := domain.IsUUID(command.PlanID) && domain.IsUUID(command.ModelID)
 	if !validIDs || len(command.ChannelIDs) < 2 {
@@ -171,7 +177,12 @@ func (prepared PreparedComparison) Comparison() (domain.Comparison, error) {
 func (prepared PreparedComparison) FrozenRuns() (domain.Comparison, []domain.Run, error) {
 	owned := make([]domain.Run, 0, len(prepared.Runs))
 	refs := make([]domain.ComparisonRunRef, 0, len(prepared.Runs))
+	if prepared.ProtocolSuite && !prepared.ProtocolComparison {
+		return domain.Comparison{}, nil, ErrNotReady
+	}
 	var definitions []byte
+	var first *domain.RunSnapshot
+	casePins := map[string]uint64{}
 	for _, input := range prepared.Runs {
 		run, err := domain.NewRun(input.Meta, input.PlanID, input.Snapshot)
 		if err != nil {
@@ -182,6 +193,27 @@ func (prepared PreparedComparison) FrozenRuns() (domain.Comparison, []domain.Run
 		wrongScope := snapshot.Plan != prepared.Plan || snapshot.Model.EntityRevisionRef != prepared.Model
 		if wrongScope || snapshot.QuickTask != nil {
 			return domain.Comparison{}, nil, ErrNotReady
+		}
+		refs = append(refs, prepared.RunRef(input))
+		if prepared.ProtocolComparison {
+			for _, entry := range snapshot.Entries {
+				for _, ref := range entry.Cases {
+					if revision, found := casePins[ref.CaseID]; found && revision != ref.Revision {
+						return domain.Comparison{}, nil, ErrNotReady
+					}
+					casePins[ref.CaseID] = ref.Revision
+				}
+			}
+			if prepared.ProtocolSuite && (len(snapshot.Entries) != 1 || snapshot.Entries[0].TargetKind != domain.PlanTargetSuite) {
+				return domain.Comparison{}, nil, ErrNotReady
+			}
+			if first == nil {
+				first = &snapshot
+			}
+			if !sameProtocolComparisonPlan(*first, snapshot) {
+				return domain.Comparison{}, nil, ErrNotReady
+			}
+			continue
 		}
 		frozen, err := json.Marshal(struct {
 			Plan    *domain.Plan              `json:"plan"`
@@ -195,12 +227,88 @@ func (prepared PreparedComparison) FrozenRuns() (domain.Comparison, []domain.Run
 			return domain.Comparison{}, nil, ErrNotReady
 		}
 		definitions = frozen
-		refs = append(refs, domain.ComparisonRunRef{
-			Channel: snapshot.Channel.EntityRevisionRef, RunID: input.Meta.ID,
-		})
 	}
 	comparison, err := domain.NewComparison(prepared.Meta, prepared.Plan, prepared.Model, refs)
 	return comparison, owned, err
+}
+
+func (prepared PreparedComparison) RunRef(input runs.PreparedRun) domain.ComparisonRunRef {
+	ref := domain.ComparisonRunRef{Channel: input.Snapshot.Channel.EntityRevisionRef, RunID: input.Meta.ID}
+	if prepared.ProtocolComparison {
+		ref.Protocol = input.Snapshot.Channel.Protocol
+		ref.Suite = prepared.ProtocolSuite
+	}
+	return ref
+}
+
+func (preparer *Preparer) buildProtocols(
+	ctx context.Context,
+	command StartCommand,
+) (PreparedComparison, map[string]*credentials.Lease, error) {
+	if command.PlanID != "" || command.ModelID != "" || len(command.ChannelIDs) != 0 {
+		return PreparedComparison{}, nil, ErrInvalid
+	}
+	targets, ok := preparer.targets.(interface {
+		BuildProtocolTargets(context.Context, runs.ProtocolComparisonCommand, domain.EntityMeta) (
+			[]runs.PreparedRun, map[string]*credentials.Lease, error,
+		)
+	})
+	if !ok {
+		return PreparedComparison{}, nil, ErrNotReady
+	}
+	meta, err := preparer.metaFactory(preparer.clock.Now())
+	if err != nil {
+		return PreparedComparison{}, nil, err
+	}
+	inputs, leases, err := targets.BuildProtocolTargets(ctx, *command.Protocols, meta)
+	if err != nil {
+		return PreparedComparison{}, nil, err
+	}
+	if len(inputs) != 3 {
+		closePreparedLeases(leases)
+		return PreparedComparison{}, nil, ErrNotReady
+	}
+	first := inputs[0].Snapshot
+	prepared := PreparedComparison{
+		Meta: meta, Plan: first.Plan, Model: first.Model.EntityRevisionRef,
+		Runs: inputs, ProtocolComparison: true, ProtocolSuite: command.Protocols.Suite != nil,
+	}
+	if _, err := prepared.Comparison(); err != nil {
+		closePreparedLeases(leases)
+		return PreparedComparison{}, nil, err
+	}
+	return prepared, leases, nil
+}
+
+func sameProtocolComparisonPlan(first, next domain.RunSnapshot) bool {
+	sameChannel := first.Channel.ID == next.Channel.ID
+	if sameChannel && first.Channel.Revision != next.Channel.Revision {
+		return false
+	}
+	if first.Model.Name != next.Model.Name || first.Channel.UpstreamModelName != next.Channel.UpstreamModelName ||
+		first.Channel.BaseURL != next.Channel.BaseURL || first.Channel.Name != next.Channel.Name ||
+		(first.QuickTask == nil) != (next.QuickTask == nil) {
+		return false
+	}
+	left, right := first.PlanDocument, next.PlanDocument
+	if left.EntityMeta != right.EntityMeta || left.Name != right.Name || left.Seed != right.Seed ||
+		len(left.Entries) != len(right.Entries) {
+		return false
+	}
+	for index, source := range left.Entries {
+		target := right.Entries[index]
+		if source.TargetKind == domain.PlanTargetSuite && target.TargetKind == domain.PlanTargetSuite {
+			source.TargetID, target.TargetID = "", ""
+			// A suite's effective concurrency is capped by its case count.
+			if source.Load.Mode == domain.LoadSingle && target.Load.Mode == domain.LoadSingle {
+				source.Load.Concurrency, target.Load.Concurrency = 0, 0
+			}
+		}
+		if !reflect.DeepEqual(source, target) {
+			return false
+		}
+	}
+	return true
 }
 
 func closePreparedLeases(leases map[string]*credentials.Lease) {

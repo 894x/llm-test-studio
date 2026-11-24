@@ -30,6 +30,7 @@ const (
 	scopeMaintenanceRecord
 	scopeBoolean
 	scopeHeaderEvidenceBoolean
+	scopeProtocolComparisonBoolean
 )
 
 // Scan collection counts before decoding typed slices. A bounded byte body can
@@ -51,8 +52,11 @@ func scanValue(decoder *json.Decoder, scope documentScope) error {
 	if err != nil {
 		return invalid("body")
 	}
-	if scope == scopeBoolean || scope == scopeHeaderEvidenceBoolean {
+	if scope == scopeBoolean || scope == scopeHeaderEvidenceBoolean || scope == scopeProtocolComparisonBoolean {
 		if _, ok := token.(bool); !ok {
+			if scope == scopeProtocolComparisonBoolean {
+				return invalid("spec.comparison")
+			}
 			if scope == scopeHeaderEvidenceBoolean {
 				return invalid("http_header_evidence")
 			}
@@ -140,8 +144,11 @@ func childScope(parent documentScope, name string) documentScope {
 			return scopeRun
 		}
 	case scopeComparison:
-		if name == "runs" {
+		switch name {
+		case "runs":
 			return scopeRuns
+		case "protocol_comparison", "protocol_suite":
+			return scopeProtocolComparisonBoolean
 		}
 	}
 	return scopeUnknown
@@ -185,7 +192,7 @@ func envelopeFields(scope documentScope) []string {
 	case scopePayload:
 		return []string{"run", "performance", "comparison"}
 	case scopeComparison:
-		return []string{"meta", "plan", "model", "runs"}
+		return []string{"meta", "plan", "model", "runs", "protocol_comparison", "protocol_suite"}
 	case scopeAssetItem:
 		return []string{"ref", "sha256", "size", "media_type"}
 	case scopeSecretItem:

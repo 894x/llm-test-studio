@@ -60,10 +60,7 @@ func (service *Refresher) Refresh(ctx context.Context, comparisonID string) (dom
 			return domain.Comparison{}, runErr
 		}
 		snapshot := run.Snapshot()
-		matchesPlan := snapshot.Plan == comparison.Plan()
-		matchesModel := snapshot.Model.EntityRevisionRef == comparison.Model()
-		matchesChannel := snapshot.Channel.EntityRevisionRef == item.Channel
-		if !matchesPlan || !matchesModel || !matchesChannel {
+		if !comparison.MatchesRun(item, snapshot) {
 			return domain.Comparison{}, ErrNotReady
 		}
 		switch run.Status() {

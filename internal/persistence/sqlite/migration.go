@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	currentSchemaName    = "0004_history_recycle"
+	currentSchemaName    = "0005_protocol_comparison"
 	defaultBusyTime      = 5 * time.Second
-	CurrentSchemaVersion = 4
+	CurrentSchemaVersion = 5
 )
 
 // CurrentSchemaIdentity returns the single operational schema marker.
@@ -134,6 +134,9 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 		if err := recordV3Migration(ctx, conn, options.AppVersion); err != nil {
 			return err
 		}
+		if err := recordV4Migration(ctx, conn, options.AppVersion); err != nil {
+			return err
+		}
 		if err := recordCurrentMigration(ctx, conn, options.AppVersion); err != nil {
 			return err
 		}
@@ -150,6 +153,11 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 	}
 	if state.version >= 1 && state.version <= 3 {
 		if err := upgradeHistoryRecycle(ctx, conn, path, options, state.version == 3); err != nil {
+			return err
+		}
+	}
+	if state.version >= 1 && state.version <= 4 {
+		if err := upgradeProtocolComparison(ctx, conn, path, options, state.version == 4); err != nil {
 			return err
 		}
 	}

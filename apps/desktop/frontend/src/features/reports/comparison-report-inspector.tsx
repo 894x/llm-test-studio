@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator"
 import { InspectorHeader, InspectorRow } from "@/features/shell/page-frame"
 import type { ComparisonSummary } from "@/features/comparisons/data"
 import type { ReportSnapshot } from "./data"
-import { channelVerdict } from "./report-list-items"
+import { channelVerdict, comparisonTargetKey, comparisonTargetLabel } from "./report-list-items"
 
 export function ComparisonReportInspector({ comparison, snapshot, onOpen, onRerun, disabled = false, exportControls, recycleAction }: {
   comparison: ComparisonSummary
@@ -36,7 +36,7 @@ export function ComparisonReportInspector({ comparison, snapshot, onOpen, onReru
   }
   const rerunLabel = tr(pending ? "shortcuts.starting" : "shortcuts.rerun")
   return <>
-    <InspectorHeader title={t("comparison.title")} subtitle={comparison.model_name}
+    <InspectorHeader title={t(comparison.channels[0]?.protocol ? "protocolComparison.title" : "comparison.title")} subtitle={comparison.model_name}
       trailing={<Badge variant="secondary">{t(`status.${comparison.status}`)}</Badge>} />
     {onRerun || onOpen || recycleAction ? <TooltipProvider><div className="space-y-2 border-y border-divider px-4 py-3">
       <div className="flex items-center gap-2">
@@ -50,7 +50,7 @@ export function ComparisonReportInspector({ comparison, snapshot, onOpen, onReru
     </div></TooltipProvider> : null}
     <dl className="space-y-3 px-4 py-2">
       <InspectorRow label={t("inspector.plan")} value={comparison.plan_name} />
-      {comparison.channels.map(channel => <InspectorRow key={channel.channel_id} label={channel.channel_name}
+      {comparison.channels.map(channel => <InspectorRow key={comparisonTargetKey(channel)} label={comparisonTargetLabel(channel)}
         value={channelVerdict(channel, t, snapshot.reports.find(report => report.run_id === channel.run_id))} />)}
     </dl>
     <Separator />

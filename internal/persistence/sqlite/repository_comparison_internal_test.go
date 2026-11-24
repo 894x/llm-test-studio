@@ -63,8 +63,8 @@ func TestComparisonReferenceErrorsPreserveCancellation(t *testing.T) {
 					}}}, nil
 				case strings.Contains(query, "FROM comparison_runs"):
 					return &comparisonQueryRows{values: [][]driver.Value{
-						{int64(0), ref(3).ID, int64(1), ref(4).ID},
-						{int64(1), ref(5).ID, int64(1), ref(6).ID},
+						{int64(0), ref(3).ID, int64(1), ref(4).ID, ""},
+						{int64(1), ref(5).ID, int64(1), ref(6).ID, ""},
 					}}, nil
 				case strings.Contains(query, "FROM execution_runs"):
 					referenceQueried = true

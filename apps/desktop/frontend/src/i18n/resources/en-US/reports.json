@@ -1,4 +1,15 @@
 {
+  "protocolComparison": {
+    "title": "Protocol comparison",
+    "description": "Compare outcomes across three protocols by plan item and case.",
+    "counts": "Passed {{passed}} · Failed {{failed}} · Not run {{not_run}}",
+    "otherCounts": "Unverified {{indeterminate}} · Not applicable {{not_applicable}}",
+    "openReport": "Open original report",
+    "notApplicable": "Not applicable",
+    "previous": "Previous protocol",
+    "next": "Next protocol",
+    "position": "Protocol {{current}} / {{total}}"
+  },
   "filters": {
     "label": "Report filters",
     "kind": "Report type",

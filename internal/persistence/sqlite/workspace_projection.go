@@ -245,6 +245,8 @@ SELECT json_object(
     'Meta',json_object('id',run.id,'schema_version',run.schema_version,'revision',run.current_revision,
       'created_at',run.created_at,'updated_at',run.updated_at),
     'JobID',COALESCE(run_owner_stats.job_id,''),
+    'ProtocolComparisonID',COALESCE((SELECT child.comparison_id FROM comparison_runs child
+        WHERE child.run_id=run.id AND child.protocol<>'' ORDER BY child.comparison_revision DESC LIMIT 1),''),
     'Plan',json_object('id',run.plan_id,'revision',run.plan_revision),
     'PlanName',json_extract(run.snapshot,'$.plan_document.name'),
     'Model',json_object('id',json_extract(run.snapshot,'$.model.id'),'revision',json_extract(run.snapshot,'$.model.revision'),

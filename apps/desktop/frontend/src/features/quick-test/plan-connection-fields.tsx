@@ -15,7 +15,7 @@ import { ModelIcon, ProtocolIcon } from "./model-icon"
 import { SaveChannelSheet } from "./save-channel-sheet"
 import { QuickTestField } from "./quick-test-field"
 
-export function PlanConnectionFields({ connection, onChange, catalog, disabled, ready, errors, status, onSaveChannel, idPrefix = "plan-test", supportedProtocols }: {
+export function PlanConnectionFields({ connection, onChange, catalog, disabled, ready, errors, status, onSaveChannel, idPrefix = "plan-test", supportedProtocols, compareProtocols = false }: {
   connection: PlanRunConnection
   onChange: (patch: Partial<PlanRunConnection>) => void
   catalog: CatalogSnapshot
@@ -25,6 +25,7 @@ export function PlanConnectionFields({ connection, onChange, catalog, disabled, 
   status?: React.ReactNode
   idPrefix?: string
   supportedProtocols?: readonly string[]
+  compareProtocols?: boolean
   onSaveChannel?: (command: SaveQuickTestTargetCommand) => Promise<SavedQuickTestTarget>
 }) {
   const { t } = useTranslation("quickTest")
@@ -49,14 +50,14 @@ export function PlanConnectionFields({ connection, onChange, catalog, disabled, 
           onValueChange={value => { const selected = channels.find(item => item.id === value); onChange({ channel_id: selected?.id ?? "", base_url: selected?.base_url ?? address, api_key: "", credential_run_id: undefined }) }} />
       </QuickTestField>
       <QuickTestField id={id("base_url")} label={t("address")} error={errors.base_url} className="col-span-3 row-span-2 grid grid-rows-subgrid"
-        labelHint={<p className="text-[11px] font-normal text-muted-foreground">{t("task.endpointHint")}</p>}>
-        <ConnectionURLInput id={id("base_url")} value={address} suffix={suffix} disabled={disabled || !!connection.channel_id}
+        labelHint={<p className="text-[11px] font-normal text-muted-foreground">{t(compareProtocols ? "protocolComparison.endpointHint" : "task.endpointHint")}</p>}>
+        <ConnectionURLInput id={id("base_url")} value={address} suffix={compareProtocols ? "" : suffix} disabled={disabled || !!connection.channel_id}
           placeholder="https://api.example.com" aria-invalid={!!errors.base_url} aria-describedby={errors.base_url ? `${id("base_url")}-error` : undefined}
           onChange={event => onChange({ base_url: event.target.value, api_key: "", credential_run_id: undefined })} />
       </QuickTestField>
     </div>
     <div className="grid min-w-0 grid-cols-4 items-start gap-4">
-      <QuickTestField id={id("model")} label={t("model.label")} error={errors.model}>
+      <QuickTestField id={id("model")} label={t("model.label")} error={errors.model} className={compareProtocols ? "col-span-2" : undefined}>
         <Autocomplete modal={false} openOnInputClick items={models} value={connection.model} onValueChange={value => onChange({ model: value ?? "" })}>
           <AutocompleteInput id={id("model")} leading={<ModelIcon model={connection.model} />} aria-label={t("model.label")} value={connection.model}
             placeholder={t("model.placeholder")} disabled={disabled} aria-invalid={!!errors.model}
@@ -66,11 +67,11 @@ export function PlanConnectionFields({ connection, onChange, catalog, disabled, 
           </AutocompleteContent>
         </Autocomplete>
       </QuickTestField>
-      <QuickTestField id={id("protocol")} label={t("protocol")}>
+      {!compareProtocols ? <QuickTestField id={id("protocol")} label={t("protocol")}>
         <SearchableSelect id={id("protocol")} value={connection.protocol} disabled={disabled} className="w-full"
           options={protocolOptions.filter(([value]) => !supportedProtocols || supportedProtocols.includes(value)).map(([value, label]) => ({ value, label, icon: <ProtocolIcon protocol={value} /> }))}
           onValueChange={value => onChange({ protocol: value as PlanRunConnection["protocol"], credential_run_id: undefined })} />
-      </QuickTestField>
+      </QuickTestField> : null}
       <QuickTestField id={id("api_key")} label="API Key" error={errors.api_key} className="col-span-2">
         <InputGroup><InputGroupInput id={id("api_key")} type="password" autoComplete="off" value={connection.api_key ?? ""}
           disabled={disabled || !!connection.channel_id || !!connection.credential_run_id}

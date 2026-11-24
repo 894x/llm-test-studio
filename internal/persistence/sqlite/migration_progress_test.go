@@ -33,7 +33,7 @@ func TestMigrationReportsRealStagesForFreshUpgradeAndRepeatOpen(t *testing.T) {
 			if historical {
 				want = []string{
 					"checking", "checking", "backing_up", "migrating", "validating",
-					"migrating", "migrating", "validating", "completed",
+					"migrating", "migrating", "migrating", "validating", "completed",
 				}
 			}
 			if !slices.Equal(stages, want) {

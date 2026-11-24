@@ -18,6 +18,56 @@ function fixture() {
 }
 
 describe("report comparison", () => {
+  it("shows one verdict per protocol and keeps request metrics inside the expanded case", async () => {
+    const { comparison } = fixture()
+    const protocols = ["openai-chat", "openai-responses", "anthropic-messages"] as const
+    const reports = protocols.map((protocol, index) => {
+      const detail = structuredClone(comparison.reports[0])
+      if (detail.source !== "run") throw new Error("Expected a case report")
+      detail.report.id = reportID(50 + index)
+      detail.report.protocol = protocol
+      const item = detail.entries[0].cases[0]
+      item.request_results[0].metrics.ttft_ms = 18
+      item.request_results[0].metrics.tpot_ms = 3
+      item.verification_checks = ["cache_io", "cache_ttl", "cache_msh_headers"].map((id, check) => ({
+        id: id as NonNullable<typeof item.verification_checks>[number]["id"],
+        verification: { status: check < 2 ? "failed" : "passed", passed: check === 2 ? 1 : 0,
+          failed: check < 2 ? 1 : 0, observed: 0, indeterminate: 0 },
+        ...(check === 2 ? { presence_only: true } : {}),
+      }))
+      return detail
+    })
+    const ids = reports.map(comparisonReportID)
+    comparison.reports = reports
+    comparison.baseline_id = ids[0]
+    comparison.protocol_summary = protocols.map(protocol => ({ protocol, passed: 0, failed: 1, not_run: 0, indeterminate: 0, not_applicable: 0 }))
+    comparison.rows.forEach(row => { row.cells = ids.map(id => ({ ...row.cells[0], report_id: id })) })
+    const user = userEvent.setup()
+    const visual = vi.fn<NonNullable<React.ComponentProps<typeof ReportComparisonView>["exportVisualReport"]>>(async element => {
+      expect(element.style.width).toBe("1200px")
+      expect(element.querySelectorAll("thead:first-of-type th").length).toBeGreaterThanOrEqual(4)
+      return { blob: new Blob(["html"]), filename: "comparison.html", mediaType: "text/html" }
+    })
+    const save = vi.fn(async () => true)
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportComparisonView reportIDs={ids} compareReports={async () => comparison}
+      saveReportExport={save} copyReportPNG={vi.fn()} exportVisualReport={visual} /></I18nextProvider>)
+    const table = await screen.findByRole("table", { name: "报告对比结果" })
+    expect(within(table).getAllByRole("columnheader").map(header => header.textContent?.trim())).toEqual([
+      "用例名称", "OpenAI Chat", "OpenAI Responses", "Anthropic Messages",
+    ])
+    const row = within(table).getByRole("button", { name: "Reject invalid parameter" }).closest("tr")!
+    expect(within(row).getAllByRole("cell")).toHaveLength(4)
+    expect(within(table).queryByText(/MSH|TTL|TTFT|TPOT/)).toBeNull()
+    await user.click(within(row).getByRole("button", { name: "查看OpenAI Responses的用例详情：Reject invalid parameter" }))
+    const details = screen.getByRole("group", { name: /^OpenAI Responses/ })
+    expect(within(details).getByText("TTFT")).toBeInTheDocument()
+    expect(within(details).getByText("TPOT")).toBeInTheDocument()
+    expect(within(details).queryByText("MSH 头齐全（旧规则）")).toBeNull()
+    await user.click(screen.getByRole("button", { name: "报告导出" }))
+    await user.click(screen.getByRole("button", { name: "HTML" }))
+    await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  })
+
   it("accepts sixteen reports and shares the severity column without losing differing severities", async () => {
     const data = fixture(); const user = userEvent.setup()
     const reports = Array.from({ length: 16 }, (_, index) => {

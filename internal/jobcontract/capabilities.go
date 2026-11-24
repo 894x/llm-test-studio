@@ -17,6 +17,7 @@ const FeatureJSONPrefixAssertions = "json_prefix_assertions"
 const FeatureSequenceSteps = "sequence_steps"
 const FeatureAssertionFailureStatus = "assertion_failure_status"
 const FeatureHTTPHeaderEvidence = "http_header_evidence"
+const FeatureProtocolComparison = "protocol_comparison"
 
 // SupportsJob checks only the current task requirements, independent of client
 // release and build. Report-transfer requirements may be stricter for a caller.
@@ -28,6 +29,9 @@ func (capabilities RunnerCapabilities) SupportsJob(spec JobSpec) bool {
 	}
 	protocols := []string{}
 	features := []string{}
+	if spec.Kind == KindComparison && spec.Spec.Comparison.ProtocolComparison {
+		features = append(features, FeatureProtocolComparison)
+	}
 	if spec.HTTPHeaderEvidence {
 		features = append(features, FeatureHTTPHeaderEvidence)
 	}

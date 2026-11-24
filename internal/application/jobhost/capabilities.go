@@ -28,6 +28,7 @@ func CoreCapabilities() jobcontract.RunnerCapabilities {
 			jobcontract.FeatureSequenceSteps,
 			jobcontract.FeatureAssertionFailureStatus,
 			jobcontract.FeatureHTTPHeaderEvidence,
+			jobcontract.FeatureProtocolComparison,
 		},
 	}
 }

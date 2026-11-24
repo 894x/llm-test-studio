@@ -42,7 +42,7 @@ import { MAX_COMPARISON_REPORTS, type CompareReports } from "./report-comparison
 import { ReportComparisonView } from "./report-comparison-view"
 import { ComparisonReportInspector } from "./comparison-report-inspector"
 import { ReportExportControls } from "./report-export-controls"
-import { channelVerdict, reportFilterValues, reportListItems } from "./report-list-items"
+import { channelVerdict, comparisonTargetLabel, reportFilterValues, reportListItems } from "./report-list-items"
 import { blobToBase64 } from "./report-export-encoding"
 import { copyReportPNGToClipboard } from "./report-clipboard"
 import { ExecutionOriginDetails } from "./execution-origin-details"
@@ -150,7 +150,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   const reportsByRun = useMemo(() => new Map(visibleReports.flatMap(report => report.run_id ? [[report.run_id, report] as const] : [])), [visibleReports])
   const textSearch = useCatalogSearch(items, (item) => item.kind === "benchmark" ? [item.id, item.result.dataset.name, item.run.target.model, item.run.target.channel_name, t("benchmarks:kind")] : item.kind === "comparison" ? [
     item.id, t("comparison.title"), item.comparison.plan_name, item.comparison.model_name,
-    ...item.comparison.channels.flatMap(channel => [channel.channel_name, channelVerdict(channel, t, reportsByRun.get(channel.run_id))]),
+    ...item.comparison.channels.flatMap(channel => [comparisonTargetLabel(channel), channel.channel_name, channelVerdict(channel, t, reportsByRun.get(channel.run_id))]),
   ] : [item.report.id, item.report.run_id ?? "", displayReportVerdict(item.report, t), displayReportPlan(item.report, t),
     item.report.model_name, item.report.channel_name])
   const filteredRows = textSearch.rows.filter(item => {
@@ -171,6 +171,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
   const selectedItem = selectableItems.find(item => item.id === selectedID) ?? selectableItems[0]
   const selected = selectedItem?.kind === "report" ? selectedItem.report : undefined
   const selectedComparison = selectedItem?.kind === "comparison" ? selectedItem.comparison : undefined
+  const protocolBatchSelected = Boolean(selectedComparison?.channels[0]?.protocol)
   const selectedBenchmark = selectedItem?.kind === "benchmark" ? selectedItem : undefined
   const selectedReportID = selected?.id ?? ""
   const detail = detailState.reportID === selectedReportID ? detailState.detail ?? null : null
@@ -184,7 +185,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
     batchReportIDs.length >= 2 && batchReportIDs.length <= MAX_COMPARISON_REPORTS ? batchReportIDs : []
   const activeComparisonIDs = comparingReportIDs.length >= 2 ? comparingReportIDs : directComparisonIDs
   const isComparing = activeComparisonIDs.length >= 2
-  const selectedVerdict = selectedBenchmark ? selectedBenchmark.result.dataset.name : selectedComparison ? t("comparison.title") : selected ? displayReportVerdict(selected, t) : t("generic")
+  const selectedVerdict = selectedBenchmark ? selectedBenchmark.result.dataset.name : selectedComparison ? t(protocolBatchSelected ? "protocolComparison.title" : "comparison.title") : selected ? displayReportVerdict(selected, t) : t("generic")
   const comparisonReport = useComparisonReport({ comparison: selectedComparison, snapshot: { schema_version: 1, reports: visibleReports }, getDetail,
     saveReportExport, copyReportPNG, exportVisualReport, active: isViewingReport && !isComparing })
   const openBatchReports = (comparison: ComparisonSnapshot["comparisons"][number]) => {
@@ -304,8 +305,8 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
 
   return <ReportSectionVisibility value={sectionVisibility}>
     <PageFrame
-      title={t(isComparing ? "compare.title" : isViewingReport ? "detailTitle" : "title")}
-      description={isComparing ? t("compare.description") : isViewingReport ? t("detailDescription", { name: selectedVerdict }) : t("description")}
+      title={t(isComparing ? protocolBatchSelected ? "protocolComparison.title" : "compare.title" : isViewingReport ? "detailTitle" : "title")}
+      description={isComparing ? t(protocolBatchSelected ? "protocolComparison.description" : "compare.description") : isViewingReport ? t("detailDescription", { name: selectedVerdict }) : t("description")}
       actions={isComparing || isViewingReport ? <div className="flex items-center gap-2">
         {isViewingReport && !isComparing && selected && compareReports ? <Button variant="secondary" size="sm" onClick={() => { setCheckedReportIDs(current => [...new Set([selected.id, ...current])].slice(0, MAX_COMPARISON_REPORTS)); setViewingReportID("") }}><GitCompareArrowsIcon />{t("compare.add")}</Button> : null}
         <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon-sm" aria-label={t("back")} onClick={() => { setViewingReportID(""); setComparingReportIDs([]); requestAnimationFrame(() => compareTrigger.current?.focus()) }}><ArrowLeftIcon aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{t("back")}</TooltipContent></Tooltip></TooltipProvider></div> : (
@@ -334,7 +335,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
       )}
       inspector={isComparing ? undefined : selectedBenchmark ? <BenchmarkReportInspector run={selectedBenchmark.run} result={selectedBenchmark.result} onOpen={!isViewingReport ? () => setViewingReportID(selectedBenchmark.id) : undefined} /> : selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={{ schema_version: 1, reports: visibleReports }}
         key={selectedComparison.id} disabled={commandPending}
-        onRerun={onRerunComparison ? () => onRerunComparison({ plan_id: selectedComparison.plan_id, model_id: selectedComparison.model_id, channel_ids: selectedComparison.channels.map(channel => channel.channel_id) }) : undefined}
+        onRerun={onRerunComparison && !protocolBatchSelected ? () => onRerunComparison({ plan_id: selectedComparison.plan_id, model_id: selectedComparison.model_id, channel_ids: selectedComparison.channels.map(channel => channel.channel_id) }) : undefined}
         onOpen={!isViewingReport ? () => openBatchReports(selectedComparison) : undefined} exportControls={comparisonReport.controls} recycleAction={recycleAction} /> : selected ? (
         <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={() => handleExport("copy")}
           shortcuts={selected.source === "run" && selected.run_id ? renderRunShortcuts?.(selected.run_id, !isViewingReport, { extraAction: recycleAction }) : null} recycleAction={recycleAction} />
@@ -359,7 +360,8 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
         </div>
       </div> : null}
       {isComparing && compareReports ? <ReportComparisonView key={activeComparisonIDs.join(",")} reportIDs={activeComparisonIDs} compareReports={compareReports}
-        saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport} /> : search.empty && !isViewingReport ? <CatalogSearchEmpty onClear={clearFilters} /> : items.length === 0 ? (
+        saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport}
+        onOpenReport={id => { setSelectedID(id); setViewingReportID(id); setComparingReportIDs([]) }} /> : search.empty && !isViewingReport ? <CatalogSearchEmpty onClear={clearFilters} /> : items.length === 0 ? (
         <ScrollArea className="min-h-0 flex-1 border-t">
           <Empty><EmptyTitle>{t("empty")}</EmptyTitle><EmptyDescription>{t("emptyHint")}</EmptyDescription></Empty>
         </ScrollArea>
@@ -394,8 +396,8 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, com
                     className="h-11" onClick={() => setSelectedID(item.id)}>
                     {compareReports ? <TableCell /> : null}
                     <TableCell className="py-1 pl-2 text-xs"><Badge variant="secondary">{t(`status.${comparison.status}`)}</Badge></TableCell>
-                    <TableCell className="py-1 text-xs"><div className="font-medium">{t("comparison.title")}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.plan_name}</div></TableCell>
-                    <TableCell className="py-1 text-xs"><div>{comparison.plan_name}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.channels.map(channel => channel.channel_name).join(" / ")}</div></TableCell>
+                    <TableCell className="py-1 text-xs"><div className="font-medium">{t(comparison.channels[0]?.protocol ? "protocolComparison.title" : "comparison.title")}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.plan_name}</div></TableCell>
+                    <TableCell className="py-1 text-xs"><div>{comparison.plan_name}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.channels.map(comparisonTargetLabel).join(" / ")}</div></TableCell>
                     <TableCell className="py-1 text-[11px]"><ComparisonPlanItems reportID={comparison.channels.map(channel => reportsByRun.get(channel.run_id)?.id).find(Boolean)} getDetail={getDetail} /></TableCell>
                     <TableCell className="py-1 text-xs tabular-nums">{formatTimestamp(comparison.created_at, i18n.resolvedLanguage ?? i18n.language)}</TableCell>
                     <TableCell className="py-1 pr-2 text-right"><Button variant="outline" size="xs" aria-label={t("comparison.viewAria", { model: comparison.model_name })}

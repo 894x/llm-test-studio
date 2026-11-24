@@ -71,6 +71,8 @@ type RunProjection struct {
 	ArtifactCount uint64
 	Conclusion    Conclusion
 	EntryResults  []EntryResultProjection
+
+	ProtocolComparisonID string
 }
 
 type TargetProjection struct {
@@ -167,6 +169,8 @@ type RunSummary struct {
 	ArtifactCount     uint64           `json:"artifact_count"`
 	StartedAt         time.Time        `json:"started_at"`
 	UpdatedAt         time.Time        `json:"updated_at"`
+
+	ProtocolComparisonID string `json:"protocol_comparison_id,omitempty"`
 }
 
 func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
@@ -294,6 +298,9 @@ func (projection RunProjection) Validate() error {
 	if err := projection.Meta.Validate(); err != nil {
 		return err
 	}
+	if projection.ProtocolComparisonID != "" && !domain.IsUUID(projection.ProtocolComparisonID) {
+		return errors.New("invalid protocol comparison identifier")
+	}
 	if projection.JobID != "" && !domain.IsUUID(projection.JobID) {
 		return errors.New("invalid run job identity")
 	}
@@ -390,7 +397,7 @@ func summarizeRun(projection RunProjection) RunSummary {
 	load := aggregateSequentialLoads(loads)
 	summary := RunSummary{
 		ID: projection.Meta.ID, Revision: projection.Meta.Revision,
-		JobID: projection.JobID, ReportID: projection.ReportID,
+		JobID: projection.JobID, ReportID: projection.ReportID, ProtocolComparisonID: projection.ProtocolComparisonID,
 		PlanID: projection.Plan.ID, PlanRevision: projection.Plan.Revision, PlanName: projection.PlanName,
 		Status: projection.Status, Conclusion: projection.Conclusion, Source: projection.Source,
 		SuiteID: projection.SuiteID,

@@ -94,8 +94,8 @@ func PreflightRunnerUpgradeDatabase(ctx context.Context, path string) error {
 	}
 	// The v1 transformation already checks every target document and relation
 	// through runnerSnapshotFacts before committing. Repeating the same deep
-	// scan of this private preview adds no evidence. Additive v2/v3 migrations
-	// intentionally skip that scan, so they still need the check below.
+	// scan of this private preview adds no evidence. Later migrations preserve
+	// existing documents and still need the check below.
 	if state.version == 1 {
 		return nil
 	}
@@ -127,6 +127,11 @@ func runnerUpgradeSnapshotFacts(ctx context.Context, conn *sql.Conn) (RunnerBack
 	}
 	if state.version == CurrentSchemaVersion {
 		return runnerSnapshotFacts(ctx, conn)
+	}
+	if state.version == 4 {
+		// Existing runner manifests contain the full v4 business digest.
+		facts := RunnerBackup{SchemaVersion: 4, SchemaName: schemaV4Name, SchemaSHA256: schemaV4Checksum()}
+		return runnerSnapshotFactsForSchema(ctx, conn, facts, schemaV4Objects)
 	}
 	if err := validateIntegrity(ctx, conn); err != nil {
 		return RunnerBackup{}, err

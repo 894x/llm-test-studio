@@ -16,7 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { protocolPresentation } from "@/features/protocols/registry"
 import type { HeaderEvidence, ProtocolObservation, AssertionResult, ProtocolColumn, VerificationStatus, VerificationSummary } from "@/features/protocols/types"
 import { desktopLocale } from "@/i18n/runtime"
-import type { ReportCaseDetail, ReportEntryDetail, ReportResult } from "./data"
+import { isCacheVerificationCheckID, type ReportCaseDetail, type ReportEntryDetail, type ReportResult } from "./data"
 import { copyReportTextToClipboard } from "./report-clipboard"
 import { CaseSeverityBadge } from "./case-severity-badge"
 import { MetricValue } from "./metric-value"
@@ -82,7 +82,7 @@ export function EntryCaseTable({
           <TableHead className="h-8 text-[11px]">{t("dimensions.dimension")}</TableHead>
           <TableHead className="h-8 text-[11px]">{t("protocolDesign.severity")}</TableHead>
           <TableHead className="h-8 text-[11px]">{t("protocolDesign.verification")}</TableHead>
-          {columns.map(column => <TableHead key={column.id} className="h-8 text-[11px]" title={column.metric === "completion_tokens" ? t("protocolDesign.outputTokens") : undefined}>{columnLabel(column, t)}</TableHead>)}
+          {columns.map(column => <ProtocolCaseMetricHeader key={column.id} column={column} />)}
           <TableHead className="h-8 pr-3 text-[11px]" title={t("protocolDesign.summary")}>{t("protocolDesign.summaryColumn")}</TableHead>
         </TableRow></TableHeader>
         <TableBody>{visible.length ? visible.map(caseItem => {
@@ -113,7 +113,7 @@ export function EntryCaseTable({
               <TableCell className="py-1 text-[11px] [overflow-wrap:anywhere]">{caseItem.dimension ?? "—"}</TableCell>
               <TableCell className="py-1"><CaseSeverityBadge severity={caseItem.severity} /></TableCell>
               <TableCell className="py-1"><VerificationBadges status={caseItem.verification.status} checks={caseItem.verification_checks} summaryOnly /></TableCell>
-              {columns.map(column => <TableCell key={column.id} className="py-1 text-xs tabular-nums">{caseColumn(caseItem, column)}</TableCell>)}
+              {columns.map(column => <TableCell key={column.id} className="py-1 text-xs tabular-nums"><CaseColumn caseItem={caseItem} column={column} /></TableCell>)}
               <TableCell className="py-1 pr-3 text-[11px]"><VerificationCounts summary={caseItem.verification} compact /></TableCell>
             </TableRow>
             {open ? <TableRow id={detailID} className="hover:bg-transparent"><TableCell colSpan={columns.length + 5} className="bg-muted/20 p-3">
@@ -206,7 +206,7 @@ export function VerificationCounts({ summary, compact = false }: { summary: Veri
   </Tooltip></TooltipProvider>
 }
 
-export function ExecutionDetails({ results, paginate = true }: { results: ReportResult[]; paginate?: boolean }) {
+export function ExecutionDetails({ results, paginate = true, summaryOnly = false }: { results: ReportResult[]; paginate?: boolean; summaryOnly?: boolean }) {
   const { t } = useTranslation("reports")
   const [page, setPage] = useState(0)
   const visible = paginate ? results.slice(page * DETAIL_PAGE_SIZE, (page + 1) * DETAIL_PAGE_SIZE) : results
@@ -215,7 +215,7 @@ export function ExecutionDetails({ results, paginate = true }: { results: Report
       <summary className="flex cursor-pointer flex-wrap items-center gap-2 rounded-sm py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span>{t("protocolDesign.executionNumber", { count: page * DETAIL_PAGE_SIZE + index + 1 })}</span>
         <span className="text-muted-foreground">{t(`protocolDesign.execution.${result.execution_status}`)}</span>
-        <VerificationBadges status={result.verification.status} assertions={result.verification.assertions} />
+        <VerificationBadges status={result.verification.status} assertions={result.verification.assertions} summaryOnly={summaryOnly} />
         {result.dimensions?.phase === "warmup" ? <span className="text-muted-foreground">{t("protocolDesign.warmupExecution")}</span> : null}
         {result.observation?.http_status !== undefined ? <span>HTTP {result.observation.http_status}</span> : null}
         {result.error_code ? <span className="break-all text-destructive">{t(`common:errorCode.${result.error_code}`, { defaultValue: result.error_code })}</span> : null}
@@ -343,7 +343,7 @@ function ResultPagination({ page, count, size, onPage }: { page: number; count: 
   if (count <= size) return null
   return <div className="flex items-center justify-end gap-2 border-t px-3 py-2 text-xs"><span className="tabular-nums">{page + 1} / {Math.ceil(count / size)}</span><Button variant="outline" size="xs" disabled={!page} onClick={() => onPage(page - 1)}>{t("protocolDesign.previous")}</Button><Button variant="outline" size="xs" disabled={(page + 1) * size >= count} onClick={() => onPage(page + 1)}>{t("protocolDesign.next")}</Button></div>
 }
-function caseColumn(caseItem: ReportCaseDetail, column: ProtocolColumn) {
+function CaseColumn({ caseItem, column }: { caseItem: ReportCaseDetail; column: ProtocolColumn }) {
   if (column.metric) {
     const metric = caseItem.metrics[column.metric]
     const unit = column.metric === "completion_tokens" ? "" : metric?.unit
@@ -360,6 +360,12 @@ function caseColumn(caseItem: ReportCaseDetail, column: ProtocolColumn) {
   })
   if (values.length) return [...new Set(values)].join(" / ")
   return "—"
+}
+function ProtocolCaseMetricHeader({ column }: { column: ProtocolColumn }) {
+  const { t } = useTranslation("reports")
+  return <TableHead scope="col" className="h-8 text-[11px]" title={column.metric === "completion_tokens" ? t("protocolDesign.outputTokens") : undefined}>
+    {columnLabel(column, t)}
+  </TableHead>
 }
 function columnLabel(column: ProtocolColumn, t: ReturnType<typeof useTranslation<"reports">>["t"]) {
   if (column.observation === "task_status") return t("protocolDesign.taskStatus")

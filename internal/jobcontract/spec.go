@@ -468,7 +468,7 @@ func (spec JobSpec) Comparison() (domain.Comparison, error) {
 	input := spec.Spec.Comparison
 	refs := make([]domain.ComparisonRunRef, 0, len(input.Runs))
 	for _, run := range input.Runs {
-		refs = append(refs, domain.ComparisonRunRef{Channel: run.Snapshot.Channel.EntityRevisionRef, RunID: run.Meta.ID})
+		refs = append(refs, input.RunRef(run))
 	}
 	return domain.NewComparison(input.Meta, input.Plan, input.Model, refs)
 }

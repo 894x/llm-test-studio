@@ -9,6 +9,8 @@ import SquarePenIcon from "lucide-react/dist/esm/icons/square-pen.mjs"
 import ArrowRightIcon from "lucide-react/dist/esm/icons/arrow-right.mjs"
 import EllipsisIcon from "lucide-react/dist/esm/icons/ellipsis.mjs"
 import Trash2Icon from "lucide-react/dist/esm/icons/trash-2.mjs"
+import { PROTOCOL_LABELS } from "@/features/catalog/protocols"
+import type { ComparisonProtocol } from "./protocol-comparison-data"
 import type { QuickPerformancePhase } from "./data"
 import { ModelIcon } from "./model-icon"
 import { Fragment, useRef, useState, type ReactNode } from "react"
@@ -47,6 +49,8 @@ export interface QuickTestHistoryItem {
   reportID?: string
   runID?: string
   jobID?: string
+  comparisonID?: string
+  protocols?: { protocol: ComparisonProtocol; status: string; progress?: { completed: number; total: number } }[]
   cancelDisabled?: boolean
   cancelHint?: string
   controlStatus?: string
@@ -165,6 +169,16 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
                     ) : !segments && item.detail ? <p className="text-[11px] tabular-nums text-muted-foreground [overflow-wrap:anywhere]">{item.detail}</p> : null}
                   </div>
                 ) : null}
+                {item.protocols && item.id === selectedID ? <ul className="mt-2 space-y-1 text-[11px]">
+                  {item.protocols.map(lane => <li key={lane.protocol} className="flex flex-wrap justify-between gap-x-2">
+                    <span>{PROTOCOL_LABELS[lane.protocol]}</span>
+                    <span className="text-muted-foreground">
+                      {lane.progress && lane.progress.total > 0 ? <span className="mr-1 tabular-nums"
+                        aria-label={t("protocolComparison.caseProgress", { ...lane.progress })}>{lane.progress.completed}/{lane.progress.total}</span> : null}
+                      {t(`common:status.${lane.status}`)}
+                    </span>
+                  </li>)}
+                </ul> : null}
                 {item.error ? <p className="mt-2 text-[11px] text-destructive [overflow-wrap:anywhere]">{item.error}</p> : null}
                 {item.waitingForReport || item.reportError ? <div role="status" className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
                   {item.waitingForReport ? <Spinner className="size-3 shrink-0" /> : null}

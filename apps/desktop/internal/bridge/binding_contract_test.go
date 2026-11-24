@@ -64,6 +64,7 @@ func TestDesktopBindingMethodSetSurvivesPackageMove(t *testing.T) {
 		"OpenDiagnosticsDirectory",
 		"PrepareBenchmarkRuntime",
 		"PreviewHistoryRecycle",
+		"PreviewProtocolComparison",
 		"RecoverRemoteNodeUpgrade",
 		"RecycleHistory",
 		"RefreshRemoteNode",

@@ -64,7 +64,15 @@ func (command LaunchCommand) Validate() error {
 			return nil
 		}
 	case LaunchComparison:
-		if command.Comparison != nil && len(command.Comparison.ChannelIDs) <= jobcontract.MaxSecrets {
+		if command.Comparison == nil {
+			return ErrInvalid
+		}
+		comparison := command.Comparison
+		if comparison.Protocols != nil {
+			if comparison.PlanID == "" && comparison.ModelID == "" && len(comparison.ChannelIDs) == 0 {
+				return comparison.Protocols.Validate()
+			}
+		} else if len(comparison.ChannelIDs) <= jobcontract.MaxSecrets {
 			return nil
 		}
 	}
@@ -120,6 +128,19 @@ func NewLauncher(dependencies LauncherDependencies) (*Launcher, error) {
 	return &Launcher{coordinator: dependencies.Coordinator, runs: dependencies.Runs,
 		comparisons: dependencies.Comparisons, performance: dependencies.Performance,
 		now: dependencies.Now, metaFactory: factory}, nil
+}
+
+func (launcher *Launcher) PreviewProtocolComparison(
+	ctx context.Context,
+	planID, suiteID string,
+) (runs.ProtocolComparisonPreview, error) {
+	preparer, ok := launcher.runs.(interface {
+		PreviewProtocolComparison(context.Context, string, string) (runs.ProtocolComparisonPreview, error)
+	})
+	if !ok {
+		return runs.ProtocolComparisonPreview{}, ErrUnavailable
+	}
+	return preparer.PreviewProtocolComparison(ctx, planID, suiteID)
 }
 
 type PreparationError struct{ Code domain.ErrorCode }

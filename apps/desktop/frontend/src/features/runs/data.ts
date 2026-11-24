@@ -75,6 +75,7 @@ export type EntryProgress = {
 
 export type WorkspaceRun = {
   job_id?: string
+  protocol_comparison_id?: string
   report_id?: string
   case_count: number
   observed_case_count: number

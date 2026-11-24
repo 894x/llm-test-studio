@@ -17,8 +17,10 @@ const (
 )
 
 type ComparisonRunRef struct {
-	Channel EntityRevisionRef `json:"channel"`
-	RunID   string            `json:"run_id"`
+	Protocol Protocol          `json:"protocol,omitempty"`
+	Suite    bool              `json:"suite,omitempty"`
+	Channel  EntityRevisionRef `json:"channel"`
+	RunID    string            `json:"run_id"`
 }
 
 type Comparison struct {
@@ -53,6 +55,24 @@ func (comparison Comparison) Runs() []ComparisonRunRef {
 	return append([]ComparisonRunRef(nil), comparison.runs...)
 }
 
+func (comparison Comparison) IsProtocolComparison() bool {
+	return len(comparison.runs) > 0 && comparison.runs[0].Protocol != ""
+}
+
+func (comparison Comparison) MatchesRun(ref ComparisonRunRef, snapshot RunSnapshot) bool {
+	return snapshot.Plan == comparison.plan &&
+		snapshot.Model.EntityRevisionRef == comparison.model &&
+		snapshot.Channel.EntityRevisionRef == ref.Channel &&
+		(ref.Protocol == "" || snapshot.Channel.Protocol == ref.Protocol) &&
+		(!ref.Suite || len(snapshot.Entries) == 1 && snapshot.Entries[0].TargetKind == PlanTargetSuite)
+}
+
+func IsComparisonProtocol(protocol Protocol) bool {
+	return protocol == ProtocolOpenAIChat ||
+		protocol == ProtocolOpenAIResponses ||
+		protocol == ProtocolAnthropicMessages
+}
+
 func (comparison Comparison) Validate() error {
 	if err := comparison.meta.Validate(); err != nil {
 		return fmt.Errorf("invalid comparison metadata: %w", err)
@@ -66,7 +86,11 @@ func (comparison Comparison) Validate() error {
 	if len(comparison.runs) < 2 {
 		return errors.New("comparison requires at least two channel runs")
 	}
-	channels := make(map[string]struct{}, len(comparison.runs))
+	byProtocol := comparison.IsProtocolComparison()
+	if byProtocol && len(comparison.runs) != 3 {
+		return errors.New("protocol comparison requires three runs")
+	}
+	targets := make(map[string]struct{}, len(comparison.runs))
 	runIDs := make(map[string]struct{}, len(comparison.runs))
 	for _, run := range comparison.runs {
 		if err := run.Channel.Validate("channel"); err != nil {
@@ -75,13 +99,25 @@ func (comparison Comparison) Validate() error {
 		if !IsUUID(run.RunID) {
 			return errors.New("comparison run id must be a canonical UUID")
 		}
-		if _, duplicate := channels[run.Channel.ID]; duplicate {
-			return errors.New("comparison channel ids must be unique")
+		key := run.Channel.ID
+		if byProtocol {
+			if !IsComparisonProtocol(run.Protocol) || run.Suite != comparison.runs[0].Suite {
+				return errors.New("invalid protocol comparison target")
+			}
+			if run.Suite && comparison.plan.ID != comparison.meta.ID {
+				return errors.New("protocol suite comparison requires a batch-local plan")
+			}
+			key = string(run.Protocol)
+		} else if run.Protocol != "" || run.Suite {
+			return errors.New("mixed comparison axes")
+		}
+		if _, duplicate := targets[key]; duplicate {
+			return errors.New("comparison targets must be unique")
 		}
 		if _, duplicate := runIDs[run.RunID]; duplicate {
 			return errors.New("comparison run ids must be unique")
 		}
-		channels[run.Channel.ID] = struct{}{}
+		targets[key] = struct{}{}
 		runIDs[run.RunID] = struct{}{}
 	}
 	switch comparison.status {

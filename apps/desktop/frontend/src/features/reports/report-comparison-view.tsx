@@ -20,17 +20,20 @@ import { blobToBase64 } from "./report-export-encoding"
 import { copyReportPNGToClipboard } from "./report-clipboard"
 import { ReportExportControls } from "./report-export-controls"
 import { CaseSeverityBadge } from "./case-severity-badge"
-import { COMPARISON_RESULT_COLUMN_WIDTH, ComparisonChannelHeader, ComparisonTableColumns } from "./comparison-channel-header"
+import { ProtocolCaseComparisonTable } from "./protocol-case-comparison-table"
+import { PROTOCOL_LABELS } from "@/features/catalog/protocols"
+import { COMPARISON_RESULT_COLUMN_WIDTH, ComparisonChannelHeader, ComparisonTableColumns, ProtocolComparisonColumns, ProtocolComparisonHeader } from "./comparison-channel-header"
 import { comparisonReportID, type CompareReports, type ReportComparison, type ReportComparisonCell, type ReportComparisonRow } from "./report-comparison-data"
 import type { ReportDetail, ReportExportFormat } from "./data"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
 
-export function ReportComparisonView({ reportIDs, compareReports, saveReportExport, copyReportPNG, exportVisualReport = createVisualReportExport }: {
+export function ReportComparisonView({ reportIDs, compareReports, saveReportExport, copyReportPNG, exportVisualReport = createVisualReportExport, onOpenReport }: {
   reportIDs: string[]
   compareReports: CompareReports
   saveReportExport: (filename: string, mediaType: string, data: string, locale: string) => Promise<boolean>
   copyReportPNG: (data: string) => Promise<void>
   exportVisualReport?: typeof createVisualReportExport
+  onOpenReport?: (id: string) => void
 }) {
   const { t, i18n } = useTranslation("reports")
   const [baseline, setBaseline] = useState(reportIDs[0])
@@ -96,7 +99,7 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
         <span id="report-comparison-baseline">{t("compare.baseline")}</span>
         <SearchableSelect aria-labelledby="report-comparison-baseline" className="w-72 max-w-full" value={baselineID}
           disabled={!data || Boolean(exporting)} onValueChange={setBaseline}
-          options={(data?.reports ?? []).map(detail => ({ value: comparisonReportID(detail), label: reportLabel(detail) }))} />
+          options={(data?.reports ?? []).map(detail => ({ value: comparisonReportID(detail), label: reportLabel(detail, Boolean(data?.protocol_summary)) }))} />
       </div>
       <label className="flex items-center gap-2 text-xs"><Checkbox checked={onlyDifferences} disabled={Boolean(exporting)} onCheckedChange={checked => setOnlyDifferences(checked === true)} />{t("compare.onlyDifferences")}</label>
       <div className="ml-auto">
@@ -116,7 +119,7 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
         <div id={resultsID} className="min-w-0 space-y-3 p-4">
           <ReportComparisonBody key={comparisonKey} data={data} hiddenReports={hiddenReports} onlyDifferences={onlyDifferences} expanded={expanded}
             onExpandedChange={row => setExpandedRow({ comparison: comparisonKey, row })} detailReportID={detailReportID}
-            onDetailReportChange={setDetailReportID} onToggleReport={id => setHiddenReports(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])} disabled={Boolean(exporting)} />
+            onDetailReportChange={setDetailReportID} onOpenReport={onOpenReport} onToggleReport={id => setHiddenReports(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])} disabled={Boolean(exporting)} />
         </div>}
     </ScrollArea>
     {exportData ? <div aria-hidden="true" className="pointer-events-none fixed left-[-10000px] top-0" style={{ width: exportData.width }}>
@@ -130,7 +133,7 @@ export function ReportComparisonView({ reportIDs, compareReports, saveReportExpo
   </div>
 }
 
-function ReportComparisonBody({ data, hiddenReports, onlyDifferences, expanded, onExpandedChange, detailReportID, onDetailReportChange, onToggleReport, exporting = false, disabled = false }: {
+function ReportComparisonBody({ data, hiddenReports, onlyDifferences, expanded, onExpandedChange, detailReportID, onDetailReportChange, onToggleReport, onOpenReport, exporting = false, disabled = false }: {
   data: ReportComparison
   hiddenReports: string[]
   onlyDifferences: boolean
@@ -139,6 +142,7 @@ function ReportComparisonBody({ data, hiddenReports, onlyDifferences, expanded, 
   detailReportID: string
   onDetailReportChange?: (id: string) => void
   onToggleReport?: (id: string) => void
+  onOpenReport?: (id: string) => void
   exporting?: boolean
   disabled?: boolean
 }) {
@@ -147,7 +151,17 @@ function ReportComparisonBody({ data, hiddenReports, onlyDifferences, expanded, 
   const sections = comparisonSections(data.rows).map(section => ({ ...section,
     rows: onlyDifferences ? section.rows.filter(row => row.different) : section.rows,
   })).filter(section => section.rows.length > 0)
-  return <TooltipProvider delayDuration={250}><section aria-label={t("compare.title")} className="min-w-0 space-y-6">
+  return <TooltipProvider delayDuration={250}><section aria-label={t(data.protocol_summary ? "protocolComparison.title" : "compare.title")} className="min-w-0 space-y-6">
+    {data.protocol_summary ? <ul className="grid grid-cols-3 gap-3 text-xs">
+      {data.protocol_summary.map((summary, index) => <li key={summary.protocol} className="min-w-0 space-y-1">
+        <div className="font-medium">{PROTOCOL_LABELS[summary.protocol]}</div>
+        <p className="tabular-nums text-muted-foreground">{t("protocolComparison.counts", { ...summary })}
+          {summary.indeterminate || summary.not_applicable ? ` · ${t("protocolComparison.otherCounts", { ...summary })}` : ""}
+        </p>
+        {onOpenReport ? <Button size="xs" variant="ghost" className="px-0" disabled={disabled}
+          onClick={() => onOpenReport(comparisonReportID(reports[index]))}>{t("protocolComparison.openReport")}</Button> : null}
+      </li>)}
+    </ul> : null}
     {sections.map(section => <section key={section.key} aria-label={section.name || t("system.quickPerformance")} className="min-w-0 space-y-2">
       <h2 className="text-xs font-semibold [overflow-wrap:anywhere]">{section.name || t("system.quickPerformance")}</h2>
       <ComparisonSuiteTable data={data} reports={reports} rows={section.rows} expanded={expanded} onExpandedChange={onExpandedChange}
@@ -180,16 +194,46 @@ function ComparisonSuiteTable({ data, reports, rows, expanded, onExpandedChange,
   const sharedSeverity = visibleReports.length > 8
   const reportIDs = visibleReports.map(comparisonReportID)
   const activeReportID = reportIDs.includes(detailReportID) ? detailReportID : reportIDs.includes(data.baseline_id) ? data.baseline_id : reportIDs[0]
-  const table = <Table aria-label={t("compare.table")} className="table-fixed text-xs"
+  const protocolCases = data.protocol_summary && rows.some(row => row.cells.some(cell => cell.case_id))
+  const matrix = protocolCases ? <ProtocolCaseComparisonTable exporting={exporting}
+    lanes={data.protocol_summary!.map((lane, index) => {
+      const id = comparisonReportID(reports[index])
+      return { id, label: PROTOCOL_LABELS[lane.protocol], baseline: id === data.baseline_id }
+    })}
+    rows={visible.map(row => {
+      const detailID = `${detailsID}-${encodeURIComponent(row.key)}`
+      const open = expanded === row.key
+      const canOpen = !disabled && row.cells.some(cell => cell.change !== "missing")
+      return {
+        key: row.key, name: row.name, detailID,
+        onToggle: canOpen ? () => onExpandedChange?.(open ? "" : row.key) : undefined,
+        detail: open ? <ComparisonChannelDetails reports={visibleReports} row={row} baselineID={data.baseline_id}
+          selectedReportID={detailReportID} onSelectedReportChange={onDetailReportChange}
+          exporting={exporting} disabled={disabled} byProtocol /> : undefined,
+        cells: row.cells.map((cell, index) => {
+          const detail = reports[index]
+          const item = detail.source === "run" && cell.status !== "not_run"
+            ? detail.entries.find(entry => entry.entry_id === cell.entry_id)?.cases.find(c => c.case_id === cell.case_id) : undefined
+          return {
+            item, empty: t(cell.change === "missing" ? "protocolComparison.notApplicable" : "comparison.noResult"),
+            selected: open && cell.report_id === activeReportID,
+            onOpen: !disabled && item ? () => { onDetailReportChange?.(cell.report_id); onExpandedChange?.(row.key) } : undefined,
+          }
+        }),
+      }
+    })} /> : null
+  const table = matrix ?? <Table aria-label={t("compare.table")} className="table-fixed text-xs"
     style={sharedSeverity ? { minWidth: 284 + reports.reduce((width, detail) => width + (hiddenReports.includes(comparisonReportID(detail)) ? 32 : COMPARISON_RESULT_COLUMN_WIDTH), 0) } : undefined}>
-      <ComparisonTableColumns channels={reports.length} collapsed={reports.map(detail => hiddenReports.includes(comparisonReportID(detail)))} sharedSeverity={sharedSeverity} />
+      {data.protocol_summary ? <ProtocolComparisonColumns /> :
+      <ComparisonTableColumns channels={reports.length} collapsed={reports.map(detail => hiddenReports.includes(comparisonReportID(detail)))} sharedSeverity={sharedSeverity} />}
       <TableHeader><TableRow>
         <TableHead>{t("protocolDesign.caseName")}</TableHead>
         {sharedSeverity ? <TableHead>{t("protocolDesign.severity")}</TableHead> : null}
         {reports.map(detail => {
-          const info = reportInfo(detail)
+          const info = reportInfo(detail, Boolean(data.protocol_summary))
           const id = comparisonReportID(detail)
           const collapsed = hiddenReports.includes(id)
+          if (data.protocol_summary) return <ProtocolComparisonHeader key={id} label={info.channel} baseline={id === data.baseline_id} />
           return <ComparisonChannelHeader key={id} channel={info.channel} baseline={id === data.baseline_id} exporting={exporting}
             collapsed={collapsed} onToggle={() => onToggleReport?.(id)} disabled={disabled || (!collapsed && visibleReports.length < 2)} />
         })}
@@ -213,21 +257,21 @@ function ComparisonSuiteTable({ data, reports, rows, expanded, onExpandedChange,
             const selected = expanded === row.key && cell.report_id === activeReportID
             const result = <>
               {caseItem && !sharedSeverity ? <CaseSeverityBadge severity={caseItem.severity} /> : null}
-              {cell.change === "missing" || cell.status === "not_run" ? <Badge variant="outline" className="h-auto min-h-5 max-w-full whitespace-normal text-center text-muted-foreground [overflow-wrap:anywhere]">{t(cell.change === "missing" ? "compare.change.missing" : "comparison.noResult")}</Badge> :
-                <VerificationBadges status={cell.status as "passed" | "failed" | "not_applicable" | "indeterminate"} checks={caseItem?.verification_checks} summaryOnly />}
+              {cell.change === "missing" || cell.status === "not_run" ? <Badge variant="outline" className="h-auto min-h-5 max-w-full whitespace-normal text-center text-muted-foreground [overflow-wrap:anywhere]">{t(cell.change === "missing" ? data.protocol_summary ? "protocolComparison.notApplicable" : "compare.change.missing" : "comparison.noResult")}</Badge> :
+                <VerificationBadges status={cell.status as "passed" | "failed" | "not_applicable" | "indeterminate"} checks={caseItem?.verification_checks} summaryOnly={!data.protocol_summary} />}
             </>
             return <TableCell key={cell.report_id} className="whitespace-normal align-top [overflow-wrap:anywhere]">
               {exporting ? <div className={`flex min-h-7 flex-wrap items-center gap-2 rounded-md px-1 py-1 ${selected ? "bg-surface-active" : ""}`}>{result}</div> :
                 <Button variant="ghost" size="sm" className="h-auto min-h-7 w-full min-w-0 justify-start gap-2 whitespace-normal px-1 py-1 flex-wrap aria-pressed:bg-surface-active aria-pressed:hover:bg-surface-active"
                   disabled={disabled || cell.change === "missing"} aria-pressed={selected} aria-controls={`${detailsID}-${encodeURIComponent(row.key)}`}
-                  aria-label={t("comparison.caseDetails", { channel: reportInfo(detail).channel, name: row.name || t("system.quickPerformance") })}
+                  aria-label={t("comparison.caseDetails", { channel: reportInfo(detail, Boolean(data.protocol_summary)).channel, name: row.name || t("system.quickPerformance") })}
                   onClick={() => { onDetailReportChange?.(cell.report_id); onExpandedChange?.(row.key) }}>{result}</Button>}
             </TableCell>
           })}
         </TableRow>
         {expanded === row.key ? <TableRow id={`${detailsID}-${encodeURIComponent(row.key)}`}><TableCell colSpan={reports.length + (sharedSeverity ? 2 : 1)} className="whitespace-normal py-3">
           <ComparisonChannelDetails reports={visibleReports} row={row} baselineID={data.baseline_id} selectedReportID={detailReportID}
-            onSelectedReportChange={onDetailReportChange} exporting={exporting} disabled={disabled} />
+            onSelectedReportChange={onDetailReportChange} exporting={exporting} disabled={disabled} byProtocol={Boolean(data.protocol_summary)} />
         </TableCell></TableRow> : null}
       </Fragment>)}</TableBody>
     </Table>
@@ -259,7 +303,8 @@ function ComparisonSeverity({ row, reports, exporting }: { row: ReportComparison
   )}</div>
 }
 
-function ComparisonChannelDetails({ reports, row, baselineID, selectedReportID, onSelectedReportChange, exporting, disabled }: {
+function ComparisonChannelDetails({ reports, row, baselineID, selectedReportID, onSelectedReportChange, exporting, disabled, byProtocol }: {
+  byProtocol: boolean
   reports: ReportDetail[]
   row: ReportComparisonRow
   baselineID: string
@@ -280,34 +325,34 @@ function ComparisonChannelDetails({ reports, row, baselineID, selectedReportID, 
   const active = items[index]
   if (!active) return null
   if (exporting) return <section className="min-w-0 space-y-3">
-    <h3 className="font-medium [overflow-wrap:anywhere]">{reportLabel(active.detail)}</h3>
-    <ComparisonEvidence detail={active.detail} cell={active.cell} />
+    <h3 className="font-medium [overflow-wrap:anywhere]">{reportLabel(active.detail, byProtocol)}</h3>
+    <ComparisonEvidence detail={active.detail} cell={active.cell} byProtocol={byProtocol} />
   </section>
   return <section aria-label={t("comparison.details")} className="grid min-w-0 grid-cols-[28px_minmax(0,1fr)_28px] items-center gap-2">
-    <Button variant="secondary" size="icon-sm" disabled={disabled || items.length < 2} aria-label={t("comparison.previousChannel")}
-      title={t("comparison.previousChannel")} aria-controls={viewportID} onClick={() => onSelectedReportChange?.(items[(index - 1 + items.length) % items.length].cell.report_id)}>
+    <Button variant="secondary" size="icon-sm" disabled={disabled || items.length < 2} aria-label={t(byProtocol ? "protocolComparison.previous" : "comparison.previousChannel")}
+      title={t(byProtocol ? "protocolComparison.previous" : "comparison.previousChannel")} aria-controls={viewportID} onClick={() => onSelectedReportChange?.(items[(index - 1 + items.length) % items.length].cell.report_id)}>
       <ChevronLeftIcon aria-hidden="true" />
     </Button>
     <div className="min-w-0 space-y-3">
       <div className="flex min-w-0 items-start justify-between gap-3" aria-live="polite" aria-atomic="true">
-        <h3 className="min-w-0 font-medium [overflow-wrap:anywhere]">{reportLabel(active.detail)}</h3>
-        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{t("comparison.channelPosition", { current: index + 1, total: items.length })}</span>
+        <h3 className="min-w-0 font-medium [overflow-wrap:anywhere]">{reportLabel(active.detail, byProtocol)}</h3>
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{t(byProtocol ? "protocolComparison.position" : "comparison.channelPosition", { current: index + 1, total: items.length })}</span>
       </div>
       <div id={viewportID} className="min-w-0 overflow-hidden">
         <div className="flex min-w-0 transition-transform duration-200 ease-out motion-reduce:transition-none" style={{ transform: `translateX(-${index * 100}%)` }}>
-          {items.map(({ detail, cell }, itemIndex) => <div key={cell.report_id} role="group" aria-label={reportLabel(detail)}
+          {items.map(({ detail, cell }, itemIndex) => <div key={cell.report_id} role="group" aria-label={reportLabel(detail, byProtocol)}
             aria-hidden={itemIndex !== index} inert={itemIndex !== index} className="w-full min-w-0 shrink-0">
             <ScrollArea className="h-[min(52vh,420px)]" contentWidth="viewport">
               <div className="min-w-0 space-y-3 pr-3 pb-2">
-                <ComparisonEvidence detail={detail} cell={cell} />
+                <ComparisonEvidence detail={detail} cell={cell} byProtocol={byProtocol} />
               </div>
             </ScrollArea>
           </div>)}
         </div>
       </div>
     </div>
-    <Button variant="secondary" size="icon-sm" disabled={disabled || items.length < 2} aria-label={t("comparison.nextChannel")}
-      title={t("comparison.nextChannel")} aria-controls={viewportID} onClick={() => onSelectedReportChange?.(items[(index + 1) % items.length].cell.report_id)}>
+    <Button variant="secondary" size="icon-sm" disabled={disabled || items.length < 2} aria-label={t(byProtocol ? "protocolComparison.next" : "comparison.nextChannel")}
+      title={t(byProtocol ? "protocolComparison.next" : "comparison.nextChannel")} aria-controls={viewportID} onClick={() => onSelectedReportChange?.(items[(index + 1) % items.length].cell.report_id)}>
       <ChevronRightIcon aria-hidden="true" />
     </Button>
   </section>
@@ -343,16 +388,22 @@ function comparisonSections(rows: ReportComparisonRow[]) {
   return [...sections.values()]
 }
 
-function ComparisonEvidence({ detail, cell }: { detail: ReportDetail; cell: ReportComparisonCell }) {
+function ComparisonEvidence({ detail, cell, byProtocol }: { detail: ReportDetail; cell: ReportComparisonCell; byProtocol: boolean }) {
   if (cell.change === "missing") return null
   if (detail.source === "quick_performance") return <QuickPerformanceRequestAnalysis report={detail.performance} />
   const entry = detail.entries.find(entry => entry.entry_id === cell.entry_id)
   if (entry?.performance) return <QuickPerformanceRequestAnalysis report={entry.performance} />
-  return <ExecutionDetails results={entry?.cases.find(item => item.case_id === cell.case_id)?.request_results ?? []} />
+  return <ExecutionDetails results={entry?.cases.find(item => item.case_id === cell.case_id)?.request_results ?? []} summaryOnly={byProtocol} />
 }
 
-function reportInfo(detail: ReportDetail) {
-  return detail.source === "run" ? { channel: detail.report.channel.name, model: detail.report.model.name } :
+function reportInfo(detail: ReportDetail, byProtocol = false) {
+  return detail.source === "run" ? {
+    channel: byProtocol ? PROTOCOL_LABELS[detail.report.protocol] : detail.report.channel.name,
+    model: detail.report.model.name,
+  } :
     { channel: detail.performance.base_url, model: detail.performance.model_id }
 }
-function reportLabel(detail: ReportDetail) { const info = reportInfo(detail); return `${info.channel} · ${info.model}` }
+function reportLabel(detail: ReportDetail, byProtocol = false) {
+  const info = reportInfo(detail, byProtocol)
+  return `${info.channel} · ${info.model}`
+}

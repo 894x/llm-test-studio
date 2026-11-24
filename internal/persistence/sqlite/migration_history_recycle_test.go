@@ -77,7 +77,7 @@ func TestHistoryRecycleUpgradePreservesV3AndRestorableBackup(t *testing.T) {
 	}
 	conn.Close()
 	db.Close()
-	if version, err := SchemaVersion(t.Context(), path); err != nil || version != 4 {
+	if version, err := SchemaVersion(t.Context(), path); err != nil || version != CurrentSchemaVersion {
 		t.Fatalf("upgraded version = %d: %v", version, err)
 	}
 	if got := readMigrationText(t, path, "SELECT checksum FROM schema_migrations WHERE version=3"); got != schemaV3Checksum() {

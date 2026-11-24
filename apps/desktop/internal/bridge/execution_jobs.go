@@ -39,6 +39,25 @@ type JobController interface {
 	Deliver(context.Context, string) (jobs.ControlRecord, error)
 }
 
+func (app *DesktopApp) PreviewProtocolComparison(planID, suiteID string) (runs.ProtocolComparisonPreview, error) {
+	lease, err := app.acquire(desktopRequirements{launcher: true})
+	if err != nil {
+		return runs.ProtocolComparisonPreview{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	preparer, ok := lease.launcher.(interface {
+		PreviewProtocolComparison(context.Context, string, string) (runs.ProtocolComparisonPreview, error)
+	})
+	if !ok || isNilInterface(preparer) {
+		return runs.ProtocolComparisonPreview{}, app.safeBindingError(ErrJobCommandsUnavailable)
+	}
+	preview, err := preparer.PreviewProtocolComparison(lease.ctx, planID, suiteID)
+	if err != nil {
+		return runs.ProtocolComparisonPreview{}, app.jobOperationError(err)
+	}
+	return preview, nil
+}
+
 func (app *DesktopApp) LaunchJob(command jobs.LaunchCommand) (jobs.JobView, error) {
 	if command.Validate() != nil {
 		return jobs.JobView{}, app.safeBindingError(jobs.ErrInvalid)

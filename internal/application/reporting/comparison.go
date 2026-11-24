@@ -16,10 +16,20 @@ import (
 const MaxComparisonReports = 16
 
 type Comparison struct {
-	SchemaVersion int             `json:"schema_version"`
-	BaselineID    string          `json:"baseline_id"`
-	Reports       []Detail        `json:"reports"`
-	Rows          []ComparisonRow `json:"rows"`
+	ProtocolSummary []ProtocolComparisonSummary `json:"protocol_summary,omitempty"`
+	SchemaVersion   int                         `json:"schema_version"`
+	BaselineID      string                      `json:"baseline_id"`
+	Reports         []Detail                    `json:"reports"`
+	Rows            []ComparisonRow             `json:"rows"`
+}
+
+type ProtocolComparisonSummary struct {
+	Protocol      domain.Protocol `json:"protocol"`
+	Passed        int             `json:"passed"`
+	Failed        int             `json:"failed"`
+	NotRun        int             `json:"not_run"`
+	Indeterminate int             `json:"indeterminate"`
+	NotApplicable int             `json:"not_applicable"`
 }
 
 type ComparisonRow struct {
@@ -50,6 +60,7 @@ type ComparisonMetric struct {
 type comparisonObservation struct {
 	cell       ComparisonCell
 	conditions string
+	checks     []VerificationCheck
 }
 
 // Compare projects sealed reports without rewriting history or evaluating old
@@ -59,6 +70,10 @@ func Compare(details []Detail, baselineID string) (Comparison, error) {
 		return Comparison{}, fmt.Errorf("comparison requires 2 to %d reports", MaxComparisonReports)
 	}
 	result := Comparison{SchemaVersion: 1, BaselineID: baselineID, Reports: details, Rows: []ComparisonRow{}}
+	byProtocol := isProtocolComparison(details)
+	if byProtocol {
+		result.ProtocolSummary = summarizeComparisonProtocols(details)
+	}
 	seen := make(map[string]bool, len(details))
 	observations := make(map[string]map[string]comparisonObservation)
 	entryKeys := make(map[string]string)
@@ -73,6 +88,7 @@ func Compare(details []Detail, baselineID string) (Comparison, error) {
 			observations,
 			entryKeys,
 			detail,
+			byProtocol,
 		); err != nil {
 			return Comparison{}, err
 		}
@@ -85,6 +101,9 @@ func Compare(details []Detail, baselineID string) (Comparison, error) {
 		values := observations[row.Key]
 		baseline, hasBaseline := values[baselineID]
 		baselineStatus := "not_run"
+		if byProtocol && !hasBaseline {
+			baselineStatus = "not_applicable"
+		}
 		if hasBaseline {
 			baselineStatus = baseline.cell.Status
 		}
@@ -92,6 +111,9 @@ func Compare(details []Detail, baselineID string) (Comparison, error) {
 			id := comparisonReportID(detail)
 			observation, exists := values[id]
 			cell := ComparisonCell{ReportID: id, Status: "not_run", Change: "missing", Metrics: []ComparisonMetric{}}
+			if byProtocol && !exists {
+				cell.Status = "not_applicable"
+			}
 			if exists {
 				cell = observation.cell
 				cell.Metrics = append([]ComparisonMetric{}, cell.Metrics...)
@@ -99,17 +121,91 @@ func Compare(details []Detail, baselineID string) (Comparison, error) {
 				if id == baselineID {
 					cell.Change = "baseline"
 				}
-				if id != baselineID && hasBaseline && observation.conditions == baseline.conditions {
+				if id != baselineID && hasBaseline && observation.conditions == baseline.conditions && !byProtocol {
 					addComparisonDeltas(&cell, baseline.cell)
 				}
 			}
 			if cell.Status != baselineStatus {
 				row.Different = true
 			}
+			if byProtocol && (exists != hasBaseline || !sameComparisonChecks(observation.checks, baseline.checks)) {
+				row.Different = true
+			}
 			row.Cells = append(row.Cells, cell)
 		}
 	}
 	return result, nil
+}
+
+func isProtocolComparison(details []Detail) bool {
+	if len(details) != 3 || details[0].Source != SourceRun {
+		return false
+	}
+	anchor := details[0].Report.PlanSnapshot
+	seen := make(map[domain.Protocol]bool, len(details))
+	for _, detail := range details {
+		snapshot := detail.Report.PlanSnapshot
+		protocol := detail.Report.Protocol
+		sameTarget := snapshot.Plan == anchor.Plan && snapshot.Model.EntityRevisionRef == anchor.Model.EntityRevisionRef &&
+			snapshot.Channel.BaseURL == anchor.Channel.BaseURL && snapshot.Channel.UpstreamModelName == anchor.Channel.UpstreamModelName
+		if detail.Source != SourceRun || !sameTarget || seen[protocol] || !domain.IsComparisonProtocol(protocol) {
+			return false
+		}
+		for index, entry := range snapshot.Entries {
+			if index >= len(anchor.Entries) || entry.EntryID != anchor.Entries[index].EntryID {
+				return false
+			}
+		}
+		if len(snapshot.Entries) != len(anchor.Entries) {
+			return false
+		}
+		seen[protocol] = true
+	}
+	return true
+}
+
+func summarizeComparisonProtocols(details []Detail) []ProtocolComparisonSummary {
+	summaries := make([]ProtocolComparisonSummary, 0, len(details))
+	for _, detail := range details {
+		counts := ProtocolComparisonSummary{Protocol: detail.Report.Protocol}
+		for _, entry := range detail.Entries {
+			for _, item := range entry.Cases {
+				switch comparisonCaseStatus(item) {
+				case "passed":
+					counts.Passed++
+				case "failed":
+					counts.Failed++
+				case "not_run":
+					counts.NotRun++
+				case "indeterminate":
+					counts.Indeterminate++
+				case "not_applicable":
+					counts.NotApplicable++
+				}
+			}
+		}
+		summaries = append(summaries, counts)
+	}
+	return summaries
+}
+
+func comparisonCaseStatus(item CaseDetail) string {
+	if item.SummaryResult == nil && len(item.RequestResults) == 0 {
+		return "not_run"
+	}
+	return string(item.Verification.Status)
+}
+
+func sameComparisonChecks(left, right []VerificationCheck) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index, check := range left {
+		if check.ID != right[index].ID || check.Verification.Status != right[index].Verification.Status {
+			return false
+		}
+	}
+	return true
 }
 
 func comparisonReportID(detail Detail) string {
@@ -124,6 +220,7 @@ func appendComparisonReport(
 	values map[string]map[string]comparisonObservation,
 	entryKeys map[string]string,
 	detail Detail,
+	byProtocol bool,
 ) error {
 	id := comparisonReportID(detail)
 	appendValue := func(key, name, entryName string, value comparisonObservation) {
@@ -168,6 +265,9 @@ func appendComparisonReport(
 			entryKeys[identity] = entryKey
 		}
 		used[entryKey] = true
+		if byProtocol {
+			entryKey = entry.EntryID
+		}
 		if len(entry.Performance) > 0 {
 			var performance quicktest.PerformanceReport
 			if err := json.Unmarshal(entry.Performance, &performance); err != nil {
@@ -206,12 +306,9 @@ func appendComparisonReport(
 			if err != nil {
 				return err
 			}
-			status := string(testCase.Verification.Status)
-			if testCase.SummaryResult == nil && len(testCase.RequestResults) == 0 {
-				status = "not_run"
-			}
+			status := comparisonCaseStatus(testCase)
 			appendValue(entryKey+":"+testCase.CaseID, testCase.Name, entry.Name, comparisonObservation{
-				conditions: string(conditions),
+				conditions: string(conditions), checks: testCase.VerificationChecks,
 				cell: ComparisonCell{ReportID: id, EntryID: entry.EntryID, CaseID: testCase.CaseID,
 					Status: status, Metrics: comparisonMetrics(testCase.Metrics)},
 			})

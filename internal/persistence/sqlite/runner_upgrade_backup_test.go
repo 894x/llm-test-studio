@@ -17,6 +17,7 @@ func TestRunnerUpgradeBackupSupportsEveryPublishedMigrationSource(t *testing.T) 
 	fixtures := map[string]func(*testing.T) string{
 		"v2": func(t *testing.T) string { return queryIndexesV2Fixture(t) },
 		"v3": func(t *testing.T) string { return historyRecycleV3Fixture(t) },
+		"v4": func(t *testing.T) string { return protocolComparisonV4Fixture(t) },
 		"current": func(t *testing.T) string {
 			path := filepath.Join(t.TempDir(), "current.db")
 			if err := Migrate(t.Context(), path, MigrateOptions{AppVersion: "upgrade-backup-test"}); err != nil {

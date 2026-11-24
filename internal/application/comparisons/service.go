@@ -59,9 +59,10 @@ type Service struct {
 }
 
 type StartCommand struct {
-	PlanID     string   `json:"plan_id"`
-	ModelID    string   `json:"model_id"`
-	ChannelIDs []string `json:"channel_ids"`
+	PlanID     string                          `json:"plan_id"`
+	ModelID    string                          `json:"model_id"`
+	ChannelIDs []string                        `json:"channel_ids"`
+	Protocols  *runs.ProtocolComparisonCommand `json:"protocols,omitempty"`
 }
 
 const CurrentSnapshotSchemaVersion = 1
@@ -72,6 +73,7 @@ type Snapshot struct {
 }
 
 type Summary struct {
+	JobID     string          `json:"job_id,omitempty"`
 	ID        string          `json:"id"`
 	CreatedAt time.Time       `json:"created_at"`
 	Status    string          `json:"status"`
@@ -82,15 +84,23 @@ type Summary struct {
 	Channels  []ChannelResult `json:"channels"`
 }
 
+type CaseProgress struct {
+	Completed int `json:"completed"`
+	Total     int `json:"total"`
+}
+
 type ChannelResult struct {
-	ChannelID   string                        `json:"channel_id"`
-	ChannelName string                        `json:"channel_name"`
-	RunID       string                        `json:"run_id"`
-	RunStatus   domain.RunStatus              `json:"run_status"`
-	ReportReady bool                          `json:"report_ready"`
-	Passed      bool                          `json:"passed"`
-	Verdict     string                        `json:"verdict"`
-	Metrics     map[string]domain.MetricValue `json:"metrics"`
+	CaseProgress *CaseProgress                 `json:"case_progress,omitempty"`
+	Protocol     domain.Protocol               `json:"protocol,omitempty"`
+	Suite        bool                          `json:"suite,omitempty"`
+	ChannelID    string                        `json:"channel_id"`
+	ChannelName  string                        `json:"channel_name"`
+	RunID        string                        `json:"run_id"`
+	RunStatus    domain.RunStatus              `json:"run_status"`
+	ReportReady  bool                          `json:"report_ready"`
+	Passed       bool                          `json:"passed"`
+	Verdict      string                        `json:"verdict"`
+	Metrics      map[string]domain.MetricValue `json:"metrics"`
 }
 
 func New(dependencies Dependencies) (*Service, error) {
@@ -121,7 +131,7 @@ func New(dependencies Dependencies) (*Service, error) {
 }
 
 func (service *Service) Start(ctx context.Context, command StartCommand) (string, error) {
-	if service == nil {
+	if service == nil || command.Protocols != nil {
 		return "", ErrInvalid
 	}
 	prepared, leases, err := service.Build(ctx, command)
@@ -255,6 +265,7 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 			}
 			result := ChannelResult{
 				ChannelID: item.Channel.ID, ChannelName: runSnapshot.Channel.Name,
+				Protocol: item.Protocol, Suite: item.Suite,
 				RunID: item.RunID, RunStatus: run.Status(), Metrics: map[string]domain.MetricValue{},
 			}
 			if report, found := reportsByRun[item.RunID]; found {

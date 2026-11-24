@@ -7,10 +7,12 @@ import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { ComparisonChannelResult, ComparisonSummary } from "@/features/comparisons/data"
+import { ProtocolCaseComparisonTable } from "./protocol-case-comparison-table"
+import { comparisonTargetKey, comparisonTargetLabel } from "./report-list-items"
 import type { FormalReportDetail, ReportCaseDetail, ReportEntryDetail, ReportSnapshot } from "./data"
 import { ExecutionDetails, VerificationBadges } from "./entry-case-table"
 import { CaseSeverityBadge } from "./case-severity-badge"
-import { ComparisonChannelHeader, ComparisonTableColumns } from "./comparison-channel-header"
+import { ComparisonChannelHeader, ComparisonTableColumns, ProtocolComparisonColumns, ProtocolComparisonHeader } from "./comparison-channel-header"
 
 export type ChannelReports = Record<string, { reportID: string; detail?: FormalReportDetail; error?: boolean }>
 const PAGE_SIZE = 50
@@ -24,20 +26,20 @@ export function ComparisonReportBody({ comparison, channels, loaded, reports, on
 }) {
   const { t } = useTranslation("reports")
   const entries = new Map<string, ReportEntryDetail>()
-  for (const channel of channels) for (const entry of loaded[channel.channel_id]?.detail?.entries ?? []) {
+  for (const channel of channels) for (const entry of loaded[comparisonTargetKey(channel)]?.detail?.entries ?? []) {
     if (!entries.has(entry.entry_id)) entries.set(entry.entry_id, entry)
   }
-  const pendingChannels = channels.filter(channel => !loaded[channel.channel_id]?.detail || loaded[channel.channel_id]?.error)
-  return <section aria-label={t("comparison.title")} className="min-w-0 space-y-4">
-    <header><h2 className="text-sm font-semibold">{t("comparison.title")}</h2>
+  const pendingChannels = channels.filter(channel => !loaded[comparisonTargetKey(channel)]?.detail || loaded[comparisonTargetKey(channel)]?.error)
+  return <section aria-label={t(comparison.channels[0]?.protocol ? "protocolComparison.title" : "comparison.title")} className="min-w-0 space-y-4">
+    <header><h2 className="text-sm font-semibold">{t(comparison.channels[0]?.protocol ? "protocolComparison.title" : "comparison.title")}</h2>
       <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">{comparison.plan_name} · {comparison.model_name}</p>
     </header>
     {pendingChannels.length ? <div className="flex flex-wrap gap-x-6 gap-y-2">
       {pendingChannels.map(channel => {
-        const detail = loaded[channel.channel_id]?.detail
-        return <div key={channel.channel_id} className="min-w-0 text-xs [overflow-wrap:anywhere]">
-          <span className="font-medium">{channel.channel_name}</span>
-          {loaded[channel.channel_id]?.error ? <div role="alert" className="mt-1 text-destructive">{t("detailError")}
+        const detail = loaded[comparisonTargetKey(channel)]?.detail
+        return <div key={comparisonTargetKey(channel)} className="min-w-0 text-xs [overflow-wrap:anywhere]">
+          <span className="font-medium">{comparisonTargetLabel(channel)}</span>
+          {loaded[comparisonTargetKey(channel)]?.error ? <div role="alert" className="mt-1 text-destructive">{t("detailError")}
             {onRetry ? <Button variant="outline" size="xs" className="ml-2" onClick={onRetry}>{t("comparison.retry")}</Button> : null}
           </div> : !detail ? <div className="mt-1 text-muted-foreground" role="status">
             {reports.has(channel.run_id) ? <><Spinner className="mr-1 inline-block" />{t("detailLoading")}</> : t("comparison.pending")}
@@ -46,17 +48,17 @@ export function ComparisonReportBody({ comparison, channels, loaded, reports, on
       })}
     </div> : null}
     {[...entries.values()].map(entry => {
-      const channelEntries = channels.map(channel => loaded[channel.channel_id]?.detail?.entries.find(item => item.entry_id === entry.entry_id))
+      const channelEntries = channels.map(channel => loaded[comparisonTargetKey(channel)]?.detail?.entries.find(item => item.entry_id === entry.entry_id))
       return <section key={entry.entry_id} aria-label={entry.name} className="min-w-0 space-y-2">
         <h3 className="text-xs font-semibold [overflow-wrap:anywhere]">{entry.name}</h3>
         <ComparisonCaseTable channels={channels} entries={channelEntries} loaded={loaded} paginate={paginate} />
       </section>
     })}
-    {!entries.size && channels.every(channel => loaded[channel.channel_id]?.detail) ? <p className="text-xs text-muted-foreground">{t("hierarchy.noRecordedCases")}</p> : null}
+    {!entries.size && channels.every(channel => loaded[comparisonTargetKey(channel)]?.detail) ? <p className="text-xs text-muted-foreground">{t("hierarchy.noRecordedCases")}</p> : null}
     {channels.map(channel => {
-      const results = loaded[channel.channel_id]?.detail?.unassigned_request_results ?? []
-      return results.length ? <section key={channel.channel_id} className="space-y-2">
-        <h3 className="text-xs font-semibold">{channel.channel_name} · {t("comparison.unassigned")}</h3>
+      const results = loaded[comparisonTargetKey(channel)]?.detail?.unassigned_request_results ?? []
+      return results.length ? <section key={comparisonTargetKey(channel)} className="space-y-2">
+        <h3 className="text-xs font-semibold">{comparisonTargetLabel(channel)} · {t("comparison.unassigned")}</h3>
         <ExecutionDetails results={results} paginate={paginate} />
       </section> : null
     })}
@@ -77,17 +79,41 @@ function ComparisonCaseTable({ channels, entries, loaded, paginate }: {
   entries.forEach((entry, index) => entry?.cases.forEach(item => {
     let row = cases.get(item.case_id)
     if (!row) { row = { name: item.name, results: new Map() }; cases.set(item.case_id, row) }
-    row.results.set(channels[index].channel_id, item)
+    row.results.set(comparisonTargetKey(channels[index]), item)
   }))
   const all = [...cases.entries()]
   const currentPage = Math.min(page, Math.max(0, Math.ceil(all.length / PAGE_SIZE) - 1))
   const visible = paginate ? all.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE) : all
   return <TooltipProvider delayDuration={250}>
-    <Table aria-label={t("comparison.caseTable")} className="table-fixed text-xs">
-      <ComparisonTableColumns channels={channels.length} />
+    {channels.every(channel => channel.protocol) ? <ProtocolCaseComparisonTable exporting={!paginate}
+      lanes={channels.map(channel => ({ id: comparisonTargetKey(channel), label: comparisonTargetLabel(channel) }))}
+      rows={visible.map(([id, row]) => {
+        const open = expanded === id
+        return {
+          key: id, name: row.name, detailID: `${detailsID}-${id}`,
+          onToggle: () => setExpanded(open ? "" : id),
+          detail: open ? <div className="space-y-4">{channels.map(channel => {
+            const key = comparisonTargetKey(channel)
+            const result = row.results.get(key)
+            return result ? <section key={key} className="min-w-0 space-y-2">
+              <h4 className="font-medium">{comparisonTargetLabel(channel)}</h4>
+              <ExecutionDetails results={result.request_results} paginate={paginate} summaryOnly />
+            </section> : null
+          })}</div> : undefined,
+          cells: channels.map(channel => {
+            const key = comparisonTargetKey(channel)
+            return {
+              item: row.results.get(key),
+              empty: t(loaded[key]?.error ? "comparison.unavailable" : loaded[key]?.detail ? "protocolComparison.notApplicable" : "comparison.pending"),
+            }
+          }),
+        }
+      })} /> : <Table aria-label={t("comparison.caseTable")} className="table-fixed text-xs">
+      {channels[0]?.protocol ? <ProtocolComparisonColumns /> : <ComparisonTableColumns channels={channels.length} />}
       <TableHeader><TableRow>
         <TableHead>{t("protocolDesign.caseName")}</TableHead>
-        {channels.map(channel => <ComparisonChannelHeader key={channel.channel_id} channel={channel.channel_name} exporting={!paginate} />)}
+        {channels.map(channel => channel.protocol ? <ProtocolComparisonHeader key={comparisonTargetKey(channel)} label={comparisonTargetLabel(channel)} /> :
+          <ComparisonChannelHeader key={comparisonTargetKey(channel)} channel={comparisonTargetLabel(channel)} exporting={!paginate} />)}
       </TableRow></TableHeader>
       <TableBody>{visible.map(([id, row]) => <Fragment key={id}>
         <TableRow data-state={expanded === id ? "selected" : undefined}>
@@ -99,25 +125,25 @@ function ComparisonCaseTable({ channels, entries, loaded, paginate }: {
             </Button> : <div className="font-medium">{row.name}</div>}
           </TableCell>
           {channels.map(channel => {
-            const result = row.results.get(channel.channel_id)
-            return <TableCell key={channel.channel_id} className="whitespace-normal align-top [overflow-wrap:anywhere]">
+            const result = row.results.get(comparisonTargetKey(channel))
+            return <TableCell key={comparisonTargetKey(channel)} className="whitespace-normal align-top [overflow-wrap:anywhere]">
               {result ? <div className="flex min-h-7 flex-wrap items-center gap-2 py-1">
                 <CaseSeverityBadge severity={result.severity} />
-                <VerificationBadges status={result.verification.status} checks={result.verification_checks} summaryOnly />
-              </div> : <span className="text-muted-foreground">{t(loaded[channel.channel_id]?.error ? "comparison.unavailable" : loaded[channel.channel_id]?.detail ? "comparison.noResult" : "comparison.pending")}</span>}
+                <VerificationBadges status={result.verification.status} checks={result.verification_checks} summaryOnly={!channel.protocol} />
+              </div> : <span className="text-muted-foreground">{t(loaded[comparisonTargetKey(channel)]?.error ? "comparison.unavailable" : loaded[comparisonTargetKey(channel)]?.detail ? "comparison.noResult" : "comparison.pending")}</span>}
             </TableCell>
           })}
         </TableRow>
         {expanded === id ? <TableRow id={`${detailsID}-${id}`}><TableCell colSpan={channels.length + 1} className="py-3">
           <div className="grid min-w-0 gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))" }}>
-            {channels.map(channel => <section key={channel.channel_id} className="min-w-0 space-y-2">
-              <h4 className="text-xs font-medium [overflow-wrap:anywhere]">{channel.channel_name}</h4>
-              <ExecutionDetails results={row.results.get(channel.channel_id)?.request_results ?? []} paginate={paginate} />
+            {channels.map(channel => <section key={comparisonTargetKey(channel)} className="min-w-0 space-y-2">
+              <h4 className="text-xs font-medium [overflow-wrap:anywhere]">{comparisonTargetLabel(channel)}</h4>
+              <ExecutionDetails results={row.results.get(comparisonTargetKey(channel))?.request_results ?? []} paginate={paginate} />
             </section>)}
           </div>
         </TableCell></TableRow> : null}
       </Fragment>)}</TableBody>
-    </Table>
+    </Table>}
     {paginate && all.length > PAGE_SIZE ? <div className="flex items-center justify-end gap-2 py-2 text-xs">
       <span>{currentPage + 1} / {Math.ceil(all.length / PAGE_SIZE)}</span>
       <Button variant="outline" size="xs" disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>{t("protocolDesign.previous")}</Button>

@@ -1,4 +1,19 @@
 {
+  "protocolComparison": {
+    "title": "三协议对比",
+    "loading": "正在检查协议覆盖",
+    "previewFailed": "无法读取三协议预览",
+    "requests_one": "{{count}} 次请求",
+    "requests_other": "{{count}} 次请求",
+    "missingItem": "缺少 {{name}} 的可执行定义",
+    "unavailable": "缺少可执行定义",
+    "unsupportedModel": "当前渠道和模型未配置 {{protocols}}",
+    "enterKey": "请输入 API Key，或选择已保存的渠道",
+    "start": "启动三协议对比",
+    "more": "加载更多对比批次",
+    "caseProgress": "已执行 {{completed}} / {{total}} 条用例",
+    "endpointHint": "三种协议共用此地址，各自使用对应的请求路径。"
+  },
   "catalog": {
     "connectionsLoading": "正在加载渠道和模型…",
     "connectionsFailed": "渠道和模型加载失败，已填写内容已保留。",

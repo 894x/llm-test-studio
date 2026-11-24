@@ -1,3 +1,4 @@
+import { comparisonTargetKey, comparisonTargetLabel } from "./report-list-items"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import ChevronLeftIcon from "lucide-react/dist/esm/icons/chevron-left.mjs"
@@ -38,12 +39,12 @@ export function useComparisonReport({ comparison, snapshot, getDetail, saveRepor
   const exportReady = useRef<((element: HTMLElement) => void) | null>(null)
   const cache = useRef({ reader: getDetail, reports: new Map<string, Promise<FormalReportDetail>>() })
   const reports = useMemo(() => new Map(snapshot.reports.flatMap(report => report.run_id ? [[report.run_id, report] as const] : [])), [snapshot.reports])
-  const targets = comparison?.channels.map(channel => ({ channelID: channel.channel_id, runID: channel.run_id, reportID: reports.get(channel.run_id)?.id ?? "" })) ?? []
+  const targets = comparison?.channels.map(channel => ({ channelID: comparisonTargetKey(channel), runID: channel.run_id, reportID: reports.get(channel.run_id)?.id ?? "" })) ?? []
   const targetKey = JSON.stringify(targets)
   const modelID = comparison?.model_id
   const loaded: ChannelReports = Object.fromEntries((comparison?.channels ?? []).flatMap(channel => {
-    const value = loadState[channel.channel_id]
-    return value && value.reportID === reports.get(channel.run_id)?.id ? [[channel.channel_id, value]] : []
+    const value = loadState[comparisonTargetKey(channel)]
+    return value && value.reportID === reports.get(channel.run_id)?.id ? [[comparisonTargetKey(channel), value]] : []
   }))
 
   const readReport = useCallback((target: { channelID: string; runID: string; reportID: string }): Promise<FormalReportDetail> => {
@@ -85,8 +86,8 @@ export function useComparisonReport({ comparison, snapshot, getDetail, saveRepor
     return () => { current = false }
   }, [active, readReport, targetKey, retry])
 
-  const visibleChannels = (comparison?.channels ?? []).filter(channel => !hidden.includes(channel.channel_id))
-  const canExport = visibleChannels.length > 0 && visibleChannels.every(channel => reports.has(channel.run_id) && !loaded[channel.channel_id]?.error)
+  const visibleChannels = (comparison?.channels ?? []).filter(channel => !hidden.includes(comparisonTargetKey(channel)))
+  const canExport = visibleChannels.length > 0 && visibleChannels.every(channel => reports.has(channel.run_id) && !loaded[comparisonTargetKey(channel)]?.error)
   const attachExportDocument = useCallback((element: HTMLElement | null) => {
     if (element && exportReady.current) {
       exportReady.current(element)
@@ -101,10 +102,10 @@ export function useComparisonReport({ comparison, snapshot, getDetail, saveRepor
       const exportReports: ChannelReports = Object.fromEntries(await Promise.all(visibleChannels.map(async channel => {
         const reportID = reports.get(channel.run_id)!.id
         try {
-          const detail = await readReport({ channelID: channel.channel_id, runID: channel.run_id, reportID })
-          return [channel.channel_id, { reportID, detail }]
+          const detail = await readReport({ channelID: comparisonTargetKey(channel), runID: channel.run_id, reportID })
+          return [comparisonTargetKey(channel), { reportID, detail }]
         } catch (error) {
-          setLoaded(previous => ({ ...previous, [channel.channel_id]: { reportID, error: true } }))
+          setLoaded(previous => ({ ...previous, [comparisonTargetKey(channel)]: { reportID, error: true } }))
           throw error
         }
       })))
@@ -113,8 +114,8 @@ export function useComparisonReport({ comparison, snapshot, getDetail, saveRepor
       let filename: string
       let mediaType: string
       if (format === "json") {
-        blob = new Blob([JSON.stringify({ comparison, visible_channel_ids: visibleChannels.map(channel => channel.channel_id),
-          reports: visibleChannels.map(channel => exportReports[channel.channel_id].detail) }, null, 2)], { type: "application/json" })
+        blob = new Blob([JSON.stringify({ comparison, ...(comparison.channels[0]?.protocol ? { visible_protocols: visibleChannels.map(channel => channel.protocol) } : { visible_channel_ids: visibleChannels.map(channel => channel.channel_id) }),
+          reports: visibleChannels.map(channel => exportReports[comparisonTargetKey(channel)].detail) }, null, 2)], { type: "application/json" })
         filename = `llm-test-studio-comparison-${comparison.id}.json`
         mediaType = "application/json"
       } else {
@@ -145,22 +146,22 @@ export function useComparisonReport({ comparison, snapshot, getDetail, saveRepor
   }
 
   const content = comparison ? <>
-    <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2" aria-label={t("comparison.channelControls")}>
+    {!comparison.channels[0]?.protocol ? <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2" aria-label={t("comparison.channelControls")}>
       {comparison.channels.map((channel, index) => {
-        const collapsed = hidden.includes(channel.channel_id)
-        return <Button key={channel.channel_id} variant={collapsed ? "outline" : "secondary"} size="sm"
+        const collapsed = hidden.includes(comparisonTargetKey(channel))
+        return <Button key={comparisonTargetKey(channel)} variant={collapsed ? "outline" : "secondary"} size="sm"
           className="h-auto min-h-8 max-w-full whitespace-normal [overflow-wrap:anywhere]"
           disabled={!collapsed && visibleChannels.length === 1} aria-expanded={!collapsed}
-          aria-controls="comparison-report-results" aria-label={t(collapsed ? "comparison.expand" : "comparison.collapse", { channel: channel.channel_name })}
-          onClick={() => setView({ comparisonID: comparison.id, hidden: collapsed ? hidden.filter(id => id !== channel.channel_id) : [...hidden, channel.channel_id] })}>
-          {index === 0 ? <ChevronLeftIcon /> : <ChevronRightIcon />}{channel.channel_name}
+          aria-controls="comparison-report-results" aria-label={t(collapsed ? "comparison.expand" : "comparison.collapse", { channel: comparisonTargetLabel(channel) })}
+          onClick={() => setView({ comparisonID: comparison.id, hidden: collapsed ? hidden.filter(id => id !== comparisonTargetKey(channel)) : [...hidden, comparisonTargetKey(channel)] })}>
+          {index === 0 ? <ChevronLeftIcon /> : <ChevronRightIcon />}{comparisonTargetLabel(channel)}
           <span className="text-muted-foreground">{t(collapsed ? "comparison.expandLabel" : "comparison.collapseLabel")}</span>
         </Button>
       })}
-    </div>
+    </div> : null}
     <ScrollArea className="min-h-0 flex-1" contentWidth="viewport">
       <div id="comparison-report-results" className="p-4">
-        <ComparisonReportBody key={`${comparison.id}:${visibleChannels.map(channel => channel.channel_id).join(",")}`} comparison={comparison} channels={visibleChannels}
+        <ComparisonReportBody key={`${comparison.id}:${visibleChannels.map(channel => comparisonTargetKey(channel)).join(",")}`} comparison={comparison} channels={visibleChannels}
           loaded={loaded} reports={reports} onRetry={() => setRetry(value => value + 1)} />
       </div>
     </ScrollArea>

@@ -85,11 +85,13 @@ func (repository *Repository) ComparisonHistory(
 		var channel comparisons.ChannelResult
 		var stamp, metrics string
 		var valid, expectedCount, channelPosition int
+		var caseProgress comparisons.CaseProgress
 		if err := rows.Scan(
 			&summary.ID, &stamp, &summary.Status, &summary.PlanID, &summary.ModelID,
 			&summary.PlanName, &summary.ModelName, &channel.ChannelID, &channel.ChannelName,
 			&channel.RunID, &channel.RunStatus, &channel.ReportReady, &channel.Passed,
-			&channel.Verdict, &metrics, &valid, &expectedCount, &channelPosition,
+			&channel.Verdict, &metrics, &valid, &expectedCount, &channelPosition, &channel.Protocol, &channel.Suite, &summary.JobID,
+			&caseProgress.Completed, &caseProgress.Total,
 		); err != nil {
 			return page, err
 		}
@@ -101,6 +103,15 @@ func (repository *Repository) ComparisonHistory(
 			strings.TrimSpace(summary.PlanName) == "" || strings.TrimSpace(summary.ModelName) == "" ||
 			strings.TrimSpace(channel.ChannelName) == "" {
 			return page, storageCorrupt("comparison summary")
+		}
+		if summary.JobID != "" && !domain.IsUUID(summary.JobID) {
+			return page, storageCorrupt("comparison job identifier")
+		}
+		if channel.Protocol != "" {
+			if !domain.IsComparisonProtocol(channel.Protocol) || caseProgress.Completed > caseProgress.Total || caseProgress.Completed < 0 {
+				return page, storageCorrupt("comparison protocol progress")
+			}
+			channel.CaseProgress = &caseProgress
 		}
 		for name, metric := range channel.Metrics {
 			if err := metric.Validate(name); err != nil {
@@ -117,7 +128,8 @@ func (repository *Repository) ComparisonHistory(
 		}
 		if len(page.Comparisons[position].Channels) != channelPosition ||
 			page.Comparisons[position].PlanName != summary.PlanName ||
-			page.Comparisons[position].ModelName != summary.ModelName {
+			page.Comparisons[position].ModelName != summary.ModelName ||
+			page.Comparisons[position].JobID != summary.JobID {
 			return page, storageCorrupt("comparison child window")
 		}
 		page.Comparisons[position].Channels = append(page.Comparisons[position].Channels, channel)
@@ -162,8 +174,22 @@ const comparisonHistoryQuery = `SELECT root.id,root.created_at,current.status,cu
  AND json_extract(revision.snapshot_json,'$.channel.revision')=child.channel_revision
  AND json_extract(current.document_json,'$.runs['||child.position||'].run_id')=child.run_id
  AND json_extract(current.document_json,'$.runs['||child.position||'].channel.id')=child.channel_id
- AND json_extract(current.document_json,'$.runs['||child.position||'].channel.revision')=child.channel_revision,0),
- COALESCE(json_array_length(current.document_json,'$.runs'),0), child.position
+ AND json_extract(current.document_json,'$.runs['||child.position||'].channel.revision')=child.channel_revision
+ AND COALESCE(json_extract(current.document_json,'$.runs['||child.position||'].protocol'),'')=child.protocol
+ AND (child.protocol='' OR json_extract(revision.snapshot_json,'$.channel.protocol')=child.protocol),0),
+ COALESCE(json_array_length(current.document_json,'$.runs'),0), child.position, child.protocol,
+ child.protocol<>'' AND COALESCE(json_extract(current.document_json,'$.runs['||child.position||'].suite')=1,0),
+ CASE WHEN child.protocol<>'' THEN COALESCE(
+   (SELECT job_id FROM execution_job_runs WHERE run_id=child.run_id),
+   (SELECT job_id FROM remote_job_runs WHERE run_id=child.run_id), '') ELSE '' END,
+ CASE WHEN child.protocol<>'' THEN (SELECT COUNT(*) FROM (
+   SELECT entry_id,case_id FROM case_results WHERE run_id=child.run_id AND entry_id IS NOT NULL AND case_id IS NOT NULL
+     AND COALESCE(json_extract(document_json,'$.dimensions.phase'),'') NOT IN ('warmup','checkpoint')
+   GROUP BY entry_id,case_id
+ )) ELSE 0 END,
+ CASE WHEN child.protocol<>'' THEN COALESCE((
+   SELECT SUM(json_array_length(value,'$.cases')) FROM json_each(revision.snapshot_json,'$.entries')
+ ),0) ELSE 0 END
  FROM comparisons root
  JOIN comparison_revisions current ON current.comparison_id=root.id AND current.revision=root.current_revision
  JOIN comparison_runs child ON child.comparison_id=root.id AND child.comparison_revision=root.current_revision

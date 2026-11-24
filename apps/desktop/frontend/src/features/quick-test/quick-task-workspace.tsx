@@ -49,7 +49,7 @@ import type { QuickPerformanceConnection } from "./quick-performance-sheet"
 import { RetainedWorkspace } from "@/features/shell/retained-workspace"
 import { createTaskDraft, quickTaskCommand, restoreTaskDraft, type TaskDraft } from "./task-draft"
 import { QuickTestField } from "./quick-test-field"
-import { PROTOCOLS } from "@/features/catalog/protocols"
+import { PROTOCOL_LABELS, PROTOCOLS } from "@/features/catalog/protocols"
 import { resolveConnectionURL, taskConnectionURLs } from "./connection-url"
 import { ConnectionURLInput } from "./connection-url-input"
 import { protocolOptions } from "@/features/catalog/protocols"
@@ -57,6 +57,11 @@ import { SaveChannelSheet } from "./save-channel-sheet"
 import { QuickTestModeSwitch, type QuickTestMode } from "./quick-test-mode-switch"
 import { BenchmarkWorkspace } from "@/features/benchmarks/benchmark-workspace"
 import type { BenchmarkClient } from "@/features/benchmarks/data"
+import type { ComparisonSummary } from "@/features/comparisons/data"
+import { canCompareProtocols, COMPARISON_PROTOCOLS } from "./protocol-comparison-data"
+import { ProtocolComparisonPreviewFields, ProtocolComparisonSwitch } from "./protocol-comparison-fields"
+import { useProtocolComparisonPreview } from "./use-protocol-comparison-preview"
+import { protocolBatchItems } from "./protocol-batch-history"
 import { QuickTestHistory, type QuickTestHistoryItem } from "./quick-test-history"
 import { ModelIcon, ProtocolIcon } from "./model-icon"
 import type { HistoryChanged, HistoryVisibilityChange } from "@/features/history-recycle/data"
@@ -72,6 +77,7 @@ type Actions = JobClient & Partial<BenchmarkClient> & Partial<HistoryRecycleClie
   DesktopClient,
   | "getQuickTask"
   | "getReportDetail"
+  | "previewProtocolComparison"
   | "getAvailableReports"
   | "rememberQuickTaskCredential"
   | "forgetQuickTaskCredential"
@@ -148,6 +154,7 @@ export function QuickTaskWorkspace(props: QuickTaskWorkspaceProps) {
           loadPlans={props.loadPerformancePlans} modeControl={modeControl} actions={props.actions}
           onJobLaunched={props.onJobLaunched} onJobChange={props.onJobChange}
           onOpenExecution={props.onOpenExecution} onOpenReport={props.onOpenReport}
+          protocolComparisons={props.protocolComparisons} protocolHistoryFooter={props.protocolHistoryFooter}
           connection={{ protocol: selectedProtocol, model: props.draft.model, channel_id: props.draft.channel_id,
             base_url: props.draft.base_url, api_key: props.draft.api_key, credential_run_id: props.draft.credential_run_id }}
           onConnectionChange={next => {
@@ -184,6 +191,8 @@ function QuickTaskContent({
   catalogResources,
   loadPerformancePlans,
   historyFooter,
+  protocolComparisons,
+  protocolHistoryFooter,
   historyReady = true,
   workspace,
   reports,
@@ -213,6 +222,8 @@ function QuickTaskContent({
   catalogResources?: CatalogResources
   loadPerformancePlans?: () => Promise<unknown>
   historyFooter?: ReactNode
+  protocolComparisons?: ComparisonSummary[]
+  protocolHistoryFooter?: ReactNode
   historyReady?: boolean
   workspace: WorkspaceSnapshot
   reports: ReportSnapshot
@@ -299,6 +310,7 @@ function QuickTaskContent({
   const [performanceFormRevision, setPerformanceFormRevision] = useState(0)
   const [performanceActionsContainer, setPerformanceActionsContainer] = useState<HTMLDivElement | null>(null)
   const [selectedHistoryID, setSelectedHistoryID] = useState("")
+  const [compareProtocols, setCompareProtocols] = useState(false)
   const busy = !!pending || performancePending
   const [saveChannelOpen, setSaveChannelOpen] = useState(false)
   const protocol = mode === "performance" ? selectedProtocol : draft.task?.protocol ?? selectedProtocol
@@ -361,14 +373,21 @@ function QuickTaskContent({
     model_id: form.model.trim(),
     ...(form.channel_id ? { channel_id: form.channel_id } : {}),
   }
+  const comparisonEnabled = mode === "functional" && Boolean(actions.previewProtocolComparison) && canCompareProtocols(protocol)
+  const comparing = comparisonEnabled && compareProtocols
+  const preview = useProtocolComparisonPreview(actions.previewProtocolComparison, "", comparing ? task?.id ?? "" : "")
+  const comparisonReady = preview.data?.targets.every(target => target.available) ?? false
+  const protocolItems = protocolBatchItems(protocolComparisons, "functional")
   const historyItems: QuickTestHistoryItem[] = [
-    ...functionalJobs.map(entry => {
+    ...protocolItems,
+    ...functionalJobs.filter(entry => !protocolItems.some(item => item.comparisonID === entry.job.comparison_id)).map(entry => {
       const observed = entry.job
       const run = workspace.runs.find(run => run.job_id === observed.job_id || observed.run_ids.includes(run.id))
       const status = observed.execution?.status
       const confirmation = observed.submission?.confirmation
       return {
-        id: observed.job_id, jobID: observed.job_id, runID: run?.id, mode: "functional" as const,
+        id: observed.comparison_id || observed.job_id, jobID: observed.job_id, runID: run?.id, mode: "functional" as const,
+        comparisonID: observed.comparison_id || undefined,
         title: run?.plan_name ?? entry.title, model: run?.model_name ?? entry.model, channel: run?.channel_name ?? entry.channel,
         timestamp: observed.submission?.prepared_at ?? observed.execution!.accepted_at,
         status: status === "completed" && run && run.conclusion !== "none" ? run.conclusion : status ?? "queued",
@@ -425,6 +444,7 @@ function QuickTaskContent({
     }
   }).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
   const visibleHistory = history
+  const historicalProtocolJobs = protocolItems.flatMap(item => item.active && item.jobID && !functionalJobs.some(entry => entry.job.job_id === item.jobID) ? [item.jobID] : [])
   const historicalActiveJobs = workspace.runs.filter(run => run.source === "quick_task" && run.job_id &&
     isRunActive(run.status) && !functionalJobs.some(entry => entry.job.job_id === run.job_id))
   const pendingPerformanceIDs = performanceHistory.filter(item => item.reportID && !item.active &&
@@ -544,7 +564,12 @@ function QuickTaskContent({
     )
     if (missingChannel) checked.errors.channel_id = t("task.missingChannel")
     const configuredMappings = catalog.channel_models.filter(mapping => mapping.channel_id === form.channel_id && mapping.upstream_model_name === form.model.trim())
-    if (configuredMappings.length > 0 && !configuredMappings.some(mapping => mapping.protocols.includes(protocol))) checked.errors.model = t("task.unsupportedModelProtocol")
+    const missingProtocols = (comparing ? COMPARISON_PROTOCOLS : [protocol])
+      .filter(candidate => configuredMappings.length > 0 && !configuredMappings.some(mapping => mapping.protocols.includes(candidate)))
+    if (missingProtocols.length) checked.errors.model = comparing
+      ? t("protocolComparison.unsupportedModel", { protocols: missingProtocols.map(item => PROTOCOL_LABELS[item]).join(", ") })
+      : t("task.unsupportedModelProtocol")
+    if (comparing && form.credential_run_id && !form.channel_id) checked.errors.api_key = t("protocolComparison.enterKey")
     setErrors(checked.errors)
     if (Object.keys(checked.errors).length) {
       const field = Object.keys(checked.errors)[0]
@@ -568,7 +593,7 @@ function QuickTaskContent({
   }
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (inFlight.current || !connectionsReady || !tasksReady) return
+    if (inFlight.current || !connectionsReady || !tasksReady || (comparing && !comparisonReady)) return
     const command = validCommand()
     if (!command) return
     inFlight.current = true
@@ -577,13 +602,16 @@ function QuickTaskContent({
     setRefreshError(false)
     onDraftChange(form)
     try {
-      const accepted = await launchAtDefault(actions, { kind: "quick_task", quick_task: command, plan: null, performance: null, comparison: null })
+      const accepted = await launchAtDefault(actions, comparing
+        ? { kind: "comparison", quick_task: null, plan: null, performance: null,
+          comparison: { plan_id: "", model_id: "", channel_ids: [], protocols: { suite: command } } }
+        : { kind: "quick_task", quick_task: command, plan: null, performance: null, comparison: null })
       onFunctionalJobsChange(current => [{ job: accepted, title: task!.name, model: command.model,
         channel: channel?.name ?? command.base_url ?? "" }, ...current.filter(entry => entry.job.job_id !== accepted.job_id)])
-      setSelectedHistoryID(accepted.job_id)
+      setSelectedHistoryID(accepted.comparison_id || accepted.job_id)
       onJobLaunched?.(accepted)
       const id = accepted.run_ids[0]
-      if (id) {
+      if (id && !comparing) {
         onRunSelected(id)
         onDraftChange((current) => (current === form ? { ...form, source_run_id: id } : current))
       }
@@ -772,6 +800,9 @@ function QuickTaskContent({
         <QuickTaskJobObserver key={entry.job.job_id} client={actions} jobID={entry.job.job_id} onChange={receiveFunctionalJob}
           onControls={receiveControls}
           waitingForReport={!history.find(item => item.jobID === entry.job.job_id)?.reportID} />)}
+      {historicalProtocolJobs.map(jobID =>
+        <QuickTaskJobObserver key={jobID} client={actions} jobID={jobID} onChange={receiveHistoricalJob}
+          onControls={receiveControls} waitingForReport />)}
       {historicalActiveJobs.map(run =>
         <QuickTaskJobObserver key={run.job_id} client={actions} jobID={run.job_id!} onChange={receiveHistoricalJob}
           onControls={receiveControls}
@@ -790,7 +821,7 @@ function QuickTaskContent({
           </div>
           <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
             {visibleHistory.length ? <QuickTestHistory items={visibleHistory} selectedID={selectedID} busy={busy}
-              onSelect={item => void restoreHistory(item)}
+              onSelect={item => item.comparisonID ? setSelectedHistoryID(item.id) : void restoreHistory(item)}
               onOpenExecution={item => {
                 const entry = functionalJobs.find(entry => entry.job.job_id === item.jobID)
                 if (entry) { onOpenExecution(entry.job); return }
@@ -800,13 +831,14 @@ function QuickTaskContent({
               }}
               onRestore={id => { setMode("functional"); setSelectedHistoryID(id); void restore(id) }}
               renderRecycleAction={actions.previewHistoryRecycle && actions.recycleHistory ? (item, renderTrigger) => {
-                const target = item.jobID ? { kind: "job" as const, id: item.jobID } : item.runID ? { kind: "run" as const, id: item.runID } : item.reportID ? { kind: "report" as const, id: item.reportID } : null
+                const target = item.jobID ? { kind: "job" as const, id: item.jobID } : item.comparisonID ? { kind: "comparison" as const, id: item.comparisonID } : item.runID ? { kind: "run" as const, id: item.runID } : item.reportID ? { kind: "report" as const, id: item.reportID } : null
                 return target ? <RecycleHistoryButton compact name={item.title} client={actions as HistoryRecycleClient} target={target} disabled={busy} renderTrigger={renderTrigger}
                   onRecycled={(entry, action) => { setLocalHistoryChanges(current => [...current, { entry, action }]); setSelectedHistoryID(""); if (entry.run_ids.includes(runID)) onRunSelected("") }} onHistoryChanged={onHistoryChanged} /> : null
               } : undefined}
               onOpenReport={id => void onOpenReport(id)} onCancel={item => void cancel(item)} onRefresh={() => void refreshProgress()} />
               : historyReady ? <p className="py-4 text-xs leading-relaxed text-muted-foreground">{t("task.noHistory")}</p> : null}
             {historyFooter}
+            {mode === "functional" ? protocolHistoryFooter : null}
             {runID && !hidden.runs.has(runID) && !history.some(item => item.runID === runID) ? <p role="status" className="flex items-center gap-2 py-4 text-xs text-muted-foreground"><Spinner />{t("task.waiting")}</p> : null}
           </ScrollArea>
         </aside>
@@ -833,6 +865,8 @@ function QuickTaskContent({
             ) : (
               <div>
                 <FieldGroup>
+                  {comparisonEnabled ? <ProtocolComparisonSwitch checked={compareProtocols} disabled={busy}
+                    onChange={value => { setCompareProtocols(value); setErrors({}); setError("") }} /> : null}
                   <TaskField id="task" label={t("task.label")} error={errors.task}
                     labelHint={<p id="quick-task-draft-hint" className="text-[11px] font-normal text-muted-foreground">{t(mode === "performance" ? "performance.planHint" : "task.draftNote")}</p>}
                   >
@@ -859,6 +893,7 @@ function QuickTaskContent({
                       }))}
                     />
                   </TaskField>
+                  {comparing ? <ProtocolComparisonPreviewFields preview={preview} /> : null}
                   <div className="grid min-w-0 grid-cols-4 items-start gap-x-4 gap-y-2">
                     <TaskField id="channel_id" label={t("fillChannel")} error={errors.channel_id} className="row-span-2 grid grid-rows-subgrid">
                       <SearchableSelect value={missingChannel ? "missing" : form.channel_id || "manual"} disabled={busy || !connectionsReady}
@@ -877,12 +912,12 @@ function QuickTaskContent({
                           ))]} />
                     </TaskField>
                     <TaskField id="base_url" label={t("address")} error={errors.base_url} className="col-span-3 row-span-2 grid grid-rows-subgrid"
-                      labelHint={<p id="quick-task-base_url-hint" className="text-[11px] font-normal text-muted-foreground">{t("task.endpointHint")}</p>}
+                      labelHint={<p id="quick-task-base_url-hint" className="text-[11px] font-normal text-muted-foreground">{t(comparing ? "protocolComparison.endpointHint" : "task.endpointHint")}</p>}
                     >
                       <ConnectionURLInput
                         id="quick-task-base_url"
                         value={channel?.base_url ?? form.base_url}
-                        suffix={connectionURLs[0]?.suffix ?? ""}
+                        suffix={comparing ? "" : connectionURLs[0]?.suffix ?? ""}
                         disabled={busy || !!form.channel_id}
                         aria-invalid={!!errors.base_url || undefined}
                         aria-describedby={[
@@ -1119,12 +1154,12 @@ function QuickTaskContent({
                   <div className="flex flex-wrap justify-end gap-2">
                     <TooltipProvider><Tooltip><TooltipTrigger asChild>
                       <span className="inline-flex" tabIndex={busy || hasFileInputs || !connectionsReady || !tasksReady ? 0 : undefined}>
-                        <Button type="submit" size="icon-sm" aria-label={t(pending === "start" ? "task.starting" : "task.start")} aria-busy={pending === "start"}
-                          disabled={busy || hasFileInputs || !connectionsReady || !tasksReady}>
+                        <Button type="submit" size="icon-sm" aria-label={t(pending === "start" ? "task.starting" : comparing ? "protocolComparison.start" : "task.start")} aria-busy={pending === "start"}
+                          disabled={busy || hasFileInputs || !connectionsReady || !tasksReady || (comparing && !comparisonReady)}>
                           {pending === "start" ? <Spinner /> : <PlayIcon aria-hidden="true" />}
                         </Button>
                       </span>
-                    </TooltipTrigger><TooltipContent>{t(pending === "start" ? "task.starting" : "task.start")}</TooltipContent></Tooltip></TooltipProvider>
+                    </TooltipTrigger><TooltipContent>{t(pending === "start" ? "task.starting" : comparing ? "protocolComparison.start" : "task.start")}</TooltipContent></Tooltip></TooltipProvider>
                   </div>
                   </form>
                   <div hidden={mode !== "performance"}>

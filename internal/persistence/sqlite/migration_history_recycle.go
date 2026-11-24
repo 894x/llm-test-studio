@@ -6,6 +6,8 @@ import (
 	"fmt"
 )
 
+const schemaV4Name = "0004_history_recycle"
+
 // Version 4 adds reversible presentation state without rewriting or removing
 // immutable execution evidence. Released definitions must remain unchanged.
 var historyRecycleObjects = []schemaObject{
@@ -31,7 +33,19 @@ var historyRecycleObjects = []schemaObject{
 		ddl: `CREATE INDEX idx_history_recycle_entries_removed ON history_recycle_entries(removed_at DESC, id DESC)`},
 }
 
-var currentSchemaObjects = append(append([]schemaObject{}, schemaV3Objects...), historyRecycleObjects...)
+var schemaV4Objects = append(append([]schemaObject{}, schemaV3Objects...), historyRecycleObjects...)
+
+func schemaV4Checksum() string { return schemaChecksum(schemaV4Name, schemaV4Objects) }
+
+func recordV4Migration(ctx context.Context, conn *sql.Conn, appVersion string) error {
+	if err := recordMigration(ctx, conn, migrationRecord{
+		version: 4, name: schemaV4Name, checksum: schemaV4Checksum(),
+	}, appVersion); err != nil {
+		return err
+	}
+	_, err := conn.ExecContext(ctx, "PRAGMA user_version = 4")
+	return err
+}
 
 func upgradeHistoryRecycle(
 	ctx context.Context,
@@ -54,5 +68,5 @@ func upgradeHistoryRecycle(
 	}
 	// These empty tables and their indexes cannot change historical rows.
 	// Migrate validates the target schema before committing the transaction.
-	return recordCurrentMigration(ctx, conn, options.AppVersion)
+	return recordV4Migration(ctx, conn, options.AppVersion)
 }

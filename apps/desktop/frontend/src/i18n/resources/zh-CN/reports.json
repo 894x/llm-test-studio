@@ -1,4 +1,15 @@
 {
+  "protocolComparison": {
+    "title": "协议对比",
+    "description": "按计划条目和用例对比三种协议的结果。",
+    "counts": "通过 {{passed}} · 失败 {{failed}} · 未执行 {{not_run}}",
+    "otherCounts": "未验证 {{indeterminate}} · 不适用 {{not_applicable}}",
+    "openReport": "打开原始报告",
+    "notApplicable": "不适用",
+    "previous": "上一个协议",
+    "next": "下一个协议",
+    "position": "协议 {{current}} / {{total}}"
+  },
   "filters": {
     "label": "报告筛选",
     "kind": "报告类型",

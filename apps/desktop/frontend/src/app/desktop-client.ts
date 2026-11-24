@@ -1,3 +1,4 @@
+import { parseProtocolComparisonPreview, type ProtocolComparisonPreview } from "@/features/quick-test/protocol-comparison-data"
 import { parseHistoryRecyclePreview, parseHistoryRecycleTarget, parseRecycledHistoryEntry, parseRecycledHistoryPage, type HistoryRecycleTarget, type HistoryRecyclePreview, type RecycledHistoryEntry, type RecycledHistoryPage } from "@/features/history-recycle/data"
 import type { QuickHistoryPage } from "@/features/quick-test/history-data"
 import { parseBenchmarkCatalog, parseBenchmarkRun, parseBenchmarkPage, parseBenchmarkReport, parseBenchmarkDatasetInventory, parseBenchmarkDatasetDownload, type BenchmarkClient, type BenchmarkCommand } from "@/features/benchmarks/data"
@@ -217,6 +218,7 @@ export interface DesktopClient extends CatalogActions, BenchmarkClient, DesktopU
   copyReportPNG(dataBase64: string): Promise<void>
   getComparisons(after?: string, ids?: string[]): Promise<ComparisonSnapshot>
   launchJob(command: LaunchCommand): Promise<JobView>
+  previewProtocolComparison?(planID: string, suiteID: string): Promise<ProtocolComparisonPreview>
   getJobs(after: string, limit: number): Promise<JobPage>
   getJob(jobID: string): Promise<JobView>
   getJobPerformanceResult(jobID: string): Promise<PerformanceResultView>
@@ -326,6 +328,7 @@ type WailsDesktopBinding = {
   GetComparisonHistory(after: string, ids: string): Promise<unknown>
   GetComparisons(): Promise<unknown>
   LaunchJob(command: LaunchCommand): Promise<unknown>
+  PreviewProtocolComparison?(planID: string, suiteID: string): Promise<unknown>
   GetJobs(after: string, limit: number): Promise<unknown>
   GetJob(jobID: string): Promise<unknown>
   GetJobPerformanceResult(jobID: string): Promise<unknown>
@@ -734,6 +737,11 @@ function createLazyFixtureClient(): DesktopClient {
 		copyReportPNG: async (dataBase64) => (await client).copyReportPNG(dataBase64),
 		getComparisons: async (after, ids) => (await client).getComparisons(after, ids),
     launchJob: async command => (await client).launchJob(command),
+    previewProtocolComparison: async (planID, suiteID) => {
+      const preview = (await client).previewProtocolComparison
+      if (!preview) throw new DesktopClientError("job_commands_unavailable")
+      return preview(planID, suiteID)
+    },
     getJobs: async (after, limit) => (await client).getJobs(after, limit),
     getJob: async jobID => (await client).getJob(jobID),
     getJobPerformanceResult: async jobID => (await client).getJobPerformanceResult(jobID),
@@ -955,6 +963,10 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 		copyReportPNG: async (dataBase64) =>
 			callBinding(() => binding.CopyReportPNG(dataBase64), parseVoid),
     getComparisons: readComparisons,
+    previewProtocolComparison: async (planID, suiteID) => callBinding(async () => {
+      if (!binding.PreviewProtocolComparison) throw new DesktopClientError("job_commands_unavailable")
+      return binding.PreviewProtocolComparison(planID, suiteID)
+    }, parseProtocolComparisonPreview),
     launchJob: async command => callBinding(() => binding.LaunchJob(command), value => {
       const job = parseJobView(value)
       const kind = command.kind === "plan" || command.kind === "quick_task" ? "run" : command.kind
@@ -1425,6 +1437,7 @@ function isWorkspaceRun(value: unknown): boolean {
   return (
     isRecord(value) &&
     (value.job_id === undefined || isUUID(value.job_id)) &&
+    (value.protocol_comparison_id === undefined || isUUID(value.protocol_comparison_id)) &&
     (value.report_id === undefined || isUUID(value.report_id)) &&
     (value.suite_id === undefined || (value.source === "quick_task" && isUUID(value.suite_id))) &&
     isCaseProgress(value) &&
@@ -1481,6 +1494,7 @@ function parseRun(value: unknown) {
     ...(record.suite_id === undefined ? {} : { suite_id: record.suite_id as string }),
     id: record.id as string,
     ...(record.job_id === undefined ? {} : { job_id: record.job_id as string }),
+    ...(record.protocol_comparison_id === undefined ? {} : { protocol_comparison_id: record.protocol_comparison_id as string }),
     ...(record.report_id === undefined ? {} : { report_id: record.report_id as string }),
     revision: record.revision as number,
     plan_id: record.plan_id as string,

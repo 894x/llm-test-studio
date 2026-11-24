@@ -22,6 +22,11 @@ import { CaseConcurrencyField } from "@/features/runs/case-concurrency-field"
 import { DEFAULT_CASE_CONCURRENCY, isCaseConcurrency, isRunActive, type StartRunTargetCommand, type PlanRunConnection } from "@/features/runs/data"
 import { useRunHistory, type RunHistoryClient } from "@/features/runs/use-run-history"
 import { PerformanceProfileSummary } from "./performance-profile-summary"
+import type { ComparisonSummary } from "@/features/comparisons/data"
+import { canCompareProtocols, COMPARISON_PROTOCOLS } from "./protocol-comparison-data"
+import { ProtocolComparisonPreviewFields, ProtocolComparisonSwitch } from "./protocol-comparison-fields"
+import { useProtocolComparisonPreview } from "./use-protocol-comparison-preview"
+import { protocolBatchItems } from "./protocol-batch-history"
 import { QuickTestHistory, type QuickTestHistoryItem } from "./quick-test-history"
 import { PlanConnectionFields } from "./plan-connection-fields"
 import { planConnectionCommand } from "./plan-connection"
@@ -29,7 +34,7 @@ import { QuickTestField } from "./quick-test-field"
 
 type Resource = { ready: boolean; failed: boolean; retry: () => Promise<unknown> }
 type Actions = JobClient & Partial<RunHistoryClient> & Partial<HistoryRecycleClient> &
-  Partial<Pick<DesktopClient, "getReportGeneration" | "subscribeRemoteResults">>
+  Partial<Pick<DesktopClient, "getReportGeneration" | "subscribeRemoteResults" | "previewProtocolComparison">>
 type PlanJob = { job: JobView; selection: StartRunTargetCommand; title: string; model: string; channel: string }
 type Observation = { job: JobView; commands: ControlView[]; controlsReady: boolean }
 const emptySelection: StartRunTargetCommand = { plan_id: "", model_id: "", channel_id: "" }
@@ -37,6 +42,7 @@ const emptySelection: StartRunTargetCommand = { plan_id: "", model_id: "", chann
 export function PlanTestWorkspace({ catalog, catalogResources, loadPlans, modeControl, actions,
   connection: suppliedConnection, onConnectionChange, onSaveChannel,
   onJobLaunched, onJobChange, onOpenExecution, onOpenReport, onHistoryChanged, historyChanges = [],
+  protocolComparisons, protocolHistoryFooter,
 }: {
   catalog: CatalogSnapshot
   catalogResources?: { connections: Resource; plans: Resource }
@@ -52,10 +58,14 @@ export function PlanTestWorkspace({ catalog, catalogResources, loadPlans, modeCo
   onOpenReport: (id: string) => void | Promise<void>
   onHistoryChanged?: HistoryChanged
   historyChanges?: HistoryVisibilityChange[]
+  protocolComparisons?: ComparisonSummary[]
+  protocolHistoryFooter?: ReactNode
 }) {
   const { t } = useTranslation("quickTest")
   const { t: tj } = useTranslation("jobs")
   const [selection, setSelection] = useState(emptySelection)
+  const [compareProtocols, setCompareProtocols] = useState(false)
+  const comparing = Boolean(actions.previewProtocolComparison) && compareProtocols
   const [jobs, setJobs] = useState<PlanJob[]>([])
   const [observations, setObservations] = useState<Record<string, Observation>>({})
   const [controls, setControls] = useState<Record<string, ControlView>>({})
@@ -69,7 +79,7 @@ export function PlanTestWorkspace({ catalog, catalogResources, loadPlans, modeCo
   const connection = suppliedConnection ?? localConnection
   const updateConnection = (patch: Partial<PlanRunConnection>) => {
     const next = { ...connection, ...patch }
-    if (patch.protocol && patch.protocol !== connection.protocol) setSelection(current => ({ ...current, plan_id: "" }))
+    if (!comparing && patch.protocol && patch.protocol !== connection.protocol) setSelection(current => ({ ...current, plan_id: "" }))
     setLocalConnection(next)
     onConnectionChange?.(next)
     setConnectionErrors({})
@@ -79,12 +89,15 @@ export function PlanTestWorkspace({ catalog, catalogResources, loadPlans, modeCo
   const end = useRef<HTMLDivElement>(null)
   const history = useRunHistory(actions, jobs.map(entry => entry.job))
   const { refresh, refreshIDs, applyHistoryChange, loadMore, hasMore, pending: historyPending, error: historyError } = history
-  const runs = history.snapshot.runs.filter(run => run.source !== "quick_task")
+  const runs = history.snapshot.runs.filter(run => run.source !== "quick_task" && !run.protocol_comparison_id)
   const plansReady = catalogResources?.plans.ready ?? true
   const connectionsReady = catalogResources?.connections.ready ?? true
-  const availablePlans = catalog.plans.filter(item => item.protocol === connection.protocol)
+  const availablePlans = catalog.plans.filter(item => comparing ? canCompareProtocols(item.protocol) : item.protocol === connection.protocol)
   const plan = availablePlans.find(item => item.id === selection.plan_id)
   const channel = catalog.channels.find(item => item.id === connection.channel_id)
+  const preview = useProtocolComparisonPreview(actions.previewProtocolComparison, comparing ? plan?.id ?? "" : "", "")
+  const comparisonReady = preview.data?.targets.every(target => target.available) ?? false
+  const protocolItems = protocolBatchItems(protocolComparisons, "plan")
   const hasSinglePass = plan?.entries.some(entry => entry.load_mode === "single") ?? false
 
   useEffect(() => { void loadPlans?.().catch(() => {}) }, [loadPlans])
@@ -156,12 +169,14 @@ export function PlanTestWorkspace({ catalog, catalogResources, loadPlans, modeCo
   }, [onJobChange])
 
   const historyItems: QuickTestHistoryItem[] = [
-    ...jobs.filter(entry => !runs.some(run => run.job_id === entry.job.job_id || entry.job.run_ids.includes(run.id))).map(entry => {
+    ...protocolItems,
+    ...jobs.filter(entry => !protocolItems.some(item => item.comparisonID === entry.job.comparison_id) && !runs.some(run => run.job_id === entry.job.job_id || entry.job.run_ids.includes(run.id))).map(entry => {
       const job = observations[entry.job.job_id]?.job ?? entry.job
       const status = job.execution?.status
       const confirmation = job.submission?.confirmation
       return {
-        id: job.job_id, jobID: job.job_id, mode: "plan" as const, title: entry.title, model: entry.model, channel: entry.channel,
+        id: job.comparison_id || job.job_id, jobID: job.job_id, comparisonID: job.comparison_id || undefined,
+        mode: "plan" as const, title: entry.title, model: entry.model, channel: entry.channel,
         timestamp: job.submission?.prepared_at ?? job.execution!.accepted_at,
         status: status ?? "queued", active: !status || !isJobTerminal(status),
         statusLabel: !status ? confirmation ? tj("awaitingSync", { status: tj(`statuses.${confirmation.status}`), revision: confirmation.revision })
@@ -191,28 +206,39 @@ export function PlanTestWorkspace({ catalog, catalogResources, loadPlans, modeCo
       controlStatus: command ? `${tj(command.kind === "cancel" ? "cancel" : "stop")} · ${tj(`controlStates.${command.state}`)}${command.observation ? ` · ${tj(`observations.${command.observation}`)}` : ""}` : undefined,
     }
   }).sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp) || left.id.localeCompare(right.id))
-  const observerIDs = [...new Set([...jobs.map(entry => entry.job.job_id), ...runs.filter(run => isRunActive(run.status)).flatMap(run => run.job_id ? [run.job_id] : [])])]
+  const observerIDs = [...new Set([...jobs.map(entry => entry.job.job_id),
+    ...protocolItems.flatMap(item => item.active && item.jobID ? [item.jobID] : []),
+    ...runs.filter(run => isRunActive(run.status)).flatMap(run => run.job_id ? [run.job_id] : [])])]
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    if (inFlight.current || !plansReady || !connectionsReady || !plan) return
+    if (inFlight.current || !plansReady || !connectionsReady || !plan || (comparing && !comparisonReady)) return
     const checked = planConnectionCommand(connection, catalog)
+    if (comparing) {
+      const mappings = catalog.channel_models.filter(item => item.channel_id === connection.channel_id && item.upstream_model_name === checked.command.model)
+      const missingProtocols = COMPARISON_PROTOCOLS.filter(candidate => mappings.length && !mappings.some(mapping => mapping.protocols.includes(candidate)))
+      if (missingProtocols.length) checked.errors.model = t("protocolComparison.unsupportedModel", { protocols: missingProtocols.map(item => PROTOCOL_LABELS[item]).join(", ") })
+      if (connection.credential_run_id && !connection.channel_id) checked.errors.api_key = t("protocolComparison.enterKey")
+    }
     setConnectionErrors(checked.errors)
     const invalidField = Object.keys(checked.errors)[0]
     if (invalidField) { document.getElementById(`plan-test-${invalidField}`)?.focus(); return }
-    if (connection.protocol !== plan.protocol) { setError(t("plan.protocolMismatch")); return }
+    if (!comparing && connection.protocol !== plan.protocol) { setError(t("plan.protocolMismatch")); return }
     inFlight.current = true
     setPending(true)
     setError("")
     const command: StartRunTargetCommand = { plan_id: plan.id, model_id: "", channel_id: "", connection: checked.command,
       ...(hasSinglePass ? { case_concurrency: selection.case_concurrency ?? DEFAULT_CASE_CONCURRENCY } : {}) }
     try {
-      const job = await launchAtDefault(actions, { kind: "plan", plan: command, quick_task: null, performance: null, comparison: null })
+      const job = await launchAtDefault(actions, comparing
+        ? { kind: "comparison", quick_task: null, plan: null, performance: null,
+          comparison: { plan_id: "", model_id: "", channel_ids: [], protocols: { plan: command } } }
+        : { kind: "plan", plan: command, quick_task: null, performance: null, comparison: null })
       const { api_key: _key, ...rememberedConnection } = checked.command
       setJobs(current => [{ job, selection: { ...command, connection: rememberedConnection }, title: plan.name,
         model: checked.command.model, channel: channel?.name ?? checked.command.base_url ?? "" },
         ...current.filter(entry => entry.job.job_id !== job.job_id)])
-      setSelectedID(job.job_id)
+      setSelectedID(job.comparison_id || job.job_id)
       onJobLaunched?.(job)
       void refresh()
     } catch (reason) {
@@ -277,16 +303,17 @@ export function PlanTestWorkspace({ catalog, catalogResources, loadPlans, modeCo
         </div>
         <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
           {historyItems.length ? <QuickTestHistory items={historyItems} selectedID={historyItems.find(item => item.id === selectedID || item.jobID === selectedID)?.id ?? selectedID} busy={pending || controlPending}
-            onSelect={restore} onRestore={id => { const item = historyItems.find(item => item.runID === id); if (item) restore(item) }}
+            onSelect={item => item.comparisonID ? setSelectedID(item.id) : restore(item)} onRestore={id => { const item = historyItems.find(item => item.runID === id); if (item) restore(item) }}
             onOpenExecution={item => void openExecution(item)} onOpenReport={id => void onOpenReport(id)}
             onCancel={item => void cancel(item)} onRefresh={() => { void refresh(); void refreshIDs(runs.map(run => run.id)); setFailedReports([]) }}
             renderRecycleAction={actions.previewHistoryRecycle && actions.recycleHistory ? (item, renderTrigger) => {
-              const target = item.jobID ? { kind: "job" as const, id: item.jobID } : item.runID ? { kind: "run" as const, id: item.runID } : null
+              const target = item.jobID ? { kind: "job" as const, id: item.jobID } : item.comparisonID ? { kind: "comparison" as const, id: item.comparisonID } : item.runID ? { kind: "run" as const, id: item.runID } : null
               return target ? <RecycleHistoryButton compact name={item.title} target={target} client={actions as HistoryRecycleClient}
                 disabled={pending || controlPending} renderTrigger={renderTrigger}
                 onRecycled={changeHistory} onHistoryChanged={onHistoryChanged} /> : null
             } : undefined}
           /> : !history.pending && !history.error ? <p className="py-4 text-xs text-muted-foreground">{t("plan.noHistory")}</p> : null}
+          {protocolHistoryFooter}
           <div ref={end} aria-live="polite" className="py-3 text-center text-xs text-muted-foreground">
             {history.pending ? <span role="status" className="inline-flex items-center gap-2"><Spinner />{t("historyPage.loading")}</span>
               : history.error ? <div role="alert"><p>{t("historyPage.error")}</p><Button variant="ghost" size="sm" onClick={() => { void refresh(); void refreshIDs(runs.map(run => run.id)) }}>{t("historyPage.retry")}</Button></div>
@@ -301,6 +328,8 @@ export function PlanTestWorkspace({ catalog, catalogResources, loadPlans, modeCo
           {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
           <form onSubmit={event => void submit(event)} noValidate className="flex min-w-0 flex-col gap-4">
             <FieldGroup>
+              {actions.previewProtocolComparison ? <ProtocolComparisonSwitch checked={comparing} disabled={pending}
+                onChange={value => { setCompareProtocols(value); setConnectionErrors({}); setError("") }} /> : null}
               <QuickTestField id="plan-test-plan" label={t("plan.label")}
                 labelHint={<p id="plan-test-plan-hint" className="text-[11px] font-normal text-muted-foreground">{t("plan.hint")}</p>}>
                 <SearchableSelect id="plan-test-plan" value={selection.plan_id} disabled={pending || !plansReady}
@@ -317,16 +346,17 @@ export function PlanTestWorkspace({ catalog, catalogResources, loadPlans, modeCo
               </QuickTestField>
               {plansReady && selection.plan_id && !plan ? <Alert variant="destructive"><AlertDescription>{t("plan.missingPlan")}</AlertDescription></Alert> : null}
               {plansReady && !availablePlans.length ? <Empty><EmptyTitle>{t("plan.empty")}</EmptyTitle><EmptyDescription>{t("plan.emptyHint")}</EmptyDescription></Empty> : null}
+              {comparing ? <ProtocolComparisonPreviewFields preview={preview} /> : null}
               <PlanConnectionFields connection={connection} onChange={updateConnection} catalog={catalog}
-                disabled={pending} ready={connectionsReady} errors={connectionErrors}
+                disabled={pending} ready={connectionsReady} errors={connectionErrors} compareProtocols={comparing}
                 status={catalogResources?.connections && (!connectionsReady || catalogResources.connections.failed)
                   ? <ResourceStatus resource={catalogResources.connections} kind="connections" /> : undefined}
                 onSaveChannel={onSaveChannel} />
               {hasSinglePass ? <CaseConcurrencyField value={selection.case_concurrency ?? DEFAULT_CASE_CONCURRENCY}
                 disabled={pending} onChange={case_concurrency => setSelection(current => ({ ...current, case_concurrency }))} /> : null}
             </FieldGroup>
-            <div className="flex justify-end"><Button type="submit" disabled={pending || controlPending || !plansReady || !connectionsReady || !plan}>
-              {pending ? <Spinner data-icon="inline-start" /> : <PlayIcon data-icon="inline-start" />}{t(pending ? "task.starting" : "plan.start")}
+            <div className="flex justify-end"><Button type="submit" disabled={pending || controlPending || !plansReady || !connectionsReady || !plan || (comparing && !comparisonReady)}>
+              {pending ? <Spinner data-icon="inline-start" /> : <PlayIcon data-icon="inline-start" />}{t(pending ? "task.starting" : comparing ? "protocolComparison.start" : "plan.start")}
             </Button></div>
           </form>
           {plan ? <PlanPreview plan={plan} /> : null}

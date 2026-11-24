@@ -1,4 +1,19 @@
 {
+  "protocolComparison": {
+    "title": "Compare three protocols",
+    "loading": "Checking protocol coverage",
+    "previewFailed": "Could not load the protocol preview",
+    "requests_one": "{{count}} request",
+    "requests_other": "{{count}} requests",
+    "missingItem": "No runnable definition for {{name}}",
+    "unavailable": "No runnable definition",
+    "unsupportedModel": "This channel and model are missing {{protocols}}",
+    "enterKey": "Enter an API key or select a saved channel",
+    "start": "Start protocol comparison",
+    "more": "Load more comparison batches",
+    "caseProgress": "{{completed}} of {{total}} cases run",
+    "endpointHint": "All three protocols use this address with their own request paths."
+  },
   "catalog": {
     "connectionsLoading": "Loading channels and models…",
     "connectionsFailed": "Channels and models could not be loaded. Your inputs have been kept.",

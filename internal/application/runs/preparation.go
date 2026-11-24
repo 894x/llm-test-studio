@@ -107,6 +107,14 @@ func (service *Preparer) BuildTarget(
 	if invalid {
 		return PreparedRun{}, nil, ErrInvalid
 	}
+	return service.buildTarget(ctx, command, nil)
+}
+
+func (service *Preparer) buildTarget(
+	ctx context.Context,
+	command StartCommand,
+	projectedPlan *domain.Plan,
+) (PreparedRun, *credentials.Lease, error) {
 	if err := ctx.Err(); err != nil {
 		return PreparedRun{}, nil, err
 	}
@@ -123,9 +131,14 @@ func (service *Preparer) BuildTarget(
 
 	timings := make([]startPhaseTiming, 0, 5)
 	phaseStartedAt := time.Now()
-	plan, err := service.repository.GetPlan(ctx, command.PlanID)
-	if err != nil {
-		return PreparedRun{}, nil, fmt.Errorf("load plan: %w", err)
+	var plan domain.Plan
+	if projectedPlan == nil {
+		plan, err = service.repository.GetPlan(ctx, command.PlanID)
+		if err != nil {
+			return PreparedRun{}, nil, fmt.Errorf("load plan: %w", err)
+		}
+	} else {
+		plan = *projectedPlan
 	}
 	if err := plan.Validate(); err != nil {
 		return PreparedRun{}, nil, fmt.Errorf("invalid plan: %w", err)

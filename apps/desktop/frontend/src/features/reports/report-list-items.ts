@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next"
 import type { ComparisonChannelResult, ComparisonSummary } from "@/features/comparisons/data"
+import { PROTOCOL_LABELS } from "@/features/catalog/protocols"
 import type { ReportSummary } from "./data"
 import { isBenchmarkActive, type BenchmarkRun, type BenchmarkDatasetRun } from "@/features/benchmarks/data"
 
@@ -35,6 +36,14 @@ export function reportListItems(reports: ReportSummary[], comparisons: Compariso
     const rightTime = right.kind === "benchmark" ? right.result.finished_at || right.run.created_at : right.kind === "comparison" ? right.comparison.created_at : right.report.generated_at
     return Date.parse(rightTime) - Date.parse(leftTime) || right.kind.localeCompare(left.kind) || right.id.localeCompare(left.id)
   })
+}
+
+export function comparisonTargetKey(channel: ComparisonChannelResult) {
+  return channel.protocol ?? channel.channel_id
+}
+
+export function comparisonTargetLabel(channel: ComparisonChannelResult) {
+  return channel.protocol ? PROTOCOL_LABELS[channel.protocol] : channel.channel_name
 }
 
 export function channelVerdict(channel: ComparisonChannelResult, t: TFunction<"reports">, report?: ReportSummary) {

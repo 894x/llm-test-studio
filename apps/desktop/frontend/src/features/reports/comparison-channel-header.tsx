@@ -24,6 +24,17 @@ export function ComparisonTableColumns({ channels, collapsed = [], sharedSeverit
   return <colgroup ref={columns}><col style={{ width: caseWidth }} />{sharedSeverity ? <col style={{ width: 64 }} /> : null}{Array.from({ length: channels }, (_, index) => <col key={index} style={collapsed[index] ? { width: 32 } : undefined} />)}</colgroup>
 }
 
+export function ProtocolComparisonColumns() {
+  return <colgroup><col style={{ width: "34%" }} /><col style={{ width: "22%" }} /><col style={{ width: "22%" }} /><col style={{ width: "22%" }} /></colgroup>
+}
+
+export function ProtocolComparisonHeader({ label, baseline = false }: { label: string; baseline?: boolean }) {
+  const { t } = useTranslation("reports")
+  return <TableHead className="h-8 py-1">
+    <span className={baseline ? "font-semibold" : undefined} aria-label={baseline ? `${label} · ${t("compare.baseline")}` : undefined}>{label}</span>
+  </TableHead>
+}
+
 export function ComparisonChannelHeader({ channel, baseline = false, exporting = false, collapsed = false, onToggle, disabled = false }: {
   channel: string
   baseline?: boolean

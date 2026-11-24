@@ -1,6 +1,7 @@
 import { DesktopDataError } from "@/app/data-error"
 import { translateDesktop as tx } from "@/i18n/runtime"
-import type { CoreRunStatus } from "@/features/runs/data"
+import type { CoreRunStatus, StartQuickTaskCommand, StartRunTargetCommand } from "@/features/runs/data"
+import { isComparisonProtocol, isCount, type ComparisonProtocol } from "@/features/quick-test/protocol-comparison-data"
 
 export interface ComparisonMetric {
   value: number
@@ -9,6 +10,9 @@ export interface ComparisonMetric {
 }
 
 export interface ComparisonChannelResult {
+  protocol?: ComparisonProtocol
+  suite?: boolean
+  case_progress?: { completed: number; total: number }
   channel_id: string
   channel_name: string
   run_id: string
@@ -20,6 +24,7 @@ export interface ComparisonChannelResult {
 }
 
 export interface ComparisonSummary {
+  job_id?: string
   id: string
   created_at: string
   status: "running" | "completed" | "failed" | "cancelled"
@@ -40,6 +45,7 @@ export interface StartComparisonCommand {
   plan_id: string
   model_id: string
   channel_ids: string[]
+  protocols?: { plan: StartRunTargetCommand; suite?: never } | { suite: StartQuickTaskCommand; plan?: never }
 }
 
 export const EMPTY_COMPARISONS: ComparisonSnapshot = {
@@ -63,13 +69,17 @@ function parseComparison(value: unknown): ComparisonSummary {
   if (
     !isRecord(value) || !isUUID(value.id) || !isUTCDate(value.created_at) ||
     !isComparisonStatus(value.status) || !isUUID(value.plan_id) || !isNonBlank(value.plan_name) ||
-    !isUUID(value.model_id) || !isNonBlank(value.model_name) || !Array.isArray(value.channels) || value.channels.length < 2
+    (value.job_id !== undefined && !isUUID(value.job_id)) || !isUUID(value.model_id) || !isNonBlank(value.model_name) || !Array.isArray(value.channels) || value.channels.length < 2
   ) {
     throw new DesktopDataError(tx("desktop:comparisons_invalid_channel_comparison_summary"))
   }
   const channels = value.channels.map(parseChannel)
+  const protocolComparison = channels[0].protocol !== undefined
+  const targets = protocolComparison ? channels.map(item => item.protocol) : channels.map(item => item.channel_id)
   if (
-    new Set(channels.map((item) => item.channel_id)).size !== channels.length ||
+    (protocolComparison && (channels.length !== 3 || channels.some(item => item.suite !== channels[0].suite))) ||
+    channels.some(item => Boolean(item.protocol) !== protocolComparison) ||
+    new Set(targets).size !== channels.length ||
     new Set(channels.map((item) => item.run_id)).size !== channels.length
   ) {
     throw new DesktopDataError(tx("desktop:comparisons_duplicate_channel_comparison_run_reference"))
@@ -78,6 +88,7 @@ function parseComparison(value: unknown): ComparisonSummary {
     id: value.id, created_at: value.created_at, status: value.status,
     plan_id: value.plan_id, plan_name: value.plan_name,
     model_id: value.model_id, model_name: value.model_name, channels,
+    ...(value.job_id !== undefined ? { job_id: value.job_id } : {}),
   }
 }
 
@@ -86,9 +97,16 @@ function parseChannel(value: unknown): ComparisonChannelResult {
     !isRecord(value) || !isUUID(value.channel_id) || !isNonBlank(value.channel_name) ||
     !isUUID(value.run_id) || !isRunStatus(value.run_status) ||
     typeof value.report_ready !== "boolean" || typeof value.passed !== "boolean" ||
-    typeof value.verdict !== "string" || !isRecord(value.metrics)
+    typeof value.verdict !== "string" || !isRecord(value.metrics) ||
+    (value.protocol !== undefined && !isComparisonProtocol(value.protocol)) ||
+    (value.suite !== undefined && (value.suite !== true || !isComparisonProtocol(value.protocol)))
   ) {
     throw new DesktopDataError(tx("desktop:comparisons_invalid_channel_comparison_result"))
+  }
+  const progress = value.case_progress
+  if (progress !== undefined && (!isComparisonProtocol(value.protocol) || !isRecord(progress) ||
+    !isCount(progress.completed) || !isCount(progress.total) || progress.completed > progress.total)) {
+    throw new DesktopDataError("Invalid protocol case progress")
   }
   const metrics: Record<string, ComparisonMetric> = {}
   for (const [name, metric] of Object.entries(value.metrics)) {
@@ -107,6 +125,9 @@ function parseChannel(value: unknown): ComparisonChannelResult {
     channel_id: value.channel_id, channel_name: value.channel_name, run_id: value.run_id,
     run_status: value.run_status, report_ready: value.report_ready, passed: value.passed,
     verdict: value.verdict, metrics,
+    ...(isComparisonProtocol(value.protocol) ? { protocol: value.protocol } : {}),
+    ...(value.suite === true ? { suite: true } : {}),
+    ...(isRecord(progress) ? { case_progress: { completed: progress.completed as number, total: progress.total as number } } : {}),
   }
 }
 

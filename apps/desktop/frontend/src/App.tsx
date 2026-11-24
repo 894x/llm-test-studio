@@ -254,7 +254,7 @@ function AppWorkspace({
 
   useEffect(() => {
     PAGE_READS[page].forEach(key => { void resources[key].load().catch(() => {}) })
-    if (page === "reports") void resources.comparisons.load().catch(() => {})
+    if (page === "reports" || page === "quick-test") void resources.comparisons.load().catch(() => {})
   }, [page, resources])
 
   const retryInitialLoad = useCallback(() => {
@@ -327,7 +327,7 @@ function AppWorkspace({
 
   const comparisonAwaitingReports = !!comparisons?.comparisons.some(comparison => comparison.channels.some(channel =>
     !isRunActive(channel.run_status) && !channel.report_ready && reportGeneration[channel.run_id]?.phase !== "failed"))
-  const shouldPollComparisons = (page === "reports" || (page === "runs" && showComparisons)) &&
+  const shouldPollComparisons = (page === "reports" || page === "quick-test" || (page === "runs" && showComparisons)) &&
     (comparisonRunning || comparisonAwaitingReports || pendingComparisonIDs.length > 0 || retryComparisonPoll)
   useEffect(() => {
     if (!shouldPollComparisons) return
@@ -453,7 +453,7 @@ function AppWorkspace({
     resources.reports.invalidate()
     const visibleReads: readonly string[] = PAGE_READS[pageRef.current]
     if (visibleReads.includes("workspace")) void refreshWorkspace().catch(() => setRetryWorkspacePoll(true))
-    if (pageRef.current === "reports" || (showComparisons && pageRef.current === "runs")) {
+    if (pageRef.current === "reports" || pageRef.current === "quick-test" || (showComparisons && pageRef.current === "runs")) {
       void resources.comparisons.refresh().then(receiveComparisons).catch(() => setRetryComparisonPoll(true))
     }
     if (visibleReads.includes("reports")) void refreshReports().catch(() => { /* The reports read owns its retry state. */ })
@@ -674,6 +674,9 @@ function AppWorkspace({
           }}
           loadPerformancePlans={resources.quickCatalog.load}
           historyRevision={reportGeneration}
+          protocolComparisons={comparisons?.comparisons}
+          protocolHistoryFooter={comparisons?.next_cursor ? <Button size="sm" variant="ghost" disabled={comparisonAppending}
+            onClick={() => void loadMoreComparisons()}>{t(comparisonAppendError ? "quickTest:historyPage.retry" : "quickTest:protocolComparison.more")}</Button> : undefined}
           draft={quickDraft}
           onDraftChange={setQuickDraft}
           runID={quickRunID}

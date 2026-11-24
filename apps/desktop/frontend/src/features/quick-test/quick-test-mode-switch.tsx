@@ -21,12 +21,12 @@ export function QuickTestModeSwitch({ mode, onChange, onReady }: {
       value={mode}
       onValueChange={value => onChange(value as QuickTestMode)}
       aria-label={t("workspace.mode")}
-      className="h-9 w-full shrink-0 grid-cols-4 gap-0 rounded-md bg-surface-subtle p-1"
+      className="h-9 w-full shrink-0 grid-cols-[1.05fr_1.3fr_0.82fr_0.83fr] gap-0 rounded-md bg-surface-subtle p-1"
     >
       {(["functional", "performance", "plan", "benchmark"] as const).map(value => (
         <RadioGroupPrimitive.Item key={value} value={value} asChild>
           <Button type="button" variant="ghost" aria-label={t(value === "functional" ? "workspace.functional" : value === "benchmark" ? "benchmarkTitle" : `${value}.title`)}
-          className={cn("h-full min-w-0 rounded-sm px-1 text-xs text-muted-foreground",
+          className={cn("h-full min-w-0 rounded-sm px-1 text-[11px] text-muted-foreground",
             mode === value && "bg-surface-active font-medium text-foreground")}
           >{t(`modes.${value}`)}</Button>
         </RadioGroupPrimitive.Item>

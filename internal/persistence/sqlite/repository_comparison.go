@@ -238,9 +238,9 @@ func insertComparisonRevision(ctx context.Context, tx *sql.Tx, comparison domain
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO comparison_runs(
 				comparison_id, comparison_revision, position,
-				channel_id, channel_revision, run_id
-			) VALUES(?, ?, ?, ?, ?, ?)
-		`, meta.ID, meta.Revision, position, item.Channel.ID, item.Channel.Revision, item.RunID); err != nil {
+				channel_id, channel_revision, run_id, protocol
+			) VALUES(?, ?, ?, ?, ?, ?, ?)
+		`, meta.ID, meta.Revision, position, item.Channel.ID, item.Channel.Revision, item.RunID, item.Protocol); err != nil {
 			return classifyWriteError("append comparison run", err)
 		}
 	}
@@ -248,6 +248,15 @@ func insertComparisonRevision(ctx context.Context, tx *sql.Tx, comparison domain
 }
 
 func queryCurrentComparison(ctx context.Context, queryer relationQueryer, id string) (domain.Comparison, error) {
+	return queryCurrentComparisonForSchema(ctx, queryer, id, true)
+}
+
+func queryCurrentComparisonForSchema(
+	ctx context.Context,
+	queryer relationQueryer,
+	id string,
+	hasProtocol bool,
+) (domain.Comparison, error) {
 	var (
 		rootID, rootCreated, revisionCreated, revisionUpdated string
 		planID, modelID, status                               string
@@ -304,8 +313,12 @@ func queryCurrentComparison(ctx context.Context, queryer relationQueryer, id str
 		string(comparison.Status()) != status || (sealed == 0) != (comparison.Status() == domain.ComparisonRunning) {
 		return domain.Comparison{}, fmt.Errorf("%w: comparison columns", ErrCorrupt)
 	}
+	protocolColumn := "protocol"
+	if !hasProtocol {
+		protocolColumn = "''"
+	}
 	rows, err := queryer.QueryContext(ctx, `
-		SELECT position, channel_id, channel_revision, run_id
+		SELECT position, channel_id, channel_revision, run_id, `+protocolColumn+`
 		FROM comparison_runs WHERE comparison_id = ? AND comparison_revision = ? ORDER BY position
 	`, id, revision)
 	if err != nil {
@@ -316,13 +329,15 @@ func queryCurrentComparison(ctx context.Context, queryer relationQueryer, id str
 	for rows.Next() {
 		var storedPosition int
 		var channelID, runID string
+		var protocol domain.Protocol
 		var channelRevision int64
-		if err := rows.Scan(&storedPosition, &channelID, &channelRevision, &runID); err != nil {
+		if err := rows.Scan(&storedPosition, &channelID, &channelRevision, &runID, &protocol); err != nil {
 			rows.Close()
 			return domain.Comparison{}, fmt.Errorf("scan comparison run relation: %w", err)
 		}
 		if position >= len(runs) || storedPosition != position || channelID != runs[position].Channel.ID ||
-			uint64(channelRevision) != runs[position].Channel.Revision || runID != runs[position].RunID {
+			uint64(channelRevision) != runs[position].Channel.Revision ||
+			runID != runs[position].RunID || protocol != runs[position].Protocol {
 			rows.Close()
 			return domain.Comparison{}, fmt.Errorf("%w: comparison run relations", ErrCorrupt)
 		}
@@ -345,14 +360,14 @@ func queryCurrentComparison(ctx context.Context, queryer relationQueryer, id str
 }
 
 func validateComparisonReferences(ctx context.Context, queryer relationQueryer, comparison domain.Comparison) error {
-	planRef, modelRef := comparison.Plan(), comparison.Model()
+	planRef := comparison.Plan()
 	for _, item := range comparison.Runs() {
 		run, err := queryCurrentRun(ctx, queryer, item.RunID)
 		if err != nil {
 			return err
 		}
 		snapshot := run.Snapshot()
-		if snapshot.Plan != planRef || snapshot.Model.EntityRevisionRef != modelRef || snapshot.Channel.EntityRevisionRef != item.Channel {
+		if !comparison.MatchesRun(item, snapshot) {
 			return errors.New("comparison run snapshot does not match its pinned target")
 		}
 		if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil ||

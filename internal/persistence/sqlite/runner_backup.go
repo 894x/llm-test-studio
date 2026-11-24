@@ -332,13 +332,22 @@ func runnerSnapshotFacts(ctx context.Context, conn *sql.Conn) (RunnerBackup, err
 	if version != CurrentSchemaVersion {
 		return RunnerBackup{}, ErrSchemaResetRequired
 	}
+	facts := RunnerBackup{}
+	facts.SchemaVersion, facts.SchemaName, facts.SchemaSHA256 = CurrentSchemaIdentity()
+	return runnerSnapshotFactsForSchema(ctx, conn, facts, currentSchemaObjects)
+}
+
+func runnerSnapshotFactsForSchema(
+	ctx context.Context,
+	conn *sql.Conn,
+	facts RunnerBackup,
+	objects []schemaObject,
+) (RunnerBackup, error) {
 	if err := validateIntegrity(ctx, conn); err != nil {
 		return RunnerBackup{}, err
 	}
-	facts := RunnerBackup{}
-	facts.SchemaVersion, facts.SchemaName, facts.SchemaSHA256 = CurrentSchemaIdentity()
 	digest := sha256.New()
-	for _, object := range currentSchemaObjects {
+	for _, object := range objects {
 		if object.kind != "table" {
 			continue
 		}
@@ -353,7 +362,7 @@ func runnerSnapshotFacts(ctx context.Context, conn *sql.Conn) (RunnerBackup, err
 		return RunnerBackup{}, err
 	}
 	facts.Rows.TotalRows += count
-	if err := validateRunnerBackupRelations(ctx, conn); err != nil {
+	if err := validateRunnerBackupRelations(ctx, conn, facts.SchemaVersion >= 5); err != nil {
 		return RunnerBackup{}, err
 	}
 	facts.BusinessSHA256 = hex.EncodeToString(digest.Sum(nil))
@@ -615,7 +624,7 @@ func validateRunnerBackupDocument(table string, row runnerBackupRecord) error {
 	return nil
 }
 
-func validateRunnerBackupRelations(ctx context.Context, conn *sql.Conn) error {
+func validateRunnerBackupRelations(ctx context.Context, conn *sql.Conn, hasComparisonProtocol bool) error {
 	if err := validateUpgradeHistory(ctx, conn); err != nil {
 		return err
 	}
@@ -631,7 +640,7 @@ func validateRunnerBackupRelations(ctx context.Context, conn *sql.Conn) error {
 			return err
 		}},
 		{table: "comparisons", column: "id", visit: func(id string) error {
-			_, err := queryCurrentComparison(ctx, conn, id)
+			_, err := queryCurrentComparisonForSchema(ctx, conn, id, hasComparisonProtocol)
 			return err
 		}},
 		{table: "job_submissions", column: "job_id", visit: func(id string) error {
