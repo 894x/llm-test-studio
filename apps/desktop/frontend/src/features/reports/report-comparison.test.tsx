@@ -353,6 +353,11 @@ describe("report comparison", () => {
 
   it("uses the same compact results and expanded details for visual exports and copying", async () => {
     const data = fixture(); const user = userEvent.setup()
+    for (const detail of data.comparison.reports) {
+      if (detail.source !== "run") continue
+      detail.report.model.name = "kimi-k3.1-pro"
+      detail.entries[0].cases[0].key = "kimi.cache.headers.write_1h"
+    }
     if (data.comparison.reports[1].source === "run") data.comparison.reports[1].entries[0].cases[0].severity = "normal"
     const save = vi.fn(async () => true); const copy = vi.fn(async () => {})
     const documents: HTMLElement[] = []
@@ -363,6 +368,7 @@ describe("report comparison", () => {
     render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportComparisonView reportIDs={data.ids} compareReports={data.compareReports}
       saveReportExport={save} copyReportPNG={copy} exportVisualReport={visual} /></I18nextProvider>)
     const table = await screen.findByRole("table", { name: "报告对比结果" })
+    expect(within(table).getByRole("button", { name: "Reject invalid parameter" }).closest("tr")).toHaveAttribute("data-kimi-test-focus", "ttl")
     await user.click(screen.getByRole("button", { name: "报告导出" }))
     for (const [index, label] of ["HTML", "PNG", "PDF"].entries()) {
       await user.click(screen.getByRole("button", { name: label }))
@@ -372,6 +378,8 @@ describe("report comparison", () => {
     await waitFor(() => expect(copy).toHaveBeenCalledOnce())
     expect(visual.mock.calls.map(call => call[1])).toEqual(["html", "png", "pdf", "png"])
     for (const document of documents) {
+      expect(document.querySelector("[data-kimi-test-focus]")).toBeNull()
+      expect(document.querySelector('[title*="Kimi 重点核对"]')).toBeNull()
       expect(document).not.toHaveTextContent("新增失败")
       expect(document).toHaveTextContent("必过通过")
       expect(document).toHaveTextContent("容忍失败")

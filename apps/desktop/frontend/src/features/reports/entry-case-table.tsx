@@ -8,6 +8,7 @@ import XIcon from "lucide-react/dist/esm/icons/x.mjs"
 import EyeIcon from "lucide-react/dist/esm/icons/eye.mjs"
 import CircleHelpIcon from "lucide-react/dist/esm/icons/circle-help.mjs"
 import { Badge } from "@/components/ui/badge"
+import { kimiTestFocus } from "./kimi-test-focus"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -29,11 +30,15 @@ export function EntryCaseTable({
   selectedCaseID = "",
   caseNavigationRequest = 0,
   paginate = true,
+  model = "",
+  exporting = false,
 }: {
   entry: ReportEntryDetail
   selectedCaseID?: string
   caseNavigationRequest?: number
   paginate?: boolean
+  model?: string
+  exporting?: boolean
 }) {
   const { t } = useTranslation("reports")
   const [pagination, setPagination] = useState({ page: 0, selectedCaseID: "", caseNavigationRequest: 0 })
@@ -87,10 +92,13 @@ export function EntryCaseTable({
         </TableRow></TableHeader>
         <TableBody>{visible.length ? visible.map(caseItem => {
           const open = expanded === caseItem.case_id
+          const focus = exporting ? undefined : kimiTestFocus(caseItem, model)
           const detailID = `case-${entry.entry_id}-${caseItem.case_id}`
           return <Fragment key={caseItem.case_id}>
             <TableRow
               id={reportCaseRowID(entry.entry_id, caseItem.case_id)}
+              data-kimi-test-focus={focus}
+              title={focus ? t(`kimiFocus.${focus}`) : undefined}
               className="h-9 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
               data-state={open || selectedCaseID === caseItem.case_id ? "selected" : undefined}
               aria-selected={selectedCaseID === caseItem.case_id}

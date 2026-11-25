@@ -510,6 +510,7 @@ function RunReportBody({ detail, summary, paginate = true }: { detail: Extract<R
         <SuiteReportSection
           key={suite.entry_id}
           suite={suite}
+          model={detail.report.model.name}
           timeSliceID={`${detail.report.id}:${suite.entry_id}`}
           selectedCaseID={selectedCase?.entryID === suite.entry_id ? selectedCase.caseID : ""}
           caseNavigationRequest={caseNavigationRequest}
@@ -532,6 +533,7 @@ function RunReportBody({ detail, summary, paginate = true }: { detail: Extract<R
 
 function SuiteReportSection({
   suite,
+  model,
   timeSliceID,
   selectedCaseID,
   caseNavigationRequest,
@@ -540,6 +542,7 @@ function SuiteReportSection({
   performanceOverview,
 }: {
   suite: ReportEntryDetail
+  model: string
   timeSliceID: string
   selectedCaseID: string
   caseNavigationRequest: number
@@ -593,7 +596,7 @@ function SuiteReportSection({
         <summary className="cursor-pointer rounded-sm text-[11px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("inspector.coreMetrics")}</summary>
         <div className="grid gap-3 pt-2 md:grid-cols-2"><SuiteMetricSummary title={t("inspector.coreMetrics")} metrics={suite.metrics} /><SuiteMetricSummary title="SLA" metrics={suite.sla} /></div>
       </details> : null}
-      {suite.performance ? <QuickPerformanceBody detail={{schema_version:1,source:"quick_performance",performance:suite.performance}} overview={performanceOverview} timeSliceID={timeSliceID} includeRequestAnalysis /> : <EntryCaseTable entry={suite} selectedCaseID={selectedCaseID} caseNavigationRequest={caseNavigationRequest} paginate={paginate} />}
+      {suite.performance ? <QuickPerformanceBody detail={{schema_version:1,source:"quick_performance",performance:suite.performance}} overview={performanceOverview} timeSliceID={timeSliceID} includeRequestAnalysis /> : <EntryCaseTable entry={suite} model={model} exporting={exporting} selectedCaseID={selectedCaseID} caseNavigationRequest={caseNavigationRequest} paginate={paginate} />}
       </Collapsible.Content>
     </section>
     </Collapsible.Root>

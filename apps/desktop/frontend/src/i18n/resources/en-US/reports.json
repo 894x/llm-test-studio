@@ -10,6 +10,13 @@
     "next": "Next protocol",
     "position": "Protocol {{current}} / {{total}}"
   },
+  "kimiFocus": {
+    "cache": "Kimi review: cache reads/writes, usage and response headers. Purple does not indicate a pass.",
+    "ttl": "Kimi review: 1h / TTL. Existing delayed cases wait only 6 minutes; they do not prove a full hour of retention or actual expiry.",
+    "usage": "Kimi review: usage fields and count relationships, not billing accuracy.",
+    "protocol": "Kimi review: OpenAI response structure and streaming protocol.",
+    "video": "Kimi review: video input. Existing cases do not cover the 100M size limit."
+  },
   "filters": {
     "label": "Report filters",
     "kind": "Report type",
