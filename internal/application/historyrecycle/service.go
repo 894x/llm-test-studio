@@ -13,15 +13,37 @@ import (
 const PageSize = 25
 
 var (
-	ErrInvalid     = errors.New("invalid history recycle target")
-	ErrNotFound    = errors.New("history recycle target not found")
-	ErrActive      = errors.New("history recycle target is active")
-	ErrUnconfirmed = errors.New("history recycle execution is unconfirmed")
+	ErrInvalid           = errors.New("invalid history recycle target")
+	ErrNotFound          = errors.New("history recycle target not found")
+	ErrActive            = errors.New("history recycle target is active")
+	ErrUnconfirmed       = errors.New("history recycle execution is unconfirmed")
+	ErrDeleteUnsupported = errors.New("history deletion requires local records without managed files")
 )
 
 type Target struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
+}
+
+// Removal identifies the exact recycling operation confirmed by the user.
+type Removal struct {
+	Target    Target `json:"target"`
+	RemovedAt string `json:"removed_at"`
+}
+
+func ValidateRemovals(removals []Removal) error {
+	if len(removals) == 0 || len(removals) > 10000 {
+		return ErrInvalid
+	}
+	seen := map[Target]bool{}
+	for _, removal := range removals {
+		_, _, err := ParseCursor(removal.RemovedAt + "|" + removal.Target.Kind + "|" + removal.Target.ID)
+		if err != nil || seen[removal.Target] {
+			return ErrInvalid
+		}
+		seen[removal.Target] = true
+	}
+	return nil
 }
 
 func (target Target) Validate() error {
@@ -66,6 +88,7 @@ type Repository interface {
 	RecycleHistory(context.Context, Target, time.Time) (Entry, error)
 	RestoreHistory(context.Context, Target) (Entry, error)
 	ListRecycledHistory(context.Context, string) (Page, error)
+	DeleteRecycledHistory(context.Context, []Removal) ([]Entry, error)
 }
 
 type Service struct{ repository Repository }
@@ -100,6 +123,13 @@ func (service *Service) Page(ctx context.Context, after string) (Page, error) {
 		}
 	}
 	return service.repository.ListRecycledHistory(ctx, after)
+}
+
+func (service *Service) Delete(ctx context.Context, removals []Removal) ([]Entry, error) {
+	if err := ValidateRemovals(removals); err != nil {
+		return nil, err
+	}
+	return service.repository.DeleteRecycledHistory(ctx, removals)
 }
 
 func ParseCursor(cursor string) (string, Target, error) {

@@ -1,5 +1,6 @@
 import { Fragment, useId, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { kimiTestFocus } from "./kimi-test-focus"
 import ChevronDownIcon from "lucide-react/dist/esm/icons/chevron-down.mjs"
 import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right.mjs"
 import { Button } from "@/components/ui/button"
@@ -115,8 +116,16 @@ function ComparisonCaseTable({ channels, entries, loaded, paginate }: {
         {channels.map(channel => channel.protocol ? <ProtocolComparisonHeader key={comparisonTargetKey(channel)} label={comparisonTargetLabel(channel)} /> :
           <ComparisonChannelHeader key={comparisonTargetKey(channel)} channel={comparisonTargetLabel(channel)} exporting={!paginate} />)}
       </TableRow></TableHeader>
-      <TableBody>{visible.map(([id, row]) => <Fragment key={id}>
-        <TableRow data-state={expanded === id ? "selected" : undefined}>
+      <TableBody>{visible.map(([id, row]) => {
+        const focus = !paginate ? undefined : channels.map(channel => {
+          const key = comparisonTargetKey(channel)
+          const item = row.results.get(key)
+          const detail = loaded[key]?.detail
+          return item && detail ? kimiTestFocus(item, detail.report.model.name) : undefined
+        }).find(Boolean)
+        return <Fragment key={id}>
+        <TableRow data-kimi-test-focus={focus} title={focus ? t(`kimiFocus.${focus}`) : undefined}
+          data-state={expanded === id ? "selected" : undefined}>
           <TableCell className="whitespace-normal align-top [overflow-wrap:anywhere]">
             {paginate ? <Button variant="ghost" size="sm" className="h-auto min-h-7 w-full min-w-0 max-w-full justify-start whitespace-normal px-0 py-1 text-left"
               aria-expanded={expanded === id} aria-controls={`${detailsID}-${id}`} onClick={() => setExpanded(previous => previous === id ? "" : id)}>
@@ -142,7 +151,7 @@ function ComparisonCaseTable({ channels, entries, loaded, paginate }: {
             </section>)}
           </div>
         </TableCell></TableRow> : null}
-      </Fragment>)}</TableBody>
+      </Fragment>})}</TableBody>
     </Table>}
     {paginate && all.length > PAGE_SIZE ? <div className="flex items-center justify-end gap-2 py-2 text-xs">
       <span>{currentPage + 1} / {Math.ceil(all.length / PAGE_SIZE)}</span>

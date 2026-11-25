@@ -204,11 +204,15 @@ func previewRecycleTx(ctx context.Context, tx *sql.Tx, target historyrecycle.Tar
 	if found {
 		return historyrecycle.Preview{SchemaVersion: 1, Entry: entry, CanRecycle: true}, nil
 	}
+	return previewUnrecycledTx(ctx, tx, target)
+}
+
+func previewUnrecycledTx(ctx context.Context, tx *sql.Tx, target historyrecycle.Target) (historyrecycle.Preview, error) {
 	canonical, err := canonicalRecycleTarget(ctx, tx, target)
 	if err != nil {
 		return historyrecycle.Preview{}, err
 	}
-	entry = emptyRecycleEntry(canonical)
+	entry := emptyRecycleEntry(canonical)
 	reason := ""
 	switch canonical.Kind {
 	case "job":

@@ -121,6 +121,10 @@
   --outcome-pass: #15803d;
   --outcome-review: #b7791f;
   --outcome-fail: #c24152;
+  --kimi-test-focus: #9339d0;
+  --kimi-test-focus-hover: #8430bf;
+  --kimi-test-focus-selected: #7528ad;
+  --kimi-test-focus-divider: #ffffff;
 }
 
 .dark {
@@ -175,6 +179,35 @@
   --outcome-pass: #4ade80;
   --outcome-review: #f2c97d;
   --outcome-fail: #ff7f91;
+}
+
+/* A UI annotation, independent of pass/fail and omitted by export renderers. */
+[data-slot="table-body"] > tr[data-kimi-test-focus] {
+  --foreground: #ffffff;
+  --muted-foreground: #f4eafa;
+  --secondary-foreground: #f4eafa;
+  --muted: rgba(255,255,255,.10);
+  --ring: #ffffff;
+  --outcome-pass: #c4f6d6;
+  --outcome-review: #fff1c9;
+  --outcome-fail: #ffe1e6;
+  --destructive: #ffe1e6;
+  --warning: #fff1c9;
+  --warning-strong: #fff1c9;
+  --warning-soft: rgba(255,241,201,.10);
+  color: var(--foreground);
+}
+[data-slot="table-body"] > tr[data-kimi-test-focus] > td {
+  background-color: var(--kimi-test-focus);
+}
+[data-slot="table-body"] > tr[data-kimi-test-focus] + tr[data-kimi-test-focus] > td {
+  box-shadow: inset 0 1px 0 var(--kimi-test-focus-divider);
+}
+[data-slot="table-body"] > tr[data-kimi-test-focus]:hover > td {
+  background-color: var(--kimi-test-focus-hover);
+}
+[data-slot="table-body"] > tr[data-kimi-test-focus]:is([data-state="selected"], [aria-selected="true"]) > td {
+  background-color: var(--kimi-test-focus-selected);
 }
 
 /* Color themes are independent of the light/dark preference. */

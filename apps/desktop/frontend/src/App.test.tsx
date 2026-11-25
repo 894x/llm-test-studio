@@ -114,6 +114,7 @@ function historyRecycleMocks() {
     previewHistoryRecycle: vi.fn<DesktopClient["previewHistoryRecycle"]>(),
     recycleHistory: vi.fn<DesktopClient["recycleHistory"]>(),
     restoreHistory: vi.fn<DesktopClient["restoreHistory"]>(),
+    deleteRecycledHistory: vi.fn<DesktopClient["deleteRecycledHistory"]>(),
     getRecycledHistory: vi.fn<DesktopClient["getRecycledHistory"]>(async () => ({ schema_version: 1, entries: [], next_cursor: "", has_more: false })),
   }
 }

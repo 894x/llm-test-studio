@@ -116,6 +116,8 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		errors.Is(internal, benchmarks.ErrRuntime), errors.Is(internal, benchmarks.ErrBusy),
 		errors.Is(internal, benchmarks.ErrNotFound), errors.Is(internal, benchmarks.ErrFormat):
 		return DesktopBindingError{Code: benchmarks.PublicError(internal)}
+	case errors.Is(internal, historyrecycle.ErrDeleteUnsupported):
+		return DesktopBindingError{Code: desktopCodeHistoryRecycleDeleteUnsupported}
 	case errors.Is(internal, historyrecycle.ErrInvalid):
 		return DesktopBindingError{Code: desktopCodeHistoryRecycleInvalid}
 	case errors.Is(internal, historyrecycle.ErrNotFound):
@@ -246,7 +248,7 @@ func isDesktopBindingCode(code string) bool {
 	case desktopCodeBenchmarkInvalid, desktopCodeBenchmarkUnavailable, desktopCodeBenchmarkRuntime,
 		desktopCodeBenchmarkBusy, desktopCodeBenchmarkNotFound, desktopCodeBenchmarkFormat:
 		return true
-	case desktopCodeHistoryRecycleInvalid, desktopCodeHistoryRecycleNotFound, desktopCodeHistoryRecycleActive,
+	case desktopCodeHistoryRecycleDeleteUnsupported, desktopCodeHistoryRecycleInvalid, desktopCodeHistoryRecycleNotFound, desktopCodeHistoryRecycleActive,
 		desktopCodeHistoryRecycleUnconfirmed, desktopCodeHistoryRecycleUnavailable:
 		return true
 	case desktopCodeFileInputInvalid, desktopCodeFileInputTooLarge, desktopCodeFileInputLimit,

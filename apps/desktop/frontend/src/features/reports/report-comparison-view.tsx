@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { CatalogCaseSeverity } from "@/features/catalog/data"
 import { ExecutionDetails, VerificationBadges } from "./entry-case-table"
+import { kimiTestFocus } from "./kimi-test-focus"
 import { QuickPerformanceRequestAnalysis } from "@/features/quick-test/quick-performance-request-analysis"
 import { blobToBase64 } from "./report-export-encoding"
 import { copyReportPNGToClipboard } from "./report-clipboard"
@@ -238,8 +239,15 @@ function ComparisonSuiteTable({ data, reports, rows, expanded, onExpandedChange,
             collapsed={collapsed} onToggle={() => onToggleReport?.(id)} disabled={disabled || (!collapsed && visibleReports.length < 2)} />
         })}
       </TableRow></TableHeader>
-      <TableBody>{visible.map(row => <Fragment key={row.key}>
-        <TableRow>
+      <TableBody>{visible.map(row => {
+        const focus = exporting ? undefined : row.cells.flatMap(cell => {
+          const detail = visibleReports.find(detail => comparisonReportID(detail) === cell.report_id)
+          if (detail?.source !== "run" || cell.change === "missing") return []
+          const item = detail.entries.find(entry => entry.entry_id === cell.entry_id)?.cases.find(item => item.case_id === cell.case_id)
+          return item ? [kimiTestFocus(item, detail.report.model.name)] : []
+        }).find(Boolean)
+        return <Fragment key={row.key}>
+        <TableRow data-kimi-test-focus={focus} title={focus ? t(`kimiFocus.${focus}`) : undefined}>
           <TableCell className="whitespace-normal align-top [overflow-wrap:anywhere]">
             {exporting || row.cells.every(cell => cell.change === "missing") ? <div className="font-medium">{row.name || t("system.quickPerformance")}</div> :
               <Button variant="ghost" size="sm" className="h-auto min-h-7 w-full min-w-0 max-w-full justify-start whitespace-normal px-0 py-1 text-left" aria-expanded={expanded === row.key}
@@ -273,7 +281,7 @@ function ComparisonSuiteTable({ data, reports, rows, expanded, onExpandedChange,
           <ComparisonChannelDetails reports={visibleReports} row={row} baselineID={data.baseline_id} selectedReportID={detailReportID}
             onSelectedReportChange={onDetailReportChange} exporting={exporting} disabled={disabled} byProtocol={Boolean(data.protocol_summary)} />
         </TableCell></TableRow> : null}
-      </Fragment>)}</TableBody>
+      </Fragment>})}</TableBody>
     </Table>
   return <div className="min-w-0 space-y-3">
     {sharedSeverity && !exporting ? <ScrollArea className="max-w-full [&>[data-slot=scroll-area-viewport]]:h-auto">{table}</ScrollArea> : table}

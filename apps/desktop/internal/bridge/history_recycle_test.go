@@ -13,14 +13,15 @@ import (
 )
 
 type recordingHistoryRecycle struct {
-	calls   []string
-	ctx     context.Context
-	target  historyrecycle.Target
-	after   string
-	preview historyrecycle.Preview
-	entry   historyrecycle.Entry
-	page    historyrecycle.Page
-	err     error
+	calls    []string
+	ctx      context.Context
+	target   historyrecycle.Target
+	removals []historyrecycle.Removal
+	after    string
+	preview  historyrecycle.Preview
+	entry    historyrecycle.Entry
+	page     historyrecycle.Page
+	err      error
 }
 
 func (service *recordingHistoryRecycle) Preview(
@@ -48,6 +49,13 @@ func (service *recordingHistoryRecycle) Restore(
 	service.calls = append(service.calls, "restore")
 	service.ctx, service.target = ctx, target
 	return service.entry, service.err
+}
+
+func (service *recordingHistoryRecycle) Delete(ctx context.Context, removals []historyrecycle.Removal) ([]historyrecycle.Entry, error) {
+	service.calls = append(service.calls, "delete")
+	service.ctx = ctx
+	service.removals = removals
+	return []historyrecycle.Entry{service.entry}, service.err
 }
 
 func (service *recordingHistoryRecycle) Page(ctx context.Context, after string) (historyrecycle.Page, error) {
@@ -92,6 +100,10 @@ func historyRecycleBindingOperations(target historyrecycle.Target) []struct {
 		}},
 		{name: "restore", invoke: func(app *DesktopApp) error {
 			_, err := app.RestoreHistory(target)
+			return err
+		}},
+		{name: "delete", invoke: func(app *DesktopApp) error {
+			_, err := app.DeleteRecycledHistory([]historyrecycle.Removal{{Target: target, RemovedAt: "2026-10-30T00:00:00Z"}})
 			return err
 		}},
 	}
@@ -147,7 +159,14 @@ func TestHistoryRecycleBindingsForwardDependencyInputsResultsAndLifecycle(t *tes
 	if service.target != target {
 		t.Fatal("restore target was not forwarded")
 	}
-	if !reflect.DeepEqual(service.calls, []string{"page", "preview", "recycle", "restore"}) {
+	removals := []historyrecycle.Removal{{Target: target, RemovedAt: entry.RemovedAt}}
+	if result, err := app.DeleteRecycledHistory(removals); err != nil || !reflect.DeepEqual(result, []historyrecycle.Entry{entry}) {
+		t.Fatalf("delete = %+v, error = %v", result, err)
+	}
+	if !reflect.DeepEqual(service.removals, removals) {
+		t.Fatal("delete confirmation was not forwarded")
+	}
+	if !reflect.DeepEqual(service.calls, []string{"page", "preview", "recycle", "restore", "delete"}) {
 		t.Fatalf("dependency calls = %v", service.calls)
 	}
 	if service.ctx != initializerContext {
@@ -171,6 +190,7 @@ func TestHistoryRecycleBindingsSanitizeEveryServiceFailure(t *testing.T) {
 		{name: "not found", err: historyrecycle.ErrNotFound, code: "history_recycle_not_found"},
 		{name: "active", err: historyrecycle.ErrActive, code: "history_recycle_active"},
 		{name: "unconfirmed", err: historyrecycle.ErrUnconfirmed, code: "history_recycle_unconfirmed"},
+		{name: "delete unsupported", err: historyrecycle.ErrDeleteUnsupported, code: "history_recycle_delete_unsupported"},
 		{name: "unavailable", err: ErrHistoryRecycleUnavailable, code: "history_recycle_unavailable"},
 		{name: "unexpected", err: errors.New("database read failed"), code: "history_recycle_unavailable"},
 	} {
@@ -253,7 +273,7 @@ func TestHistoryRecycleBindingsEmitVisibilityChangesOnlyAfterSuccessfulMutations
 			t.Fatal(err)
 		}
 		want := before
-		if operation.name == "recycle" || operation.name == "restore" {
+		if operation.name == "recycle" || operation.name == "restore" || operation.name == "delete" {
 			want++
 		}
 		if len(events) != want {
