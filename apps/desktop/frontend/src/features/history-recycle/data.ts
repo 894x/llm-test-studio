@@ -1,6 +1,26 @@
 import { DesktopDataError } from "@/app/data-error"
 
 export type HistoryRecycleTarget = { kind: "job" | "run" | "report" | "comparison"; id: string }
+export type HistoryRemoval = { target: HistoryRecycleTarget; removed_at: string }
+
+export function parseHistoryRemovals(value: unknown): HistoryRemoval[] {
+  if (!Array.isArray(value) || !value.length || value.length > 10000) return invalid()
+  const removals = value.map(item => {
+    const row = record(item, ["target", "removed_at"])
+    const removed_at = timestamp(row.removed_at)
+    if (!removed_at) return invalid()
+    return { target: parseHistoryRecycleTarget(row.target), removed_at }
+  })
+  if (new Set(removals.map(row => `${row.target.kind}:${row.target.id}`)).size !== removals.length) return invalid()
+  return removals
+}
+
+export function parseHistoryDeletion(value: unknown, removals: HistoryRemoval[]): RecycledHistoryEntry[] {
+  if (!Array.isArray(value) || value.length !== removals.length) return invalid()
+  const entries = value.map(parseRecycledHistoryEntry)
+  if (entries.some((entry, index) => entry.remote || entry.kind !== removals[index].target.kind || entry.id !== removals[index].target.id || entry.removed_at !== removals[index].removed_at)) return invalid()
+  return entries
+}
 export type RecycledHistoryEntry = HistoryRecycleTarget & {
   title: string
   removed_at: string

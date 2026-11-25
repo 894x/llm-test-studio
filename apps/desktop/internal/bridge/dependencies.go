@@ -104,6 +104,7 @@ type OverviewQuery interface {
 }
 
 type HistoryRecycleService interface {
+	Delete(context.Context, []historyrecycle.Removal) ([]historyrecycle.Entry, error)
 	Preview(context.Context, historyrecycle.Target) (historyrecycle.Preview, error)
 	Recycle(context.Context, historyrecycle.Target) (historyrecycle.Entry, error)
 	Restore(context.Context, historyrecycle.Target) (historyrecycle.Entry, error)

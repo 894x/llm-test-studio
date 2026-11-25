@@ -28,6 +28,7 @@ func TestDesktopBindingMethodSetSurvivesPackageMove(t *testing.T) {
 		"DeleteChannelModel",
 		"DeleteModel",
 		"DeletePlan",
+		"DeleteRecycledHistory",
 		"DeleteSuite",
 		"DeleteTestCase",
 		"DownloadDesktopUpdate",

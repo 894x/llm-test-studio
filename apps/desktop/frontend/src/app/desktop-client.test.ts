@@ -1269,6 +1269,7 @@ function installBinding(
     GetRecycledHistory: vi.fn(async (_after?: string): Promise<unknown> => ({ schema_version: 1, entries: [], next_cursor: "", has_more: false })),
     RecycleHistory: vi.fn<(target: unknown) => Promise<unknown>>(),
     RestoreHistory: vi.fn<(target: unknown) => Promise<unknown>>(),
+    DeleteRecycledHistory: vi.fn<(removals: unknown) => Promise<unknown>>(),
     CreateLocalFileSelection: vi.fn<(document: string) => Promise<unknown>>(),
     ReleaseLocalFileSelection: vi.fn(async (_id?: string) => undefined),
     GetRemoteNodes: vi.fn(async () => structuredClone(EMPTY_REMOTE_NODES)),

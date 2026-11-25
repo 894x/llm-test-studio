@@ -14,8 +14,9 @@ import { formatReportTimestamp } from "@/features/reports/report-timestamp"
 import { PageFrame } from "@/features/shell/page-frame"
 
 import type { HistoryChanged, RecycledHistoryEntry, RecycledHistoryPage } from "./data"
+import { DeleteHistoryButton } from "./delete-history-button"
 
-type RecycleClient = Pick<DesktopClient, "getRecycledHistory" | "restoreHistory">
+type RecycleClient = Pick<DesktopClient, "getRecycledHistory" | "restoreHistory" | "deleteRecycledHistory">
 type ListState = {
   entries: RecycledHistoryEntry[]
   nextCursor: string
@@ -53,12 +54,24 @@ export function HistoryRecycleWorkspace({ client, onHistoryChanged, onBack }: {
   const { t, i18n } = useTranslation("historyRecycle")
   const [list, setList] = useState<ListState>(INITIAL_STATE)
   const [restoring, setRestoring] = useState("")
+  const [deleting, setDeleting] = useState(false)
+  const [deleteNotice, setDeleteNotice] = useState("")
+  const deleteNoticeRef = useRef<HTMLParagraphElement>(null)
   const [restoreError, setRestoreError] = useState("")
   const [restoredTitle, setRestoredTitle] = useState("")
   const requestSequence = useRef(0)
   const listPending = useRef(false)
   const restorePending = useRef(false)
   const restoredRemovals = useRef(new Set<string>())
+
+  useEffect(() => {
+    if (deleteNotice && !deleting) deleteNoticeRef.current?.focus()
+  }, [deleteNotice, deleting])
+
+  const changeDeleting = (busy: boolean) => {
+    setDeleting(busy)
+    if (busy) { setDeleteNotice(""); setRestoredTitle(""); setRestoreError("") }
+  }
 
   const load = useCallback(async (after = "") => {
     if (listPending.current) return
@@ -99,6 +112,7 @@ export function HistoryRecycleWorkspace({ client, onHistoryChanged, onBack }: {
     setRestoring(entryKey(entry))
     setRestoreError("")
     setRestoredTitle("")
+    setDeleteNotice("")
     try {
       const restored = await client.restoreHistory({ kind: entry.kind, id: entry.id })
       restoredRemovals.current.add(removalKey(entry))
@@ -121,16 +135,26 @@ export function HistoryRecycleWorkspace({ client, onHistoryChanged, onBack }: {
     }
   }
 
-  const busy = !!list.loading || !!restoring
+  const deleted = async (entries: RecycledHistoryEntry[]) => {
+    for (const entry of entries) restoredRemovals.current.add(removalKey(entry))
+    const keys = new Set(entries.map(entryKey))
+    setList(previous => ({ ...previous, entries: previous.entries.filter(entry => !keys.has(entryKey(entry))) }))
+    const results = await Promise.allSettled(entries.map(entry => Promise.resolve().then(() => onHistoryChanged(entry, "recycle"))))
+    await load()
+    setDeleteNotice(results.some(result => result.status === "rejected")
+      ? t("deletedRefreshFailed") : t("deleted", { count: entries.length }))
+  }
+  const busy = !!list.loading || !!restoring || deleting
   return (
-    <PageFrame title={t("title")} description={t("description")} actions={
+    <PageFrame title={t("title")} actions={
       <>
         {onBack ? <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeftIcon />{t("back")}</Button> : null}
         <RefreshButton variant="outline" label={t("refresh")} disabled={busy} refreshing={list.loading === "refresh"} onClick={() => void load()} />
+        <DeleteHistoryButton client={client} disabled={busy || !list.loaded || !list.entries.length} onBusyChange={changeDeleting} onDeleted={deleted} />
       </>
     }>
       <ScrollArea contentWidth="viewport" className="min-h-0 flex-1 px-4">
-        <p className="mb-3 text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">{t("scopeHint")}</p>
+        {deleteNotice ? <p ref={deleteNoticeRef} tabIndex={-1} role="status" className="mb-3 text-xs text-success-strong [overflow-wrap:anywhere]">{deleteNotice}</p> : null}
         {restoredTitle ? <p role="status" className="mb-3 text-xs text-success-strong [overflow-wrap:anywhere]">{t("restored", { title: restoredTitle })}</p> : null}
         {restoreError ? <Alert variant="destructive" className="mb-3"><AlertDescription>{restoreError}</AlertDescription></Alert> : null}
         {list.error ? <Alert variant="destructive" className="mb-3">
@@ -146,7 +170,7 @@ export function HistoryRecycleWorkspace({ client, onHistoryChanged, onBack }: {
               <TableHead className="h-8 w-[15%] text-[11px]">{t("columns.kind")}</TableHead>
               <TableHead className="h-8 text-[11px]">{t("columns.record")}</TableHead>
               <TableHead className="h-8 w-[24%] text-[11px]">{t("columns.removedAt")}</TableHead>
-              <TableHead className="h-8 w-[100px] text-right text-[11px]">{t("columns.action")}</TableHead>
+              <TableHead className="h-8 w-[190px] text-right text-[11px]">{t("columns.action")}</TableHead>
             </TableRow></TableHeader>
             <TableBody>{list.entries.map(entry => <TableRow key={entryKey(entry)}>
               <TableCell className="text-xs">{t(`kind.${entry.kind}`)}</TableCell>
@@ -156,9 +180,9 @@ export function HistoryRecycleWorkspace({ client, onHistoryChanged, onBack }: {
                 <div className="mt-0.5 text-[11px] text-muted-foreground">{t("affected", { runs: entry.run_ids.length, reports: entry.report_ids.length })}{entry.remote ? ` · ${t("remoteRecord")}` : ""}</div>
               </TableCell>
               <TableCell className="text-xs tabular-nums">{formatReportTimestamp(entry.removed_at, i18n.resolvedLanguage ?? i18n.language)}</TableCell>
-              <TableCell className="text-right"><Button variant="outline" size="sm" disabled={busy} aria-label={t("restoreAria", { title: entry.title })} onClick={() => void restore(entry)}>
+              <TableCell className="text-right"><div className="flex flex-wrap justify-end gap-2"><Button variant="outline" size="sm" disabled={busy} aria-label={t("restoreAria", { title: entry.title })} onClick={() => void restore(entry)}>
                 {restoring === entryKey(entry) ? <Spinner /> : null}{t("restore")}
-              </Button></TableCell>
+              </Button><DeleteHistoryButton client={client} entry={entry} disabled={busy} onBusyChange={changeDeleting} onDeleted={deleted} /></div></TableCell>
             </TableRow>)}</TableBody>
           </Table> : null}
         {list.hasMore ? <div className="flex justify-center py-4"><Button variant="outline" size="sm" disabled={busy} onClick={() => void load(list.nextCursor)}>

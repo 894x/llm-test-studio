@@ -29,6 +29,7 @@ function page(entries: RecycledHistoryEntry[], next = ""): RecycledHistoryPage {
 
 function makeClient() {
   return {
+    deleteRecycledHistory: vi.fn<DesktopClient["deleteRecycledHistory"]>().mockResolvedValue([SECOND]),
     getRecycledHistory: vi.fn<DesktopClient["getRecycledHistory"]>().mockResolvedValue(page([])),
     restoreHistory: vi.fn<DesktopClient["restoreHistory"]>().mockResolvedValue({ ...FIRST, removed_at: "" }),
   }
@@ -47,6 +48,45 @@ beforeEach(() => {
   i18n.addResourceBundle("en-US", "historyRecycle", en)
 })
 
+it("confirms every page of local records and preserves remote records", async () => {
+  const user = userEvent.setup()
+  const client = makeClient()
+  const changed = vi.fn()
+  client.getRecycledHistory.mockResolvedValueOnce(page([FIRST], "next"))
+    .mockResolvedValueOnce(page([FIRST], "next"))
+    .mockResolvedValueOnce(page([SECOND]))
+    .mockResolvedValue(page([FIRST]))
+  render(<HistoryRecycleWorkspace client={client} onHistoryChanged={changed} />)
+  await screen.findByRole("button", { name: `恢复 ${FIRST.title}` })
+  expect(screen.getByRole("button", { name: `永久删除 ${FIRST.title}` })).toBeDisabled()
+  await user.click(screen.getByRole("button", { name: "清空本机记录" }))
+  expect(await screen.findByText("即将删除 1 条本机记录。")).toBeInTheDocument()
+  expect(client.deleteRecycledHistory).not.toHaveBeenCalled()
+  await user.click(screen.getByRole("button", { name: "确认永久删除" }))
+  await waitFor(() => expect(client.deleteRecycledHistory).toHaveBeenCalledExactlyOnceWith([
+    { target: { kind: SECOND.kind, id: SECOND.id }, removed_at: SECOND.removed_at },
+  ]))
+  await waitFor(() => expect(changed).toHaveBeenCalledWith(SECOND, "recycle"))
+  expect(screen.getByRole("button", { name: `恢复 ${FIRST.title}` })).toBeInTheDocument()
+})
+
+it("cancels deletion and preserves a record when permanent deletion fails", async () => {
+  const user = userEvent.setup()
+  const client = makeClient()
+  client.getRecycledHistory.mockResolvedValue(page([SECOND]))
+  client.deleteRecycledHistory.mockRejectedValue(new Error("private database error"))
+  render(<HistoryRecycleWorkspace client={client} onHistoryChanged={vi.fn()} />)
+  await user.click(await screen.findByRole("button", { name: `永久删除 ${SECOND.title}` }))
+  await user.click(screen.getByRole("button", { name: "取消" }))
+  expect(client.deleteRecycledHistory).not.toHaveBeenCalled()
+  await user.click(screen.getByRole("button", { name: `永久删除 ${SECOND.title}` }))
+  await user.click(screen.getByRole("button", { name: "确认永久删除" }))
+  expect(await screen.findByRole("alert")).toHaveTextContent("未能确认删除结果")
+  expect(screen.queryByText(/private database/)).not.toBeInTheDocument()
+  await user.click(screen.getByRole("button", { name: "取消" }))
+  expect(screen.getByRole("button", { name: `恢复 ${SECOND.title}` })).toBeEnabled()
+})
+
 it("keeps loading, safe errors, retry, and the empty recycle bin in one surface", async () => {
   const user = userEvent.setup()
   const first = deferred<RecycledHistoryPage>()
@@ -62,8 +102,7 @@ it("keeps loading, safe errors, retry, and the empty recycle bin in one surface"
   await user.click(screen.getByRole("button", { name: "重试" }))
   expect(await screen.findByRole("heading", { name: "回收站为空" })).toBeInTheDocument()
   expect(client.getRecycledHistory.mock.calls).toEqual([[""], [""]])
-  expect(screen.getByText(/不会释放磁盘空间，远程节点上的数据保持不变/)).toBeInTheDocument()
-  expect(screen.queryByRole("button", { name: /彻底|清空|永久/ })).not.toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "清空本机记录" })).toBeDisabled()
 })
 
 it("restores the canonical owning identity and does not reinsert a restored row from a stale refresh", async () => {

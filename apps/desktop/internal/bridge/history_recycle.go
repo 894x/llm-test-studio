@@ -9,11 +9,12 @@ import (
 var ErrHistoryRecycleUnavailable = errors.New("history recycle service unavailable")
 
 const (
-	desktopCodeHistoryRecycleInvalid     = "history_recycle_invalid"
-	desktopCodeHistoryRecycleNotFound    = "history_recycle_not_found"
-	desktopCodeHistoryRecycleActive      = "history_recycle_active"
-	desktopCodeHistoryRecycleUnconfirmed = "history_recycle_unconfirmed"
-	desktopCodeHistoryRecycleUnavailable = "history_recycle_unavailable"
+	desktopCodeHistoryRecycleDeleteUnsupported = "history_recycle_delete_unsupported"
+	desktopCodeHistoryRecycleInvalid           = "history_recycle_invalid"
+	desktopCodeHistoryRecycleNotFound          = "history_recycle_not_found"
+	desktopCodeHistoryRecycleActive            = "history_recycle_active"
+	desktopCodeHistoryRecycleUnconfirmed       = "history_recycle_unconfirmed"
+	desktopCodeHistoryRecycleUnavailable       = "history_recycle_unavailable"
 )
 
 func (app *DesktopApp) GetRecycledHistory(after string) (historyrecycle.Page, error) {
@@ -70,10 +71,24 @@ func (app *DesktopApp) RestoreHistory(target historyrecycle.Target) (historyrecy
 	return entry, nil
 }
 
+func (app *DesktopApp) DeleteRecycledHistory(removals []historyrecycle.Removal) ([]historyrecycle.Entry, error) {
+	lease, err := app.acquire(desktopRequirements{historyRecycle: true})
+	if err != nil {
+		return nil, app.safeBindingError(err)
+	}
+	defer lease.release()
+	entries, err := lease.historyRecycle.Delete(lease.ctx, removals)
+	if err != nil {
+		return nil, app.historyRecycleError(err)
+	}
+	app.emitDesktopEvent(lease.ctx, "history-visibility-changed")
+	return entries, nil
+}
+
 func (app *DesktopApp) historyRecycleError(err error) error {
 	invalidTarget := errors.Is(err, historyrecycle.ErrInvalid) || errors.Is(err, historyrecycle.ErrNotFound)
 	blockedExecution := errors.Is(err, historyrecycle.ErrActive) || errors.Is(err, historyrecycle.ErrUnconfirmed)
-	if invalidTarget || blockedExecution {
+	if invalidTarget || blockedExecution || errors.Is(err, historyrecycle.ErrDeleteUnsupported) {
 		return app.safeBindingError(err)
 	}
 	return app.safeBindingError(errors.Join(ErrHistoryRecycleUnavailable, err))

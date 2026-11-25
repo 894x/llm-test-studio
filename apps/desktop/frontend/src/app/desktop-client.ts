@@ -1,5 +1,5 @@
 import { parseProtocolComparisonPreview, type ProtocolComparisonPreview } from "@/features/quick-test/protocol-comparison-data"
-import { parseHistoryRecyclePreview, parseHistoryRecycleTarget, parseRecycledHistoryEntry, parseRecycledHistoryPage, type HistoryRecycleTarget, type HistoryRecyclePreview, type RecycledHistoryEntry, type RecycledHistoryPage } from "@/features/history-recycle/data"
+import { parseHistoryDeletion, parseHistoryRemovals, parseHistoryRecyclePreview, parseHistoryRecycleTarget, parseRecycledHistoryEntry, parseRecycledHistoryPage, type HistoryRemoval, type HistoryRecycleTarget, type HistoryRecyclePreview, type RecycledHistoryEntry, type RecycledHistoryPage } from "@/features/history-recycle/data"
 import type { QuickHistoryPage } from "@/features/quick-test/history-data"
 import { parseBenchmarkCatalog, parseBenchmarkRun, parseBenchmarkPage, parseBenchmarkReport, parseBenchmarkDatasetInventory, parseBenchmarkDatasetDownload, type BenchmarkClient, type BenchmarkCommand } from "@/features/benchmarks/data"
 import { benchmarkPreviewClient } from "@/features/benchmarks/preview-client"
@@ -74,6 +74,7 @@ export type DesktopErrorCode =
   | "history_recycle_active"
   | "history_recycle_unconfirmed"
   | "history_recycle_unavailable"
+  | "history_recycle_delete_unsupported"
   | "desktop_not_started"
   | "desktop_startup_failed"
   | "desktop_stopped"
@@ -181,6 +182,7 @@ export interface DesktopClient extends CatalogActions, BenchmarkClient, DesktopU
   getRecycledHistory(after: string): Promise<RecycledHistoryPage>
   recycleHistory(target: HistoryRecycleTarget): Promise<RecycledHistoryEntry>
   restoreHistory(target: HistoryRecycleTarget): Promise<RecycledHistoryEntry>
+  deleteRecycledHistory(removals: HistoryRemoval[]): Promise<RecycledHistoryEntry[]>
   getStartupProgress(): Promise<StartupProgress>
   backupAndCreateDatabase(): Promise<DatabaseRecoveryResult>
   openDatabaseRecoveryDirectory(): Promise<void>
@@ -291,6 +293,7 @@ type WailsDesktopBinding = {
   GetRecycledHistory(after: string): Promise<unknown>
   RecycleHistory(target: HistoryRecycleTarget): Promise<unknown>
   RestoreHistory(target: HistoryRecycleTarget): Promise<unknown>
+  DeleteRecycledHistory(removals: HistoryRemoval[]): Promise<unknown>
   GetStartupProgress(): Promise<unknown>
   BackupAndCreateDatabase(): Promise<unknown>
   OpenDatabaseRecoveryDirectory(): Promise<void>
@@ -371,7 +374,7 @@ const REQUIRED_WAILS_BINDING_METHODS = [
   "GetDesktopUpdate", "CheckDesktopUpdate", "DownloadDesktopUpdate", "CancelDesktopUpdate", "SetDesktopUpdatePreferences", "InstallDesktopUpdate", "OpenDesktopUpdateRelease",
   "GetBenchmarkDatasets", "ManageBenchmarkDataset",
   "GetBenchmarkCatalog", "PrepareBenchmarkRuntime", "StartBenchmark", "GetBenchmarks", "GetBenchmark", "GetBenchmarkReportOwner", "CancelBenchmark", "GetBenchmarkReport", "ExportBenchmarkReport",
-  "PreviewHistoryRecycle", "GetRecycledHistory", "RecycleHistory", "RestoreHistory",
+  "PreviewHistoryRecycle", "GetRecycledHistory", "RecycleHistory", "RestoreHistory", "DeleteRecycledHistory",
   "CreateLocalFileSelection", "ReleaseLocalFileSelection",
   "GetRemoteNodes", "SaveRemoteNode", "RefreshRemoteNode", "SetRemoteNodeTaskConcurrency", "ConfirmRemoteNodeHostKey", "SelectDefaultExecution",
   "RetryRemoteInstallation", "RemoveRemoteNode",
@@ -430,6 +433,7 @@ export function createFixtureClient(
     async getRecycledHistory() { return { schema_version: 1, entries: [], next_cursor: "", has_more: false } },
     async recycleHistory() { throw new DesktopClientError("history_recycle_unavailable") },
     async restoreHistory() { throw new DesktopClientError("history_recycle_unavailable") },
+    async deleteRecycledHistory() { throw new DesktopClientError("history_recycle_unavailable") },
     async createLocalFileSelection() { throw new DesktopClientError("file_input_unavailable") },
     async releaseLocalFileSelection() { throw new DesktopClientError("file_input_unavailable") },
     async getDesktopUpdate() { return { ...UNAVAILABLE_UPDATE } },
@@ -678,6 +682,7 @@ function createLazyFixtureClient(): DesktopClient {
     getRecycledHistory: async after => (await client).getRecycledHistory(after),
     recycleHistory: async target => (await client).recycleHistory(target),
     restoreHistory: async target => (await client).restoreHistory(target),
+    deleteRecycledHistory: async removals => (await client).deleteRecycledHistory(removals),
     createLocalFileSelection: async command => (await client).createLocalFileSelection(command),
     releaseLocalFileSelection: async id => (await client).releaseLocalFileSelection(id),
     getDesktopUpdate: async () => (await client).getDesktopUpdate(),
@@ -845,6 +850,10 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       return preview
     }),
     getRecycledHistory: async after => callBinding(() => binding.GetRecycledHistory(after), parseRecycledHistoryPage),
+    deleteRecycledHistory: async removals => {
+      const confirmed = parseHistoryRemovals(removals)
+      return callBinding(() => binding.DeleteRecycledHistory(confirmed), value => parseHistoryDeletion(value, confirmed))
+    },
     recycleHistory: async target => callBinding(() => binding.RecycleHistory(parseHistoryRecycleTarget(target)), value => {
       const entry = parseRecycledHistoryEntry(value)
       validateHistoryTarget(entry, target)

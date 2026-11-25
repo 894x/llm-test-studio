@@ -15,7 +15,7 @@ export function PageFrame({
   actions,
 }: {
   title: string
-  description: string
+  description?: string
   count?: string
   children: ReactNode
   inspector?: ReactNode
@@ -34,9 +34,9 @@ export function PageFrame({
             <h1 id="page-heading" className="text-lg font-semibold tracking-tight">
               {title}
             </h1>
-            <p className="mt-1 truncate text-[11px] text-muted-foreground">
+            {description ? <p className="mt-1 truncate text-[11px] text-muted-foreground">
               {description}
-            </p>
+            </p> : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {inspector !== undefined ? (

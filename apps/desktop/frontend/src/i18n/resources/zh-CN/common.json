@@ -29,6 +29,7 @@
     "history_recycle_not_found": "测试记录不存在或已不在当前列表，请刷新",
     "history_recycle_unconfirmed": "任务状态尚未确认，请等待同步完成后再移入回收站",
     "history_recycle_unavailable": "回收站暂不可用，请在桌面应用中重试",
+    "history_recycle_delete_unsupported": "暂不支持永久删除远程同步记录、升级归档或含受管理文件的记录。",
     "file_input_invalid": "所选图片无效，请选择非空的 PNG 或 JPEG 图片。",
     "file_input_too_large": "图片超过 1 MiB 上限，请选择较小的图片。",
     "file_input_limit": "已达到本地图片选择上限，请移除图片后重试。",
